@@ -4,24 +4,26 @@ Status: **plan only**. Nothing here is implemented. Every technical claim that c
 backed by an official source; the citation table and verdicts live in
 [`grill-findings.md`](./grill-findings.md).
 
-Traefik documentation is cited at `https://doc.traefik.io/traefik/reference/...` (the current docs
-set, describing **Traefik v3.7**). Note that the older `docs.traefik.io` alias is only partly
-usable: `docs.traefik.io/traefik/<path>` redirects to `doc.traefik.io/traefik/traefik/<path>`, which
-404s for some pages — so citations use the canonical `doc.traefik.io` paths that were fetched.
+Traefik documentation is cited at `https://doc.traefik.io/traefik/...` (the current docs set,
+describing **Traefik v3.7**; reference pages live under `/traefik/reference/...`). The older
+`docs.traefik.io` alias is only partly usable (`docs.traefik.io/traefik/<path>` redirects to
+`doc.traefik.io/traefik/traefik/<path>`, which 404s for some pages), so citations use the canonical
+paths that were fetched.
 
 ---
 
-## 0. Decisions already taken
+## 0. Decisions
 
 | # | Decision | Status |
 | --- | --- | --- |
-| D1 | Namespace zone and FQDN template: **`<branch>.<project>.home.malarstrom.com`** | **Confirmed by the user** |
-| D2 | One exact-`Host` router + one service **per registration**, added and removed atomically | **Confirmed by the user** |
-| D3 | TLS design | **Closed with citations** (§7): HTTP-01 impossible, DNS-01 per project, or plain HTTP / internal CA |
-| D4 | Where Traefik runs | **Open** (§11.1) |
-| D5 | How dynamic configuration reaches Traefik | **Open** (§11.2) — recommended: HTTP provider + registry |
-| D6 | How dev servers become reachable | **Open** (§11.3) — recommended: rebind `0.0.0.0` |
-| D7 | Dashboard / API exposure | **Open** (§11.4) |
+| D1 | **Where Traefik runs**: a separate container on the same Docker network ("private") | **Already the reality** — Traefik is running there |
+| D2 | **Dynamic configuration channel**: HTTP provider; a registry inside this container serves the document | **Decided** |
+| D3 | **Dev-server reachability**: a relay inside this container (`0.0.0.0:<relay-port>` → `127.0.0.1:<dev-port>`) | **Decided** |
+| D4 | **Security posture**: the registry index is the primary "what is running" view; the Traefik dashboard is optional | **Decided** |
+| D5 | **TLS**: the client sees HTTPS, Traefik terminates TLS, the hop into this container is plain HTTP | **Decided** |
+| D6 | **Certificate granularity** | **Recommendation**: one wildcard certificate per project (`*.<project>.home.malarstrom.com`) — §7 |
+| D7 | **Relay topology** | **Recommendation**: one relay process for all registrations, dispatching on a header set by a per-router Traefik middleware — §5.2 |
+| D8 | **Remaining unknowns** | The checklist in §2 — **must be confirmed against the running Traefik** |
 
 ---
 
@@ -36,30 +38,28 @@ The gateway must
 
 1. let the user **click a URL** and reach the dev server an agent is running,
 2. let a project **register and withdraw** its dev server **at runtime, independently** of other
-   projects (atomic registrations — D2),
+   projects (atomic registrations),
 3. give the user an **overview of everything the agents currently run**.
 
-### 1.1 Confirmed namespace (D1)
+### 1.1 Namespace (confirmed)
 
 ```
 <branch>.<project>.home.malarstrom.com
 ```
 
 * `<branch>` — leftmost label, the branch of the dev lifecycle, DNS-safe slug.
-* `<project>` — the project's own primary prefix label, directly left of `home`. The user counts it
-  from the right: `com`(1) `malarstrom`(2) `home`(3) **`project`(4)**. So a project's namespace is
-  `<project>.home.malarstrom.com` and the branch label sits in front of it.
-* `home.malarstrom.com` — the fixed suffix; the user's wildcard record is
-  `*.home.malarstrom.com`.
+* `<project>` — the project's own primary prefix label, directly left of `home` (the user's
+  "label 4" counting from the right: `com`(1) `malarstrom`(2) `home`(3) `project`(4)). A project's
+  namespace is `<project>.home.malarstrom.com`; the branch label sits in front of it.
+* `home.malarstrom.com` — fixed suffix; the user's wildcard record is `*.home.malarstrom.com`.
 
-The FQDN template stays configurable (`fqdn_template = "{branch}.{project}.{zone}"` with
-`zone = home.malarstrom.com`), so the project-label position is a parameter, not a hard-coded
-constant — but the **confirmed** shape is the one above.
+The FQDN template stays configurable (`{branch}.{project}.{zone}`, `zone = home.malarstrom.com`), so
+the project-label position is a parameter rather than a hard-coded constant.
 
 ### 1.2 Live DNS evidence (checked fact)
 
 Queried through Cloudflare's DNS-over-HTTPS resolver
-(`https://cloudflare-dns.com/dns-query`, i.e. genuinely public DNS, not the container resolver) and
+(`https://cloudflare-dns.com/dns-query` — genuinely public DNS, not the container resolver) and
 re-verified while writing this plan:
 
 | Query | Answer |
@@ -70,499 +70,539 @@ re-verified while writing this plan:
 | `a.b.home.malarstrom.com A` | CNAME `home.malarstrom.com.` → `10.10.1.50` |
 | `*.home.malarstrom.com CNAME` | `home.malarstrom.com.` |
 
-Two consequences the plan must preserve:
+Two consequences:
 
 1. **The wildcard is a CNAME and resolves at arbitrary depth.** `a.b.home.malarstrom.com` already
    resolves, so `<branch>.<project>.home.malarstrom.com` resolves through the user's **single**
-   record. This is the RFC 4592 §2.2.1 behaviour — "the wildcard does" apply when no closer name
-   exists — and RFC 1034 §4.3.3: "the \"*\" label always matches at least one whole label and
-   sometimes more, but always whole labels". **The user needs no new DNS records per project or
-   per branch.**
+   record — RFC 1034 §4.3.3: "the \"*\" label always matches at least one whole label and sometimes
+   more, but always whole labels"; RFC 4592 §2.2.1 (the wildcard applies "because
+   `bar.example.` does not exist, but the wildcard does"). **No new DNS records are needed per
+   project or per branch.**
 2. **Public DNS names, private payload.** The names are publicly enumerable (anyone can query
    `anything.home.malarstrom.com` and learn it resolves to `10.10.1.50`), but `10.10.1.50` is not
-   internet-routable — the traffic is only reachable from networks that route that address (the
-   user's LAN/VPN). The plan must therefore keep the Traefik entryPoints and the dashboard/API
-   bound to the LAN/VPN address only, and must **not** expose `api.insecure` or the registry
-   endpoint to the internet.
+   internet-routable — the traffic is only reachable from networks that route it (LAN/VPN). So the
+   Traefik entryPoints and any dashboard/API bind the LAN/VPN address only, and the registry
+   endpoint and the relay stay off the LAN.
 
-Caveat carried over from RFC 1034 §4.3.3: a concrete name existing between the wildcard and the
-query name disables the wildcard ("Wildcard RRs do not apply: … When the query name or a name
-between the wildcard domain and the query name is known to exist" — delegation cancels the
-wildcard defaults). The gateway must not create concrete names under `home.malarstrom.com`.
-
----
-
-## 2. Environment facts (read-only inspection)
-
-Gathered with `ip`, `ss`, `cat`, `ls`, `which`, `curl`. Nothing was changed.
-
-| Fact | Value | How observed |
-| --- | --- | --- |
-| Interfaces | `lo` 127.0.0.1/8, `eth0` 172.16.2.13/24 | `ip -o addr` |
-| Default route | `default via 172.16.2.1 dev eth0` | `ip route` |
-| Docker resolver | `/etc/resolv.conf` → `nameserver 127.0.0.11`, `# Generated by Docker Engine.` | `cat /etc/resolv.conf` |
-| Network type | **custom / user-defined Docker network** — Docker: "Containers that attach to a custom network use Docker's embedded DNS server. The embedded DNS server address is 127.0.0.11." | Docker docs + `/etc/resolv.conf` |
-| Subnet / gateway | container `172.16.2.13`, gateway `172.16.2.1`, subnet `172.16.2.0/24` | `ip addr` / `ip route` |
-| Listening TCP | `0.0.0.0:2222` (sshd), `127.0.0.11:46501` (Docker DNS), `0.0.0.0:7683` (node, pid 140) | `ss -ltnp` |
-| Dev servers | none running now; agents bind `127.0.0.1:PORT` | task statement |
-| Docker socket | **absent** (`/var/run/docker.sock` → No such file or directory) | `ls -la` |
-| Binaries | `docker`: not found · `traefik`: not found · `curl`, `wget`, `python3` present | `which` |
-| Outbound HTTPS | works (`docs.traefik.io` → 301 → `doc.traefik.io`; `docs.docker.com` → 200) | `curl -I` |
-| User's LAN target | `home.malarstrom.com` → `10.10.1.50` (the host machine as seen by the LAN/VPN) | public DNS (§1.2) |
-
-**Consequences:**
-
-* This container **cannot be re-created from inside** (no socket, no Docker CLI) → anything needing
-  new published ports on *this* container is a **host-side task**.
-* It **is** on a user-defined Docker network → a second container on that network can reach it by
-  name/IP, and the registry inside it is reachable from the host and from the Docker network.
-* A dev server bound to `127.0.0.1` inside this container is **not** reachable from another
-  container — loopback is per-container.
+Caveat (RFC 1034 §4.3.3): a concrete name between the wildcard and the query name disables the
+wildcard — "Wildcard RRs do not apply: … When the query name or a name between the wildcard domain
+and the query name is known to exist." The gateway must not create concrete names under
+`home.malarstrom.com`.
 
 ---
 
-## 3. Candidate architectures
+## 2. Environment facts, and what must be confirmed against the running Traefik
 
-### Candidate A — Traefik runs inside this container
+### 2.1 This container (read-only inspection)
 
-*Needs new published ports on this container.* Publishing is a create-time property: "Published
-container ports are mapped to host IP addresses."; "Use the `--publish` or `-p` flag to make a port
-available outside the host, and to containers in other bridge networks."; publishing to loopback is
-LAN-invisible ("If you include the localhost IP address (127.0.0.1, or ::1) with the publish flag,
-only the Docker host can access the published container port.").
+| Fact | Value |
+| --- | --- |
+| Interfaces | `lo` 127.0.0.1/8, `eth0` 172.16.2.13/24; default route `via 172.16.2.1` |
+| Docker resolver | `/etc/resolv.conf` → `nameserver 127.0.0.11` ⇒ **custom / user-defined Docker network** (Docker: "Containers that attach to a custom network use Docker's embedded DNS server. The embedded DNS server address is 127.0.0.11.") |
+| Listening TCP | `0.0.0.0:2222` (sshd), `127.0.0.11:46501` (Docker DNS), `0.0.0.0:7683` (node, pid 140); no dev server running now |
+| Docker socket | **absent**; `docker` binary **not found**; `traefik` binary **not found** |
+| Outbound HTTPS | works (`docs.traefik.io` → 301 → `doc.traefik.io`; `docs.docker.com` → 200) |
 
-**Verdict: host-side task, cannot be done from inside.** The user must re-create the container on
-the host with `-p 80:80 -p 443:443` bound to the LAN address. Also note: no `traefik` binary exists
-here, and nothing may be installed by this task.
+Consequences: this container cannot be re-created from inside; it is on a user-defined network, so
+the running Traefik container can reach it by name/IP; and a `127.0.0.1`-bound process here is not
+reachable from another container (loopback is per-container).
 
-### Candidate B — Traefik as a separate container on the same user-defined network ← **recommended**
+### 2.2 Checklist — must be confirmed against the running Traefik (D8)
 
-The host creates one more container (`traefik:v3.7`) on the same network and publishes `80`/`443`
-on the LAN address.
+These can only be answered by reading the user's Traefik deployment. **No values are invented
+here**; the plan cannot be finalised until they are known.
 
-* Traefik reaches this container by name or IP: "Once connected to a user-defined network,
-  containers can communicate with each other using container IP addresses or container names."
-* The user reaches Traefik through the host's published ports — publishing works, and this container
-  never has to be re-created.
-* **Loopback caveat (decisive):** a dev server bound to `127.0.0.1` here is invisible to Traefik in
-  another container ⇒ §11.3.
-* Traefik's own ports: the documented quick start publishes `"80:80"` and `"8080:8080"` with image
-  `traefik:v3.7`; the Helm chart defaults are "the entryPoints web (port 80), websecure (port 443),
-  traefik (port 8080) and metrics (port 9100)".
-
-### Candidate C — Traefik on the host with the Docker provider
-
-**Verdict: ruled out for the dev-server routing job.** The provider only sees containers: "Traefik
-retrieves the private IP and port of containers from the Docker API."; "Traefik requires access to
-the docker socket to get its dynamic configuration." The dev servers are plain processes inside one
-container — no labels, never in the Docker API. It would only work if every dev server became its
-own labelled container.
-
-Its defaults are also a security lesson: `providers.docker.exposedByDefault` defaults to **true**
-("Expose containers by default through Traefik").
-
----
-
-## 4. How dynamic configuration reaches Traefik
-
-| Option | Mechanism | Fits this topology? |
-| --- | --- | --- |
-| **File provider** | `providers.file.directory` — "Defines the path to the directory that contains the configuration files. The filename and directory options are mutually exclusive. It is recommended to use `directory`." `providers.file.watch` defaults to `true` | Needs a **shared path** between this container and the Traefik container ⇒ host-side bind/volume. Documented caveat: "With the file provider, Traefik listens for file system notifications to update the dynamic configuration. If you use a mounted/bound file system in your orchestrator (like docker or kubernetes), the way the files are linked may be a source of issue." |
-| **HTTP provider** | `providers.http.endpoint` — "Defines the HTTP(S) endpoint to poll." (required); `pollInterval` `5s`; `pollTimeout` `5s`; `headers` `{}`; `tls.ca`; `tls.insecureSkipVerify` `false` | **Fits.** This container is already reachable by the Traefik container on the shared network. No shared mount needed. Costs: poll latency (tunable), one aggregator owning the document. Bonus: `headers` carries a shared secret. |
-| **Docker labels** | `traefik.http.routers.*.rule` | Ruled out — Candidate C. |
-| **Traefik API (`api@traefik.io`)** | `api`, `api.dashboard`, `api.insecure` | **Not a configuration channel.** "All the following endpoints must be accessed with a GET HTTP request." The documented channels are file, labels, annotations, KV and tags. The API is for *observing* configuration. |
-
-**Recommendation: HTTP provider** (registry inside this container). It is immune to the documented
-fsnotify/mounted-filesystem caveat, needs no shared volume (the host only creates one container),
-and gives one place to authorize registrations via `providers.http.headers`.
-
-**The file provider is the most literal reading of "each service added and removed separately"** —
-one file per registration, delete the file to remove the route, no aggregation layer. Its cost is
-the documented mount caveat above. If the user accepts that caveat, the file variant buys the
-strongest atomicity story; the HTTP variant buys a single authority and an auth header.
-
-### 4.1 The registry endpoint's exposure
-
-The registry lives **inside this container** (`172.16.2.13`) and is reachable from the Docker
-network and from the host. It is the **write side** of the gateway: whoever reaches it can publish
-routes. Therefore it must be protected:
-
-* network-restricted (Docker network + host only) — it must never be published to the LAN or the
-  internet (§1.2);
-* authenticated with a shared secret carried in `providers.http.headers` — "Defines custom headers
-  to be sent to the endpoint." — so only the Traefik container can fetch the configuration;
-* served over plain HTTP **inside** the Docker network is acceptable (it never leaves the host);
-  `providers.http.tls.insecureSkipVerify` stays `false` and `providers.http.tls.ca` is only needed
-  if the endpoint is ever exposed beyond the host.
+- [ ] Which **dynamic-configuration providers** the running Traefik has enabled — `file`? `docker`?
+      `http`? `kv`? none? (the HTTP provider must be added for our registry)
+- [ ] Does it have a **static (install) configuration file**, and does it already define a
+      **dynamic configuration directory/file** (`providers.file.filename` / `providers.file.directory`)?
+- [ ] The **entryPoint names and addresses** it listens on (e.g. `web`, `websecure`, and the
+      address each is bound to — the LAN address `10.10.1.50`, or `0.0.0.0`?)
+- [ ] Whether the **dashboard/API** is enabled (`api`, `api.dashboard`, `api.insecure`), and if so on
+      which entryPoint
+- [ ] The name of its existing **ACME certificateResolver** (if any), and **how it is fed Cloudflare
+      credentials** (env vars such as `CF_DNS_API_TOKEN` / `CF_API_EMAIL` / `CF_API_KEY`, or a
+      mounted file) — and whether a dns-01 Cloudflare provider is already configured
+- [ ] The **container name** of the running Traefik, and the **network name** ("private")
+- [ ] Under which **name/IP this container is reachable** on that network (the container's Docker
+      hostname, its alias, and whether `172.16.2.13` is stable)
+- [ ] Which **ports of this container are already published** on the host (so the relay port does
+      not collide), and whether the host firewall allows the Docker network to reach this container
+- [ ] Whether **HTTP/2 / WebSocket** traffic to the dev servers must pass through unchanged
+      (HMR) and whether any dev server needs its **own Host header** preserved
 
 ---
 
-## 5. The registration model (D2)
+## 3. Topology as it actually is
+
+```
+  user laptop (LAN/VPN)
+        │  https://<branch>.<project>.home.malarstrom.com
+        │  DNS: *.home.malarstrom.com → CNAME home.malarstrom.com → 10.10.1.50 (private IP)
+        ▼
+  host machine 10.10.1.50
+        │  published 80/443 → the running Traefik container  ("private" Docker network)
+        ▼
+  Traefik container
+        │  TLS terminates here (D5)
+        │  HTTP provider polls → GET http://<this-container>:9000/dynamic  (D2)
+        │  exact-Host router → service → http://172.16.2.13:<relay-port>   (D3)
+        ▼
+  this container (172.16.2.13)
+        ├── registry :9000  — serves the dynamic configuration document + the index page (D4)
+        └── relay   :<relay-port> — forwards to 127.0.0.1:<dev-port>  (D3)
+                    └── dev server (agent's process)
+```
+
+Because this container's ports are **not published**, they are not reachable from the LAN:
+"Ports are not accessible from outside the host or, with the default configuration, from
+containers in other networks." (Docker, network page). The relay and the registry therefore live
+only on the host/Docker network.
+
+---
+
+## 4. Dynamic configuration: the HTTP provider (D2)
+
+### 4.1 Static (install) configuration to add to the running Traefik
 
 ```yaml
-registration = { project: alpha, branch: feature/login, devPort: 5173, fqdn: feature-login.alpha.home.malarstrom.com }
+providers:
+  http:
+    endpoint: "http://<this-container-hostname>:9000/dynamic"
+    pollInterval: 5s
+    pollTimeout: 5s
+    headers:
+      X-Registry-Token: "<shared secret>"
 ```
 
-Derivation (all inputs are the record's own fields):
+* "providers.http.endpoint — Defines the HTTP(S) endpoint to poll. — `\"\"` — Yes"
+* "providers.http.pollInterval — Defines the polling interval. — `5s`"
+* "providers.http.pollTimeout — Defines the polling timeout when connecting to the endpoint. — `5s`"
+* "providers.http.headers — Defines custom headers to be sent to the endpoint. — `{}`"
 
-1. `project_slug` — the project's claimed prefix label (unique per project).
-2. `branch_slug` — sanitised branch name (§5.2).
-3. `fqdn` = `fqdn_template.format(branch=branch_slug, project=project_slug, zone=home.malarstrom.com)`.
-4. `rule` = `Host(`<fqdn>`)` — **exact**.
-5. `service` — one service whose backend is this container's address and `devPort`
-   (`loadBalancer.servers[0].url = "http://172.16.2.13:5173"`, or the relay port of D6).
-6. **Removal** = delete that registration; nothing else changes.
+URL: https://doc.traefik.io/traefik/reference/install-configuration/providers/others/http/
 
-**One registration = one router = one service**, added and removed atomically:
+(The shared secret is optional but recommended; `providers.http.tls.insecureSkipVerify` stays
+`false` and `providers.http.tls.ca` is unnecessary because the endpoint stays on the Docker
+network.)
 
-* "If the rule is verified, the router becomes active, calls middlewares, and then forwards the
-  request to the service." (router docs)
-* "service — The name of the service that will handle the matched requests. … Yes (required)"
+### 4.2 What the endpoint must return
 
-What "removal" means per channel:
-
-| Channel | Add | Remove |
-| --- | --- | --- |
-| HTTP provider (registry) | POST/PUT the registration to the registry; the registry's rendered document gains one router + one service | the registry stops serving that router/service; the next poll drops it (≤ `pollInterval`, default `5s`) |
-| File provider (`directory`) | write one file containing that router + service | delete that file; `providers.file.watch` picks it up |
-
-In both cases a registration is removable **without touching any other registration**.
-
-### 5.1 Routing strategies considered
-
-* **(A) One exact-`Host` router per registration** — `Host(`feature-login.alpha.home.malarstrom.com`)`
-  → one service → one port. **Chosen (D2).** Atomic; every route is individually visible in
-  `/api/http/routers` and in the dashboard; one router per branch.
-* **(B) One wildcard router per project** — `Host(`*.alpha.home.malarstrom.com`)` covers every
-  branch of that project, but a router has **exactly one service**, so all branches would share one
-  backend. It therefore needs a **branch-aware dispatcher** in front (a proxy inside this container
-  that reads the `Host` header and forwards to the right local port; it must handle WebSockets and
-  `X-Forwarded-*`). One router per project, but a custom proxy becomes a component you must trust
-  and maintain. **Rejected** for now.
-* **(C) `HostRegexp`** — only if nothing else fits; the docs say the `Host` matcher "should be
-  preferred over the `HostRegexp` matcher as it allows attaching a TLS option and is more
-  efficient."
-
-**Traefik's wildcard is one label deep**, which is why (B) must be spelled `*.<project>.<zone>` and
-not `*.<zone>`: "A wildcard matches exactly one subdomain label: `*.example.com` matches
-`foo.example.com` but not `foo.bar.example.com` or `example.com` itself." So
-`Host(`*.home.malarstrom.com`)` would **not** match `main.alpha.home.malarstrom.com`, while
-`Host(`*.alpha.home.malarstrom.com`)` **does**.
-
-### 5.2 Branch-label sanitisation
-
-GitLab's `CI_COMMIT_REF_SLUG` is the standard rule and is used here: "CI_COMMIT_REF_NAME in
-lowercase, shortened to 63 bytes, and with everything except 0-9 and a-z replaced with `-`. No
-leading / trailing `-`. Use in URLs, host names and domain names." The same rule is applied to the
-project label. (GitLab review apps use the same slug idea; that page returned HTTP 403 to a plain
-fetch and is therefore not cited.)
-
-### 5.3 Industry standard for the shape
-
-Vercel: "The URL generated from a Git branch will always show you the most recent changes for the
-branch and won't change if you push new commits to the branch." with URL structure
-`<project-name>-git-<branch-name>-<scope-slug>.vercel.app`. The convention is **project-scoped and
-branch-qualified** — the same two dimensions the user asked for; the ordering differs (Vercel puts
-the project first, the user's confirmed shape puts the branch first).
-
-For local-only names, RFC 2606 reserves `.test`, `.example`, `.invalid` and `.localhost` — the
-confirmed zone is a real public zone, so those do not apply here.
-
----
-
-## 6. How a project registers (end to end)
-
-**Recommended mechanism: a registry inside this container + the HTTP provider.**
-
-```
-agent in this container
-  └─ register { project, branch, devPort }        (CLI / POST to the registry)
-        └─ registry stores the registration, derives fqdn, renders Traefik dynamic configuration
-              (one router + one service per registration)
-                  └─ Traefik polls the registry (providers.http.endpoint, pollInterval 5s)
-                        └─ request to <branch>.<project>.home.malarstrom.com
-                              → DNS: CNAME *.home.malarstrom.com → home.malarstrom.com → 10.10.1.50
-                              → Traefik router (exact Host) → service → 127.0.0.1:<devPort> (via
-                                rebind or relay, see D6)
-reverse path:
-  └─ unregister { project, branch }
-        └─ registry drops that router + service → next poll removes the route → the URL 404s
-```
-
-**Alternative (file-provider variant).** The agent writes one YAML file per registration into the
-shared watched directory; deletion removes the route. This is the most literal reading of "each
-service added and removed separately" — one file ↔ one router ↔ one service — but it needs a shared
-mount and inherits the documented fsnotify caveat on mounted filesystems.
-
-**Why the registry wins:** one authority that can validate the registration (project owns its
-prefix, branch slug is unique per project, port is plausible), one place to rate-limit and
-authorize, one place to serve the overview index, and a shared secret in `providers.http.headers`
-so only the Traefik container can pull the configuration. What it costs: an aggregation layer and
-the poll latency (5 s default).
-
----
-
-## 7. TLS (D3 — closed with citations)
-
-### 7.1 http-01 is impossible here
-
-> "With HTTP validation, the client in an ACME transaction proves its control over a domain name by
-> proving that it can provision HTTP resources on a server accessible under that domain name."
-
-URL: https://www.rfc-editor.org/rfc/rfc8555#section-8.3
-
-The zone's A record is `10.10.1.50` — a private address the ACME server cannot reach. Therefore
-**any public-CA certificate for this zone must be issued via dns-01**:
-
-> "When the identifier being validated is a domain name, the client can prove control over that
-> domain by provisioning a TXT resource record containing a designated value for a specific
-> validation domain name." … "The client constructs the validation domain name by prepending the
-> label \"_acme-challenge\" to the domain name being validated"
-
-URL: https://www.rfc-editor.org/rfc/rfc8555#section-8.4
-
-Traefik agrees: "The DNS-01 challenge to generate and renew ACME certificates by provisioning a DNS
-record. Traefik relies internally on Lego for ACME." and "ACME v2 supports wildcard certificates.
-As described in Let's Encrypt's post wildcard certificates can only be generated through a DNS-01
-challenge. **It is not possible to request a double wildcard certificate for a domain (for example
-`*.*.local.com`).**"
-
-URL: https://doc.traefik.io/traefik/reference/install-configuration/tls/certificate-resolvers/acme/
-
-### 7.2 A wildcard certificate covers exactly one label
-
-> "If the wildcard character is the only character of the left-most label in the presented
-> identifier, the client SHOULD NOT compare against anything but the left-most label of the
-> reference identifier (e.g., `*.example.com` would match `foo.example.com` but not
-> `bar.foo.example.com` or `example.com`)."
-
-URL: https://www.rfc-editor.org/rfc/rfc6125#section-6.4.3
-
-So a certificate for `*.home.malarstrom.com` does **not** cover
-`<branch>.<project>.home.malarstrom.com`. And a double wildcard (`*.*.home.malarstrom.com`) cannot
-be issued at all.
-
-**The namespace design lines up with TLS:** a certificate for
-`*.<project>.home.malarstrom.com` (one label below the project label) covers **every branch of
-that project** — exactly the user's "project owns a label" model. **The TLS unit of issuance is
-the project, not the branch: one certificate per project suffices.**
-
-### 7.3 Concrete Traefik configuration
-
-Routers declare the requested domain and the resolver; the resolver derives the domains from the
-routers:
-
-> "A certificate resolver requests certificates for a set of domain names inferred from routers …
-> You can set SANs (alternative domains) for each main domain. Every domain must have A/AAAA
-> records pointing to Traefik. Each domain & SAN will lead to a certificate request."
-
-Router keys (router docs): `tls` ("TLS configuration for the router. When specified, the router will
-only handle HTTPS requests."), `tls.certResolver` ("The name of the certificate resolver to use for
-automatic certificate generation."), and `tls.domains` with `main` / `sans` (the router example
-shows `tls: certResolver: "letsencrypt"`, `domains: - main: "example.com"`, `sans: - "www.example.com"`).
-
-Resolver keys (ACME docs): `certificatesResolvers.<name>.acme.email`, `…acme.storage`,
-`…acme.dnsChallenge.provider` ("DNS provider to use. — \"\" — No"),
-`…acme.dnsChallenge.resolvers` ("DNS servers to resolve the FQDN authority. — []"),
-`…acme.dnsChallenge.propagation.delayBeforeChecks` / `disableChecks` / `requireAllRNS`.
-
-Shape of the configuration (per project):
+* Format: **YAML or JSON** — "The HTTP provider uses the same configuration as the File Provider in
+  YAML or JSON format." (same URL). The plan uses YAML.
+* Content: the **dynamic (routing) configuration document** — the same shape as the file provider's
+  file: `http.routers`, `http.services`, `http.middlewares`, `tcp.*`/`udp.*` if ever needed, and
+  `tls` options.
 
 ```yaml
-# static (install) configuration of the Traefik container
-certificatesResolvers:
-  myresolver:
-    acme:
-      email: <email>
-      storage: /data/acme.json
-      dnsChallenge:
-        provider: cloudflare        # lego provider; credentials from the environment
-```
-
-```yaml
-# dynamic configuration, one router per registration (rendered by the registry)
 http:
   routers:
     alpha-feature-login:
       rule: "Host(`feature-login.alpha.home.malarstrom.com`)"
       service: alpha-feature-login
+      middlewares:
+        - alpha-feature-login-target@http
       tls:
         certResolver: myresolver
         domains:
           - main: "*.alpha.home.malarstrom.com"
-          # sans: [ "alpha.home.malarstrom.com" ]   # optional
   services:
     alpha-feature-login:
       loadBalancer:
         servers:
-          - url: "http://172.16.2.13:5173"
+          - url: "http://172.16.2.13:9100"
+  middlewares:
+    alpha-feature-login-target:
+      headers:
+        customRequestHeaders:
+          X-Dev-Target: "alpha/feature-login"
 ```
 
-The wildcard `main` is what makes **one certificate per project** valid for all of that project's
-branches (§7.2).
+### 4.3 Does our document clobber the other providers' configuration?
 
-### 7.4 The Cloudflare credential (lego provider)
+The docs never use the word "merge"; what they state is:
 
-Traefik's ACME page points at Lego for the provider list: "You can find the list of all the
-supported DNS providers in their documentation with instructions about which environment variables
-need to be setup." The Cloudflare provider's variables:
+* "Provider Namespace — When you declare certain objects in the Traefik dynamic configuration, such
+  as middleware, services, TLS options or server transports, they reside in their provider's
+  namespace. … If you use multiple providers and wish to reference such an object declared in
+  another provider (e.g. referencing a cross-provider object like middleware), then the object name
+  should be suffixed by the `@` separator, and the provider name. — `<resource-name>@<provider-name>`"
+  URL: https://doc.traefik.io/traefik/reference/install-configuration/providers/overview/
+* "When two routers from different providers define the same rule with equal numeric priority, the
+  precedence option determines which provider's route takes precedence. … Note precedence only acts
+  as a tiebreaker: it is applied only when two routes from different providers share the same
+  numeric priority value." (same URL)
 
-> "CF_API_EMAIL — Account email · CF_API_KEY — API key · **CF_DNS_API_TOKEN — API token with
-> DNS:Edit permission (since v3.1.0)** · CF_ZONE_API_TOKEN — API token with Zone:Read permission
-> (since v3.1.0)" (plus the `CLOUDFLARE_*` aliases; values may be suffixed with `_FILE` to point at
-> a file instead of a value).
+**Verdict:** routers from different providers **coexist** in one routing table (otherwise there
+would be no cross-provider conflict to break), and each provider's objects live in its own
+namespace, so our `http` provider's routers/services/middlewares do not collide with objects served
+by a `file`/`docker` provider. The docs do **not** state a merge algorithm explicitly — that is
+recorded as a residual unknown, to be confirmed against the running Traefik (checklist §2.2) and
+verified empirically with one test registration before going live.
 
-URL: https://go-acme.github.io/lego/dns/cloudflare/
+Practical rule we adopt regardless: **the registry serves only our own objects**, all prefixed with
+a distinctive name (`alpha-feature-login`), so nothing it serves can shadow an existing route. The
+provider namespace suffix `@http` is used when our objects reference each other.
 
-⇒ Whatever runs Traefik must hold a Cloudflare API token with **DNS:Edit** on the
-`malarstrom.com` zone. That is a **secret-handling decision for the user** (§11.4).
+### 4.4 Latency
 
-### 7.5 The three honest TLS options
-
-| Option | What it means | Cost / risk |
-| --- | --- | --- |
-| **(a) Plain HTTP on the LAN** | Traefik serves `http://` on `10.10.1.50:80`; the browser shows the URL without TLS | No certificate, no Cloudflare credential; the dev payload travels in clear on the LAN/VPN — acceptable for a LAN/VPN-only, throwaway dev traffic, and it is the fastest cut. Traefik's `websecure` entryPoint is simply not used. |
-| **(b) One wildcard certificate per project** — `*.<project>.home.malarstrom.com`, via dns-01 at Cloudflare | Each project's routers carry `tls.certResolver` + `domains.main = *.<project>.home.malarstrom.com`; **one certificate per project covers all its branches** | Needs a Cloudflare API token with DNS:Edit inside the Traefik container (secret handling), ACME account storage, DNS-01 propagation waits, and the client's clock/trust store. Public-CA rate limits also apply to the domain. |
-| **(c) Internal / private CA** | The user installs a private root in their devices; Traefik serves certificates from it | No public-CA dependency, no Cloudflare credential, works for arbitrary labels; but every client device must trust the CA (manual step, and it breaks on devices you do not control). |
-
-**Recommendation: (a) first** (the whole point is visibility of local dev servers on a private
-network), then (b) if browser TLS warnings become annoying, keeping the per-project wildcard as
-the issuance unit that the namespace already anticipates.
-
----
-
-## 8. How the user sees everything the agents run
-
-1. **Traefik dashboard** — `api: true` enables it ("Enable api/dashboard. When set to true, its sub
-   option api.dashboard is also set to true."; default `false`); `api.dashboard` default `true`;
-   served at `/dashboard/` ("The dashboard is available by default on the path `/dashboard/`. Note:
-   The trailing slash `/` in `/dashboard/` is mandatory."). `api.insecure: true` exposes it on the
-   entryPoint named `traefik` — the docs' quick start uses it and warns: "Do not enable this flag
-   in production."
-2. **A gateway index page** — the registry knows every registration, so it can render the live list
-   (project, branch, port, FQDN, link) itself. The Traefik API is the cross-check:
-   `/api/http/routers` ("Lists all the HTTP routers information."), `/api/http/services`,
-   `/api/overview`.
+`pollInterval` defaults to `5s`, so a registration becomes visible within about one poll interval
+(≈5 s) and a withdrawal likewise disappears within about one poll interval. The relay's own
+routing table changes immediately; only Traefik's view lags by ≤ 5 s. `pollTimeout` (5 s) bounds
+how long a hung registry can stall a poll.
 
 ---
 
-## 9. Security posture
+## 5. The relay (D3) and the registration model
 
-* **Public names, private payload.** The names are public (§1.2); the addresses behind them are not.
-  Every entryPoint must therefore be bound to the LAN/VPN address only — never to a public
-  interface, and never with `api.insecure` on a LAN-reachable port.
-* **Never expose the API/dashboard blindly.** "Enabling the API and the dashboard in production is
-  not recommended, because it will expose all configuration elements, including sensitive data, for
-  which access should be reserved to administrators." and "It's recommended to NOT publicly exposing
-  the API's port, keeping it restricted to internal networks."
-* **The registry endpoint is the write side** — network-restricted and authenticated (§4.1).
-* **The Cloudflare token** is a secret that lives wherever Traefik runs (§7.4).
-* If the Docker provider is ever added: `providers.docker.exposedByDefault: false` ("If set to
-  false, containers that do not have a `traefik.enable=true` label are ignored") and remember
-  "Accessing the Docker API without any restriction is a security concern".
+### 5.1 Data model
+
+```yaml
+registration = { project: alpha, branch: feature/login, devPort: 5173 }
+  → fqdn  = feature-login.alpha.home.malarstrom.com
+  → relay target = 127.0.0.1:5173
+  → one router (exact Host) + one service + one middleware  (per registration)
+```
+
+1. `project_slug` — the project's claimed prefix label (unique per project).
+2. `branch_slug` — sanitised branch name (§5.4).
+3. `fqdn` = `{branch}.{project}.home.malarstrom.com`.
+4. `rule` = `Host(`<fqdn>`)` — **exact**.
+5. `service` — one service whose backend is the relay (`http://172.16.2.13:<relay-port>`).
+6. `middleware` — one headers middleware per registration that stamps the dispatch header.
+7. **Removal** = drop this registration from the registry and from the relay's table; nothing else
+   changes.
+
+**One registration = one router + one service**, added and removed atomically:
+
+* "If the rule is verified, the router becomes active, calls middlewares, and then forwards the
+  request to the service." and "service — The name of the service that will handle the matched
+  requests. … Yes (required)"
+  URL: https://doc.traefik.io/traefik/reference/routing-configuration/http/routing/router/
+
+Removal semantics per channel (D2 = HTTP): the registry stops serving that router/service; the
+next poll drops it (≤ `pollInterval`); the relay drops the mapping immediately.
+
+### 5.2 Relay topology — one process for all registrations (D7)
+
+Two designs were considered:
+
+* **(a) one relay process per registration**, each on its own port; the service URL is unique per
+  registration. Simplest and no trust boundary in the header — but it means a process per
+  registration, a port allocator, and lifecycle management for each.
+* **(b) one relay process for all registrations**, listening on a single
+  `0.0.0.0:<relay-port>`, dispatching on a per-registration header that Traefik stamps with a
+  per-router headers middleware.
+
+**Recommendation: (b).** Reasons: one long-lived component (easy to supervise, one port, no
+allocator); adding/removing a registration is a table update instead of a process lifecycle;
+every registration still keeps **its own router, service and middleware**, so the atomicity and
+the per-registration visibility in `/api/http/routers` and `/api/http/services` are preserved.
+
+The dispatch signal is set by Traefik, not by the client:
+
+> "The Headers middleware manages the headers of requests and responses. By default, the following
+> headers are automatically added when proxying requests: Property / HTTP Header — Client's IP:
+> `X-Forwarded-For`, `X-Real-Ip`; Host: `X-Forwarded-Host`; Port: `X-Forwarded-Port`; Protocol:
+> `X-Forwarded-Proto`; Proxy Server's Hostname: `X-Forwarded-Server`"
+> "Adding and Removing Headers — In the following example, requests are proxied with an extra
+> `X-Script-Name` header while their `X-Custom-Request-Header` header is removed."
+> (example) `http: middlewares: testHeader: headers: customRequestHeaders: X-Script-Name: "test"`
+
+URL: https://doc.traefik.io/traefik/reference/routing-configuration/http/middlewares/headers/
+
+Trust boundary for the relay: it accepts the dispatch header **only** from the Traefik container's
+source address on the Docker network, and (defence in depth) only when a shared secret is present.
+The relay's port is not published on the host, so it is not reachable from the LAN ("Ports are not
+accessible from outside the host or, with the default configuration, from containers in other
+networks.").
+
+### 5.3 What must survive the relay hop
+
+* **WebSockets** (Vite HMR, Next.js, etc.) — Traefik handles them itself: "Traefik Proxy supports
+  WebSocket (WS) and WebSocket Secure (WSS) connections out of the box. No special configuration is
+  required beyond standard HTTP routing." (URL:
+  https://doc.traefik.io/traefik/expose/overview/). But Traefik's WebSocket support ends at the
+  relay: the **relay must implement the HTTP `Upgrade` handshake** and stream frames both ways,
+  otherwise HMR breaks. This is the single most likely thing to go wrong in the design.
+* **`X-Forwarded-*`** — Traefik adds them by default (quote above). The relay must forward them
+  untouched to the dev server, and must not add its own `X-Forwarded-For` entries that would
+  misreport the client IP; the dev server should see the original client address.
+
+### 5.4 Branch-label sanitisation
+
+GitLab's `CI_COMMIT_REF_SLUG` is the standard rule: "CI_COMMIT_REF_NAME in lowercase, shortened to
+63 bytes, and with everything except 0-9 and a-z replaced with `-`. No leading / trailing `-`. Use
+in URLs, host names and domain names."
+URL: https://docs.gitlab.com/ci/variables/predefined_variables/
+
+The same rule is applied to the project label. (The GitLab review-apps page returned HTTP 403 to a
+plain fetch and is therefore not cited.)
+
+### 5.5 Industry standard for the shape
+
+Vercel: "The URL generated from a Git branch will always show you the most recent changes for the
+branch and won't change if you push new commits to the branch." with URL structure
+`<project-name>-git-<branch-name>-<scope-slug>.vercel.app`
+(URL: https://vercel.com/docs/deployments/generated-urls). The convention is **project-scoped and
+branch-qualified** — the same two dimensions the user asked for; the ordering differs (Vercel puts
+the project first, the user's confirmed shape puts the branch first).
 
 ---
 
-## 10. Assumption list (the grill target)
+## 6. Flows
+
+### 6.1 Register
+
+```
+agent (this container)
+  └─ register { project: alpha, branch: feature/login, devPort: 5173 }
+        ├─ relay: add mapping  X-Dev-Target: "alpha/feature-login"  →  127.0.0.1:5173
+        └─ registry: store the registration, derive fqdn, render the dynamic document
+              └─ Traefik polls (≤5 s) → router live
+                    └─ user opens https://feature-login.alpha.home.malarstrom.com
+                          → DNS: CNAME → home.malarstrom.com → 10.10.1.50
+                          → Traefik terminates TLS, matches the exact Host rule
+                          → headers middleware stamps X-Dev-Target
+                          → service → relay → 127.0.0.1:5173 (dev server)
+```
+
+### 6.2 Unregister
+
+```
+agent → unregister { project: alpha, branch: feature/login }
+  ├─ registry: drop the router + service + middleware from the rendered document
+  ├─ relay: drop the mapping, close the listener for that target
+  └─ within ≤ 1 poll interval Traefik's next poll removes the route → the FQDN no longer routes
+```
+
+### 6.3 Observable guarantees
+
+* A registration is **atomic**: adding or removing one touches only its own router, service and
+  middleware — never another registration's.
+* A registration becomes **visible within ≈1 poll interval** (default 5 s) and a removal becomes
+  **invisible within ≈1 poll interval**.
+* The **index** (§7) lists everything currently registered, with project, branch, FQDN, port and
+  up/down state.
+* The relay is the only component that can fail per-registration: a dead dev server produces a
+  failed upstream, not a broken route for other registrations.
+
+---
+
+## 7. TLS (D5) and certificate granularity (D6)
+
+### 7.1 How the client-facing side works (D5)
+
+The client speaks **HTTPS to Traefik**; Traefik terminates TLS and speaks **plain HTTP** to the
+relay inside this container. Concretely: the router carries `tls: { certResolver: … }` and Traefik's
+`websecure` entryPoint serves TLS; the service URL stays `http://172.16.2.13:<relay-port>`.
+
+### 7.2 The certificate must come from dns-01
+
+The zone's only A record is `10.10.1.50`, so http-01 validation cannot succeed:
+
+> "With HTTP validation, the client in an ACME transaction proves its control over a domain name by
+> proving that it can provision HTTP resources on a server accessible under that domain name."
+> (URL: https://www.rfc-editor.org/rfc/rfc8555#section-8.3)
+
+> "When the identifier being validated is a domain name, the client can prove control over that
+> domain by provisioning a TXT resource record containing a designated value for a specific
+> validation domain name. … The client constructs the validation domain name by prepending the
+> label \"_acme-challenge\" to the domain name being validated"
+> (URL: https://www.rfc-editor.org/rfc/rfc8555#section-8.4)
+
+Traefik agrees, and states the wildcard limits:
+
+> "The DNS-01 challenge to generate and renew ACME certificates by provisioning a DNS record.
+> Traefik relies internally on Lego for ACME."
+> "ACME v2 supports wildcard certificates. As described in Let's Encrypt's post wildcard certificates
+> can only be generated through a DNS-01 challenge. It is not possible to request a double wildcard
+> certificate for a domain (for example `*.*.local.com`)."
+> (URL: https://doc.traefik.io/traefik/reference/install-configuration/tls/certificate-resolvers/acme/)
+
+⇒ The user's existing **Cloudflare integration is the dns-01 provider** (the zone is on Cloudflare:
+`malarstrom.com NS` → `dan/isla.ns.cloudflare.com`). Lego reads the Cloudflare credentials from the
+environment: "CF_API_EMAIL — Account email · CF_API_KEY — API key · CF_DNS_API_TOKEN — API token with
+DNS:Edit permission (since v3.1.0) · CF_ZONE_API_TOKEN — API token with Zone:Read permission
+(since v3.1.0)" (URL: https://go-acme.github.io/lego/dns/cloudflare/).
+
+### 7.3 Two granularities
+
+Traefik derives the requested domain from the router:
+
+> "A certificate resolver requests certificates for a set of domain names inferred from routers …
+> If the IngressRoute has a `tls.domains` option set, then the certificate resolver derives this
+> router domain name from the `main` option of `tls.domains`. Otherwise, the certificate resolver
+> derives the domain name from any `Host()` or `HostSNI()` matchers in the IngressRoute's rule. You
+> can set SANs (alternative domains) for each main domain. Every domain must have A/AAAA records
+> pointing to Traefik. Each domain & SAN will lead to a certificate request."
+> (URL: https://doc.traefik.io/traefik/reference/install-configuration/tls/certificate-resolvers/acme/)
+
+| Granularity | How it is requested | Certificates | Verdict |
+| --- | --- | --- | --- |
+| **(i) one certificate per FQDN** | router `Host(`<branch>.<project>.home.malarstrom.com`)` with no `tls.domains` → the resolver derives the name from the rule | one dns-01 order **per branch** | **Rejected** — burns the registered-domain budget with every branch |
+| **(ii) one wildcard certificate per project** | router `tls.domains: [{ main: "*.<project>.home.malarstrom.com" }]` + `tls.certResolver` | **one certificate per project**, covering every branch of that project | **Recommended** |
+
+Why (ii) is right, with citations:
+
+* A wildcard covers exactly one label, so `*.<project>.home.malarstrom.com` covers
+  `<branch>.<project>.home.malarstrom.com` for **every** branch of that project, and nothing two
+  labels deeper: "If the wildcard character is the only character of the left-most label in the
+  presented identifier, the client SHOULD NOT compare against anything but the left-most label of
+  the reference identifier (e.g., `*.example.com` would match `foo.example.com` but not
+  `bar.foo.example.com` or `example.com`)."
+  (URL: https://www.rfc-editor.org/rfc/rfc6125#section-6.4.3)
+* A **double wildcard is impossible** (Traefik ACME docs, quoted above), so no single certificate can
+  cover an arbitrary-depth name — the project-level wildcard is the deepest useful unit.
+* Rate limits favour (ii) decisively. Let's Encrypt:
+  * "Up to **50 certificates can be issued per registered domain** (or IPv4 address, or IPv6 /64
+    range) **every 7 days**. This is a global limit, and all new order requests, regardless of which
+    account submits them, count towards this limit. The ability to issue new certificates for the
+    same registered domain refills at a rate of 1 certificate every 202 minutes."
+  * "Up to **5 certificates can be issued per exact same set of identifiers every 7 days**."
+  * "A single certificate can include up to **100 identifiers** (DNS names or IP addresses) …"
+  * "Up to **300 new orders can be created by a single account every 3 hours**."
+  (URL: https://letsencrypt.org/docs/rate-limits/)
+  The registered domain here is `malarstrom.com`. Option (i) would consume one of the 50 weekly
+  certificates **per branch per issuance**; option (ii) consumes one per project, and re-requests of
+  the *same* identifier set are capped at 5 per 7 days (which Traefik's certificate storage
+  normally avoids by reusing the stored certificate).
+
+**Concrete router configuration (option ii):**
+
+```yaml
+http:
+  routers:
+    alpha-feature-login:
+      rule: "Host(`feature-login.alpha.home.malarstrom.com`)"
+      service: alpha-feature-login
+      middlewares: [alpha-feature-login-target@http]
+      tls:
+        certResolver: myresolver                 # ← the resolver name from the checklist
+        domains:
+          - main: "*.alpha.home.malarstrom.com" # ← one certificate per project
+```
+
+Router keys: `tls` ("TLS configuration for the router. When specified, the router will only handle
+HTTPS requests."), `tls.certResolver` ("The name of the certificate resolver to use for automatic
+certificate generation."), `tls.domains` with `main` / `sans`
+(URL: https://doc.traefik.io/traefik/reference/routing-configuration/http/routing/router/).
+
+**Residual risk:** every branch of a project asks for the *same* identifier set, so a misbehaving
+resolver that discards its stored certificate could hit the "5 per exact set of identifiers every
+7 days" limit. Traefik stores certificates (`acme.storage`) and reuses them, so this should not
+occur; it is recorded as a risk to monitor.
+
+---
+
+## 8. What the user sees: the index is primary, the dashboard is optional (D4)
+
+The feature the user actually asked for is "see what the agents are running". The **registry knows
+every registration**, so it renders that view itself:
+
+| Field | Source |
+| --- | --- |
+| project | the registration |
+| branch | the registration |
+| FQDN | derived (`<branch>.<project>.home.malarstrom.com`) |
+| dev port | the registration |
+| relay port / target | the registration |
+| up / down | the registry probes the dev server (or the relay reports it) |
+
+The **Traefik dashboard is optional** and not required by anything above. Its facts, with citations
+(URL: https://doc.traefik.io/traefik/reference/install-configuration/api-dashboard/):
+
+* "api — Enable api/dashboard. When set to true, its sub option api.dashboard is also set to true.
+  — `false`"
+* "api.dashboard — Enable dashboard. — `true`"
+* "api.insecure — Enable the API and the dashboard on the entryPoint named traefik. Please note that
+  this mode is incompatible with the custom API base path option. — `false`"
+* "Security — Enabling the API and the dashboard in production is not recommended, because it will
+  expose all configuration elements, including sensitive data, for which access should be reserved
+  to administrators. In production, it should be at least secured by authentication and
+  authorizations."
+* "It's recommended to NOT publicly exposing the API's port, keeping it restricted to internal
+  networks (as in the principle of least privilege, applied to networks)."
+* "The dashboard is available by default on the path `/dashboard/`. Note: The trailing slash `/` in
+  `/dashboard/` is mandatory."
+
+And the endpoints an index could cross-check against: "/api/http/routers — Lists all the HTTP
+routers information.", "/api/http/services — Lists all the HTTP services information.",
+"/api/overview — Returns statistic information about HTTP, TCP and about enabled features and
+providers."
+
+**Recommendation:** keep the dashboard **disabled** (or enabled only on an internal entryPoint with
+middleware protection); the registry index is the user-facing view and is reachable only from the
+Docker network — with the shared secret in `providers.http.headers` ("Defines custom headers to be
+sent to the endpoint.") if the HTTP provider is used to carry it.
+
+The Traefik API is **not** a configuration channel: "All the following endpoints must be accessed
+with a GET HTTP request."
+
+---
+
+## 9. Assumption list (the grill target)
 
 | # | Assumption | Settled by |
 | --- | --- | --- |
-| A1 | v3 file provider can read a **directory** of files | `providers.file.directory` |
-| A2 | File provider picks up changes **without a restart** | `providers.file.watch` (default `true`) |
-| A3 | File provider is reliable on a **bind-mounted** directory | file-provider "Limitations" (fsnotify) |
-| A4 | Dynamic config can be delivered over **HTTP** by polling | `providers.http.endpoint`, `pollInterval`, `pollTimeout` |
+| A1 | File provider can read a **directory** | `providers.file.directory` |
+| A2 | File provider reloads **without restart** | `providers.file.watch` |
+| A3 | File provider is safe on a **bind-mounted** dir | file-provider "Limitations" (fsnotify) |
+| A4 | Config can be delivered over **HTTP** by polling | `providers.http.endpoint`, `pollInterval`, `pollTimeout` |
 | A5 | The HTTP provider can be **authenticated** | `providers.http.headers`, `providers.http.tls.*` |
-| A6 | The Docker provider can route to a container port that is **not published** | Docker provider "Port Detection" |
-| A7 | The Docker provider needs the **docker socket** | `providers.docker.endpoint`, "Docker API Access" |
-| A8 | The Docker provider would expose **everything** by default | `providers.docker.exposedByDefault` (default `true`) |
-| A9 | The Docker provider can be pointed at a **specific network** | `providers.docker.network` |
-| A10 | The **Traefik API can push configuration** | api docs: "All the following endpoints must be accessed with a GET HTTP request." |
-| A11 | The dashboard/API can be enabled and where it is served | `api`, `api.dashboard`, `api.insecure` |
-| A12 | The dashboard lists routers and services | `/api/http/routers`, `/api/http/services`, `/api/overview` |
+| A6 | Docker provider can route to an **unpublished** port | Docker provider "Port Detection" |
+| A7 | Docker provider needs the **docker socket** | `providers.docker.endpoint`, "Docker API Access" |
+| A8 | Docker provider exposes **everything** by default | `providers.docker.exposedByDefault` |
+| A9 | Docker provider can target a **specific network** | `providers.docker.network` |
+| A10 | The **Traefik API can push configuration** | api docs: GET only |
+| A11 | The dashboard/API can be enabled, and where | `api`, `api.dashboard`, `api.insecure` |
+| A12 | The dashboard lists routers and services | `/api/http/routers`, `/api/http/services` |
 | A13 | Exposing the dashboard/API is **dangerous by default** | API & Dashboard "Security" |
-| A14 | EntryPoints bind an address/port and routers attach to them | entryPoints `address`, router `entryPoints` |
+| A14 | EntryPoints bind an address; routers attach | entryPoints `address`, router `entryPoints` |
 | A15 | A **router serves exactly one service** | router `service` (required) |
-| A16 | A service can point at a **host:port that is not a container** | service `url`, file-provider example `url: "http://localhost:8080"` |
-| A17 | Traefik's image tag and **published ports** | getting-started Docker: `traefik:v3.7`, `"80:80"`, `"8080:8080"` |
+| A16 | A service can point at a **non-container** host:port | service `url`, file-provider example |
+| A17 | Image tag and **published ports** | getting-started Docker: `traefik:v3.7`, `"80:80"` |
 | A18 | `Host(...)` wildcard matches **exactly one label** | rules-and-priority "Wildcard subdomain matching" |
-| A19 | `Host` is preferred over `HostRegexp` | rules-and-priority (TLS option + efficiency) |
-| A20 | A **DNS wildcard** covers a multi-label prefix | RFC 1034 §4.3.3, RFC 4592 §2.2.1, live DoH (§1.2) |
-| A21 | A **DNS wildcard** is disabled by a closer existing name | RFC 1034 §4.3.3 ("Wildcard RRs do not apply …") |
-| A22 | There is an **industry standard** for branch-scoped hostnames | Vercel generated URLs; GitLab `CI_COMMIT_REF_SLUG`; RFC 2606 |
-| A23 | A container's published ports are the **only** LAN-reachable ports | Docker "Published ports"; port-publishing page |
-| A24 | Publishing to **loopback** is not LAN-reachable | port-publishing page ("only the Docker host can access") |
-| A25 | Containers on a **user-defined network** resolve each other by name/IP | Docker network page ("User-defined networks", "DNS services") |
-| A26 | A process bound to **127.0.0.1** in this container is unreachable from another container | Docker "Container networks" (`--network container:<name>` shares the namespace) |
-| A27 | This container can be **re-created from inside** | environment fact: no `/var/run/docker.sock`, no `docker` binary |
-| A28 | The confirmed zone resolves `<branch>.<project>.home.malarstrom.com` | live public DNS (§1.2) + RFC 1034 §4.3.3 / RFC 4592 §2.2.1 |
-| A29 | A **public-CA certificate** for this zone is possible at all | RFC 8555 §8.3 (http-01 needs a reachable server) + RFC 8555 §8.4 (dns-01) + Traefik ACME docs |
-| A30 | One wildcard certificate can cover **all branches of a project** | RFC 6125 §6.4.3 rule 2 + Traefik ACME docs (double wildcard impossible) |
-| A31 | A router can request a **wildcard domain** for its certificate | router `tls.domains` (`main`/`sans`), `tls.certResolver`; ACME "Domain Definition" |
-| A32 | DNS-01 at Cloudflare is **available** for this zone | `malarstrom.com NS` → Cloudflare nameservers (§1.2); lego Cloudflare provider variables (`CF_DNS_API_TOKEN`) |
+| A19 | `Host` is preferred over `HostRegexp` | rules-and-priority |
+| A20 | A **DNS wildcard** covers a multi-label prefix | RFC 1034 §4.3.3, RFC 4592 §2.2.1, live DNS |
+| A21 | A closer existing name **kills** the DNS wildcard | RFC 1034 §4.3.3 |
+| A22 | Industry standard for branch-scoped names | Vercel; GitLab `CI_COMMIT_REF_SLUG`; RFC 2606 |
+| A23 | Only **published** ports are LAN-reachable | Docker "Published ports" |
+| A24 | Publishing to **loopback** is not LAN-reachable | Docker port publishing |
+| A25 | User-defined network ⇒ name/IP reachability | Docker network page |
+| A26 | A `127.0.0.1`-bound process is unreachable from another container | Docker "Container networks" |
+| A27 | This container can be re-created from inside | environment fact |
+| A28 | The confirmed zone resolves `<branch>.<project>.home.malarstrom.com` | live public DNS |
+| A29 | A **public-CA certificate** is possible at all | RFC 8555 §8.3/§8.4 + Traefik ACME docs |
+| A30 | One wildcard cert covers **all branches of a project** | RFC 6125 §6.4.3 + Traefik ACME docs |
+| A31 | A router can request a **wildcard domain** | router `tls.domains`, `tls.certResolver`; ACME "Domain Definition" |
+| A32 | DNS-01 at Cloudflare is **available** | live NS + lego Cloudflare variables |
+| A33 | The HTTP provider accepts **YAML or JSON** | http provider: "in YAML or JSON format" |
+| A34 | The HTTP provider serves the **dynamic** configuration shape | http provider → "same configuration as the File Provider"; file-provider example |
+| A35 | Our document does **not clobber** other providers' objects | provider namespace + precedence docs (merge itself undocumented) |
+| A36 | Registration/removal visibility is bounded by `pollInterval` | `providers.http.pollInterval` = `5s` |
+| A37 | **WebSockets** must survive the relay hop | Traefik "Exposing WebSocket Services" |
+| A38 | **`X-Forwarded-*`** must survive the relay hop | headers middleware table |
+| A39 | A per-router **header** can carry the relay dispatch signal | headers middleware `customRequestHeaders` |
+| A40 | **Certificate granularity** is rate-limited | Let's Encrypt rate limits |
+| A41 | The relay/registry ports are **not LAN-reachable** | Docker "Published ports" |
 
 ---
 
-## 11. Open decisions for the user
+## 10. Open items
 
-### 11.1 Where Traefik runs (D4)
-
-* **(a) Separate container on the same user-defined Docker network** — *recommended*.
-  User must do on the host: create the container (`traefik:v3.7`), attach it to the same network,
-  publish `80:80` (and `443:443` if TLS is chosen) on the LAN address `10.10.1.50`.
-  Breaks if: the host's Docker network layout changes, or the published port is later taken.
-* **(b) Inside this container** — the host must **re-create** this container with published ports
-  (`-p 80:80 -p 443:443`, bound to `10.10.1.50`, not to `127.0.0.1`) and Traefik must be run inside
-  it (no `traefik` binary is present here). Breaks if: the container is re-created without the
-  ports, or the host's LAN address changes (the port must be re-bound).
-* **(c) On the host with the Docker provider** — *ruled out* for dev-server routing (§3).
-
-### 11.2 How dynamic configuration is delivered (D5)
-
-* **(a) HTTP provider + registry inside this container** — *recommended*.
-  User must do on the host: nothing beyond (a)/(b) of D4 (the registry is reachable over the Docker
-  network). Breaks if: the registry is down (Traefik keeps the last configuration; poll timeout is
-  `5s`), or the poll latency (`5s` default) bothers.
-* **(b) File provider `directory` over a shared Docker volume** — one file per registration.
-  User must do on the host: create the volume and mount it into both containers. Breaks if:
-  fsnotify does not deliver events for that mount (documented caveat).
-
-### 11.3 How dev servers become reachable (D6)
-
-* **(i) Rebind the dev servers to `0.0.0.0`** — *recommended*.
-  User must do: make the agent/framework start the dev server with a host flag (`--host 0.0.0.0`,
-  `HOST=0.0.0.0`, `vite --host 0.0.0.0`, …) or configure the framework's default.
-  Breaks if: a framework hard-codes `127.0.0.1` — then the dev server is still reachable only
-  locally, and the fallback (ii) applies.
-* **(ii) Relay inside this container** — a forwarder here listens on `0.0.0.0:<relayport>` and
-  forwards to `127.0.0.1:<devport>`; Traefik targets the relay port.
-  User must do: nothing on the host; the relay must run in this container.
-  Breaks if: the relay dies or is overloaded; WebSocket support must be implemented correctly.
-* **(iii) Traefik sharing this container's network namespace** (`--network container:<this>`).
-  User must do: re-create this container with published ports — impossible from inside, and the
-  published port must be on the LAN address anyway, so it collapses into option (b) of D4 with extra
-  coupling. Breaks if: the container is re-created (Traefik must be reattached).
-
-### 11.4 Security and secrets
-
-* Where the dashboard lives: internal-only entryPoint + middleware protection — *recommended* —
-  versus `api.insecure` on a LAN port (docs: "Do not enable this flag in production").
-* Whether the registry endpoint requires a shared secret (`providers.http.headers`) — *recommended
-  yes* — or is open on the Docker network.
-* Whether to hand a Cloudflare API token (DNS:Edit) to the Traefik container for dns-01 (§7.4), and
-  how that secret is stored.
-* Which TLS option (§7.5): (a) plain HTTP, (b) per-project wildcard certificate, (c) internal CA.
-
-### 11.5 Registration scope
-
-* **(a) Per-project namespaced prefixes** — *confirmed by the user's namespace* (D1): every project
-  owns one label under `home.malarstrom.com`.
-* The remaining question: whether a project may register **more than one branch simultaneously**
-  (the design supports it: one router per branch) and what happens on branch deletion (the route is
-  withdrawn, the FQDN stops resolving to a dev server).
+1. **The checklist in §2.2** — nine facts only the user can read from the running Traefik.
+2. **Multi-provider behaviour** — the docs do not state a merge algorithm explicitly (A35); verify
+   empirically with one test registration against the running Traefik before rollout.
+3. **Relay implementation details** — WebSocket upgrade handling and `X-Forwarded-*` passthrough are
+   the two things most likely to need iteration (§5.3); no standard exists for "a relay", so this is
+   engineering, not configuration.
+4. **Whether the relay should also terminate the "up/down" health signal** for the index (a registry
+   probe vs. a relay-reported state) — a design choice, not a doc question.
 
 ---
 
-## 12. Out of scope
+## 11. Out of scope
 
-Implementation (no Traefik install, no containers, no compose files, no service scripts) waits for
-the user to confirm the open decisions in §11.
+Implementation (no Traefik install, no containers, no compose files, no service scripts) waits until
+the §2.2 checklist is answered.

@@ -47,6 +47,161 @@ written — the plan was corrected), **RULED OUT** (the option cannot work at al
 | A30 | One wildcard cert covers **all branches of a project** | AGREE | TLS issuance unit = the project, not the branch |
 | A31 | A router can request a **wildcard domain** | AGREE | `tls.domains.main = *.<project>.home.malarstrom.com` shown concretely |
 | A32 | DNS-01 at Cloudflare is **available** | AGREE | Cloudflare token required → secret-handling decision |
+| A33 | The HTTP provider accepts **YAML or JSON** | AGREE | registry serves YAML |
+| A34 | The HTTP provider serves the **dynamic** configuration shape | AGREE | document shape fixed (`http.routers/services/middlewares`) |
+| A35 | Our document does **not clobber** other providers' objects | AGREE (namespacing) / **UNDOCUMENTED** (merge algorithm) | registry serves only our own prefixed objects; empirical check still required |
+| A36 | Registration/removal visibility is bounded by `pollInterval` | AGREE | ≤5 s propagation stated as an observable guarantee |
+| A37 | **WebSockets** must survive the relay hop | AGREE | relay must implement the `Upgrade` handshake — flagged as the main risk |
+| A38 | **`X-Forwarded-*`** must survive the relay hop | AGREE | relay must forward them untouched |
+| A39 | A per-router **header** can carry the relay dispatch signal | AGREE | one headers middleware per registration (`customRequestHeaders`) |
+| A40 | **Certificate granularity** is rate-limited | AGREE | one certificate per **project** recommended (option ii) |
+| A41 | The relay/registry ports are **not LAN-reachable** | AGREE | relay binds the container address; nothing published |
+
+---
+
+## New findings from the fifth pass (D2–D5 made concrete)
+
+### A33 — The HTTP provider accepts YAML or JSON — **AGREE**
+
+> "Routing Configuration — The HTTP provider uses the same configuration as the File Provider in
+> YAML or JSON format."
+
+URL: https://doc.traefik.io/traefik/reference/install-configuration/providers/others/http/
+
+Plan change: the registry serves **YAML** (the plan's rendering choice); JSON is equally acceptable.
+
+### A34 — The endpoint must return the dynamic (routing) configuration document — **AGREE**
+
+The quote above points at the file provider's structure; the file provider's own example fixes the
+shape:
+
+> "http: routers: my-router: rule: \"Host(`example.com`)\" service: my-service services:
+> my-service: loadBalancer: servers: - url: \"http://localhost:8080\""
+
+URL: https://doc.traefik.io/traefik/reference/routing-configuration/dynamic-configuration-methods/
+
+and the provider categories:
+
+> "Provider Categories — While each provider is different, you can think of each as belonging to one
+> of four categories: Label-based … Key-Value-based … Annotation-based … **File-based: uses files to
+> define configuration**"
+
+URL: https://doc.traefik.io/traefik/reference/install-configuration/providers/overview/
+
+Plan change: the plan now shows the exact document the registry serves (`http.routers`,
+`http.services`, `http.middlewares`, `tls.domains`/`certResolver` per router), plus the static
+snippet to add to the running Traefik (`providers.http.endpoint`, `pollInterval`, `pollTimeout`,
+`headers`).
+
+### A35 — Does our document clobber other providers' configuration? — **AGREE (namespacing) / UNDOCUMENTED (merge)**
+
+> "Provider Namespace — When you declare certain objects in the Traefik dynamic configuration, such
+> as middleware, services, TLS options or server transports, they reside in their provider's
+> namespace. For example, if you declare a middleware using a Docker label, it resides in the
+> Docker provider namespace. If you use multiple providers and wish to reference such an object
+> declared in another provider (e.g. referencing a cross-provider object like middleware), then the
+> object name should be suffixed by the `@` separator, and the provider name. …
+> `<resource-name>@<provider-name>`"
+
+> "When two routers from different providers define the same rule with equal numeric priority, the
+> precedence option determines which provider's route takes precedence. … Note precedence only acts
+> as a tiebreaker: it is applied only when two routes from different providers share the same
+> numeric priority value."
+
+URL: https://doc.traefik.io/traefik/reference/install-configuration/providers/overview/
+
+The docs never state a merge algorithm (the words "merge", "combine", "aggregate" do not appear in
+the provider pages). What they do state implies **coexistence**: routers from different providers
+are compared for priority (so they are in one routing table), and every provider's objects live in
+its own namespace.
+
+Plan change: the registry serves **only our own objects**, with distinctive names
+(`alpha-feature-login`), so it cannot shadow an existing route; cross-references inside our
+document use the `@http` suffix. An empirical check against the running Traefik is added to the
+open items (the docs do not settle it).
+
+### A36 — Registration/removal visibility is bounded by the poll interval — **AGREE**
+
+> "providers.http.pollInterval — Defines the polling interval. — `5s`"
+> "providers.http.pollTimeout — Defines the polling timeout when connecting to the endpoint. — `5s`"
+
+URL: https://doc.traefik.io/traefik/reference/install-configuration/providers/others/http/
+
+Plan change: stated as an observable guarantee — a registration becomes visible within ≈1 poll
+interval (≈5 s), a removal likewise; the relay's own table changes immediately.
+
+### A37 — WebSockets must survive the relay hop — **AGREE**
+
+> "Exposing WebSocket Services — Traefik Proxy supports WebSocket (WS) and WebSocket Secure (WSS)
+> connections out of the box. No special configuration is required beyond standard HTTP routing. …
+> Traefik automatically detects and handles the WebSocket upgrade"
+
+URL: https://doc.traefik.io/traefik/expose/overview/
+
+Plan change: Traefik's side is free, but the **relay must implement the `Upgrade` handshake and
+stream frames both ways**; this is named in the plan as the most likely thing to break (Vite HMR,
+Next.js). It is the main engineering risk of the relay design.
+
+### A38 — `X-Forwarded-*` must survive the relay hop — **AGREE**
+
+> "The Headers middleware manages the headers of requests and responses. By default, the following
+> headers are automatically added when proxying requests: Property / HTTP Header — Client's IP:
+> `X-Forwarded-For`, `X-Real-Ip`; Host: `X-Forwarded-Host`; Port: `X-Forwarded-Port`; Protocol:
+> `X-Forwarded-Proto`; Proxy Server's Hostname: `X-Forwarded-Server`"
+
+URL: https://doc.traefik.io/traefik/reference/routing-configuration/http/middlewares/headers/
+
+Plan change: the relay must forward these headers untouched to the dev server and must not append
+its own client-IP entries, so the dev server sees the original client address.
+
+### A39 — A per-router header can carry the relay dispatch signal — **AGREE**
+
+> "Adding and Removing Headers — In the following example, requests are proxied with an extra
+> `X-Script-Name` header while their `X-Custom-Request-Header` header is removed."
+> (example) `http: middlewares: testHeader: headers: customRequestHeaders: X-Script-Name: "test"`
+
+URL: https://doc.traefik.io/traefik/reference/routing-configuration/http/middlewares/headers/
+
+Plan change: the recommended relay design (one process for all registrations) dispatches on a
+per-registration header stamped by a per-router headers middleware; the relay trusts it only from
+the Traefik container's source address on the Docker network (plus a shared secret).
+
+### A40 — Certificate granularity is rate-limited — **AGREE**
+
+> "New Certificates per Registered Domain … Limit: Up to **50 certificates can be issued per
+> registered domain** (or IPv4 address, or IPv6 /64 range) **every 7 days**. This is a global
+> limit, and all new order requests, regardless of which account submits them, count towards this
+> limit. The ability to issue new certificates for the same registered domain refills at a rate of
+> 1 certificate every 202 minutes."
+> "New Certificates per Exact Set of Identifiers … Limit: Up to **5 certificates can be issued per
+> exact same set of identifiers every 7 days**."
+> "A single certificate can include up to **100 identifiers** (DNS names or IP addresses) depending
+> on the certificate profile selected."
+> "New Orders per Account … Up to **300 new orders can be created by a single account every 3
+> hours**."
+
+URL: https://letsencrypt.org/docs/rate-limits/
+
+Plan change: the registered domain here is `malarstrom.com`, so **one certificate per FQDN**
+(option i) would spend one of 50 weekly certificates per branch per issuance. The plan now
+recommends **one wildcard certificate per project** (option ii): `tls.domains.main =
+"*.<project>.home.malarstrom.com"` with `tls.certResolver` — one certificate covers every branch of
+that project (RFC 6125 §6.4.3) and the per-project count stays far below the limit. Residual risk
+recorded: repeated requests for the *same* identifier set are capped at 5 per 7 days.
+
+### A41 — The relay and registry ports are not LAN-reachable — **AGREE**
+
+> "Published ports — When you create or run a container using `docker create` or `docker run`, all
+> ports of containers on bridge networks are accessible from the Docker host and other containers
+> connected to the same network. Ports are not accessible from outside the host or, with the default
+> configuration, from containers in other networks."
+
+URL: https://docs.docker.com/engine/network/
+
+Plan change: the relay and the registry bind this container's Docker-network address and are **not
+published** on the host, so they are reachable only from the host and the Docker network — the LAN
+cannot reach them. The relay's dispatch header is additionally accepted only from the Traefik
+container's source address.
 
 ---
 
@@ -514,7 +669,12 @@ the user (§11.4).
 3. Whether the ACME server would accept a **certificate for a private-IP-only name**: RFC 8555
    §8.3 requires an internet-reachable server for http-01, and dns-01 does not, so a dns-01-issued
    certificate is technically obtainable — but the CA's own policy on the name is outside the
-   documentation read here. Marked as a residual risk of TLS option (b).
+   documentation read here. Marked as a residual risk of the dns-01 option.
+4. **How Traefik combines the configuration of several providers**: the docs state per-provider
+   namespacing and cross-provider precedence, but never describe a merge algorithm. Recorded as
+   A35 / plan open item — verify empirically with one test registration.
+5. Whether the running Traefik already serves a **dynamic configuration file** that would interact
+   with ours — only the user can answer (plan checklist §2.2).
 
 *Previously flagged as undocumented and now closed:* wildcard-certificate support in Traefik — it
 **is** documented ("ACME v2 supports wildcard certificates…", `tls.domains.main`,
