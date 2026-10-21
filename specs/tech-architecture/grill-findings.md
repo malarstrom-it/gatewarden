@@ -1,9 +1,9 @@
 # Grill findings — "Traefik dev gateway" plan vs. official docs
 
-Every row was checked against an official source that was actually fetched while writing this
-file. Traefik citations use the current docs set (`https://doc.traefik.io/traefik/reference/...`,
-describing **v3.7**). Docker citations use `docs.docker.com`. DNS citations use the RFCs at
-`rfc-editor.org`. Vendor citations use the vendors' own docs.
+Every row was checked against an official source that was actually fetched while writing this file
+(Traefik docs, Docker docs, the RFCs, the vendors' own docs, and public DNS via Cloudflare
+DoH). Traefik citations use the current docs set (`https://doc.traefik.io/traefik/reference/...`,
+describing **v3.7**).
 
 Verdict vocabulary: **AGREE** (docs support the plan), **CONTRADICT** (docs/refute the plan as
 written — the plan was corrected), **RULED OUT** (the option cannot work at all), **UNDOCUMENTED**
@@ -15,33 +15,38 @@ written — the plan was corrected), **RULED OUT** (the option cannot work at al
 
 | # | Assumption | Verdict | Change made to the plan |
 | --- | --- | --- | --- |
-| A1 | File provider can read a **directory** | AGREE | none (adopted) |
-| A2 | File provider reloads **without restart** | AGREE | none (adopted) |
+| A1 | File provider can read a **directory** | AGREE | adopted |
+| A2 | File provider reloads **without restart** | AGREE | adopted |
 | A3 | File provider is safe on a **bind-mounted** dir | CONTRADICT (caveat) | file provider demoted to alternative; HTTP provider recommended |
 | A4 | Config can be delivered over **HTTP** by polling | AGREE | HTTP provider adopted as primary |
-| A5 | The HTTP endpoint can be **authenticated** | AGREE | registry gets a shared-secret header (§4, §8) |
-| A6 | Docker provider can route to an **unpublished** port | AGREE | noted; does not help us (dev servers are not containers) |
-| A7 | Docker provider needs the **docker socket** | AGREE | candidate C ruled out for our case; `exposedByDefault` risk recorded |
-| A8 | Docker provider exposes **everything** by default | AGREE | `exposedByDefault: false` prescribed in §8 |
-| A9 | Docker provider can target a **specific network** | AGREE | recorded (only relevant if C is revived) |
-| A10 | The **Traefik API can push configuration** | CONTRADICT | API demoted to observation-only; removed as a config channel |
-| A11 | Dashboard/API can be enabled, and where | AGREE | dashboard at `/dashboard/` (trailing slash), `api.insecure` dev-only |
+| A5 | The HTTP endpoint can be **authenticated** | AGREE | registry gets a shared-secret header (§4.1, §9) |
+| A6 | Docker provider can route to an **unpublished** port | AGREE | noted; does not help (dev servers are not containers) |
+| A7 | Docker provider needs the **docker socket** | AGREE | candidate C ruled out for our case |
+| A8 | Docker provider exposes **everything** by default | AGREE | `exposedByDefault: false` prescribed |
+| A9 | Docker provider can target a **specific network** | AGREE | recorded only |
+| A10 | The **Traefik API can push configuration** | CONTRADICT | API demoted to observation-only |
+| A11 | Dashboard/API can be enabled, and where | AGREE | dashboard at `/dashboard/`, `api.insecure` LAN-forbidden |
 | A12 | Dashboard/API lists routers and services | AGREE | API used as cross-check for the index page |
-| A13 | Exposing the dashboard/API is dangerous | AGREE | security posture §8 |
+| A13 | Exposing the dashboard/API is dangerous | AGREE | security posture §9 |
 | A14 | EntryPoints bind an address; routers attach | AGREE | none |
-| A15 | A **router serves exactly one service** | AGREE | exact-Host router per registration; wildcard-per-project marked limited |
-| A16 | A service can point at a **non-container host:port** | AGREE | backend URL = this container's IP + port (or relay port) |
-| A17 | Image tag and published ports | AGREE | `traefik:v3.7`, publish `80`/`443`; `8080` internal |
-| A18 | `Host(...)` wildcard matches **one label** | AGREE | exact `Host` rules; `Host(`*.<zone>`)` explicitly ruled out for a 2-label prefix |
-| A19 | `Host` preferred over `HostRegexp` | AGREE | `HostRegexp` only as a last resort |
-| A20 | A DNS wildcard covers a **multi-label** prefix | AGREE | user's single `*.<zone>` record is sufficient; no per-project DNS record needed |
-| A21 | A closer existing name **kills** the DNS wildcard | AGREE | caveat stated in §6 |
-| A22 | Industry standard for branch-scoped names | AGREE (Vercel, GitLab slug, RFC 2606) | branch-first template kept; slug rule adopted |
+| A15 | A **router serves exactly one service** | AGREE | **one exact-`Host` router per registration** (user-confirmed, D2) |
+| A16 | A service can point at a **non-container** host:port | AGREE | backend = this container's IP + port (or relay port) |
+| A17 | Image tag and published ports | AGREE | `traefik:v3.7`, publish 80/443 |
+| A18 | `Host(...)` wildcard matches **one label** | AGREE | wildcard-per-project marked "one backend only" (option B) |
+| A19 | `Host` preferred over `HostRegexp` | AGREE | `HostRegexp` last resort |
+| A20 | A DNS wildcard covers a **multi-label** prefix | AGREE | confirmed by live DNS: `a.b.home.malarstrom.com` resolves |
+| A21 | A closer existing name **kills** the DNS wildcard | AGREE | caveat stated; gateway must not create concrete names |
+| A22 | Industry standard for branch-scoped names | AGREE | slug rule adopted; branch-first ordering kept (D1) |
 | A23 | Only **published** ports are LAN-reachable | AGREE | candidate A requires host-side re-create |
-| A24 | Publishing to **loopback** is not LAN-reachable | AGREE | publish on `0.0.0.0`, never `127.0.0.1` |
-| A25 | User-defined network ⇒ name/IP reachability | AGREE | candidate B works; our container is on such a network |
-| A26 | `127.0.0.1`-bound process is unreachable from another container | AGREE (namespace isolation) | rebind-or-relay decision (D4) |
+| A24 | Publishing to **loopback** is not LAN-reachable | AGREE | publish on the LAN address |
+| A25 | User-defined network ⇒ name/IP reachability | AGREE | candidate B viable; registry reachable from host |
+| A26 | `127.0.0.1`-bound process is unreachable from another container | AGREE | rebind-or-relay decision (D6) |
 | A27 | This container can be re-created from inside | CONTRADICT (fact) | candidate A is a host-side task |
+| A28 | The confirmed zone resolves `<branch>.<project>.home.malarstrom.com` | AGREE | namespace fixed to `home.malarstrom.com` (D1) |
+| A29 | A **public-CA certificate** for this zone is possible at all | AGREE (only via dns-01) | http-01 ruled out (private A record) |
+| A30 | One wildcard cert covers **all branches of a project** | AGREE | TLS issuance unit = the project, not the branch |
+| A31 | A router can request a **wildcard domain** | AGREE | `tls.domains.main = *.<project>.home.malarstrom.com` shown concretely |
+| A32 | DNS-01 at Cloudflare is **available** | AGREE | Cloudflare token required → secret-handling decision |
 
 ---
 
@@ -56,17 +61,12 @@ written — the plan was corrected), **RULED OUT** (the option cannot work at al
 
 URL: https://doc.traefik.io/traefik/reference/install-configuration/providers/others/file/
 
-Plan change: none — the file provider is evaluated with its `directory` mode.
-
 ### A2 — File provider picks up changes without a restart — **AGREE**
 
 > "providers.file.watch — Set the watch option to true to allow Traefik to automatically watch for
 > file changes. It works with both the filename and the directory options. — `true`"
 
 URL: https://doc.traefik.io/traefik/reference/install-configuration/providers/others/file/
-
-Plan change: none. Note the doc's own example enables the provider with
-`providers: file: directory: "/path/to/dynamic/conf"`.
 
 ### A3 — File provider is reliable on a bind-mounted directory — **CONTRADICT (caveat)**
 
@@ -79,9 +79,8 @@ Plan change: none. Note the doc's own example enables the provider with
 
 URL: https://doc.traefik.io/traefik/reference/install-configuration/providers/others/file/
 
-Plan change: the recommended delivery mechanism changed from "file provider over a shared mount"
-to the **HTTP provider** (§4). The file provider is kept as an alternative with the caveat written
-into the option text.
+Plan change: the recommended channel became the **HTTP provider**; the file provider is kept as the
+"most literal atomicity" alternative with this caveat written into the option text.
 
 ### A4 — Dynamic configuration can be delivered over HTTP by polling — **AGREE**
 
@@ -90,9 +89,6 @@ into the option text.
 > "providers.http.pollTimeout — Defines the polling timeout when connecting to the endpoint. — `5s`"
 
 URL: https://doc.traefik.io/traefik/reference/install-configuration/providers/others/http/
-
-Plan change: none — HTTP provider adopted as the primary mechanism, with the 5 s default poll
-interval named as the registration-propagation latency.
 
 ### A5 — The HTTP endpoint can be authenticated / secured — **AGREE**
 
@@ -105,8 +101,8 @@ interval named as the registration-propagation latency.
 
 URL: https://doc.traefik.io/traefik/reference/install-configuration/providers/others/http/
 
-Plan change: added to §4 and §8 — the registry endpoint requires a shared secret carried in
-`providers.http.headers`; TLS verification stays on (`insecureSkipVerify: false`).
+Plan change: the registry endpoint requires a shared secret carried in `providers.http.headers` and
+stays on the Docker network (§4.1).
 
 ### A6 — Docker provider can route to a container port that is not published — **AGREE**
 
@@ -117,8 +113,8 @@ Plan change: added to §4 and §8 — the registry endpoint requires a shared se
 
 URL: https://doc.traefik.io/traefik/reference/install-configuration/providers/docker/
 
-Plan change: the fact is recorded, but it does not help this project — the dev servers are plain
-processes, not containers, so the Docker provider never sees them (see A7 and Candidate C).
+Plan change: recorded, but it does not help this project — the dev servers are plain processes, so
+the Docker provider never sees them.
 
 ### A7 — Docker provider needs the docker socket — **AGREE**
 
@@ -130,8 +126,8 @@ processes, not containers, so the Docker provider never sees them (see A7 and Ca
 
 URL: https://doc.traefik.io/traefik/reference/install-configuration/providers/docker/
 
-Plan change: **Candidate C ruled out** for the dev-server routing job, and the fact that this
-container has no `/var/run/docker.sock` is recorded in §2.
+Plan change: **Candidate C ruled out**; this container has no `/var/run/docker.sock` (§2 of the
+plan).
 
 ### A8 — Docker provider exposes everything by default — **AGREE**
 
@@ -141,8 +137,6 @@ container has no `/var/run/docker.sock` is recorded in §2.
 
 URL: https://doc.traefik.io/traefik/reference/install-configuration/providers/docker/
 
-Plan change: §8 now prescribes `exposedByDefault: false` for any future Docker-provider use.
-
 ### A9 — Docker provider can target a specific network — **AGREE**
 
 > "providers.docker.network — Defines a default docker network to use for connections to all
@@ -151,16 +145,11 @@ Plan change: §8 now prescribes `exposedByDefault: false` for any future Docker-
 
 URL: https://doc.traefik.io/traefik/reference/install-configuration/providers/docker/
 
-Plan change: recorded in Candidate C; not used.
-
 ### A10 — The Traefik API can be used to push configuration — **CONTRADICT**
 
 > "Endpoints — All the following endpoints must be accessed with a GET HTTP request."
 
 URL: https://doc.traefik.io/traefik/reference/install-configuration/api-dashboard/
-
-And the documented configuration methods are file / labels / annotations / KV / tags — the API is
-not among them:
 
 > "Depending on your environment and preferences, there are several ways to supply this routing
 > configuration: File or Structured Provider: Use TOML or YAML files. Docker and ECS Providers: Use
@@ -169,8 +158,7 @@ not among them:
 
 URL: https://doc.traefik.io/traefik/reference/routing-configuration/dynamic-configuration-methods/
 
-Plan change: `api@traefik.io` was removed from the list of configuration channels. It is now
-**observation-only** (§7, §4 table).
+Plan change: `api@traefik.io` removed from the configuration channels; it is now observation-only.
 
 ### A11 — The dashboard/API can be enabled, and where it is served — **AGREE**
 
@@ -184,9 +172,6 @@ Plan change: `api@traefik.io` was removed from the list of configuration channel
 
 URL: https://doc.traefik.io/traefik/reference/install-configuration/api-dashboard/
 
-Plan change: §7 now states the enabling keys and the mandatory trailing slash; `api.insecure` is
-marked dev-only (see A13 and the quick-start warning below).
-
 ### A12 — The dashboard/API lists routers and services — **AGREE**
 
 > "/api/http/routers — Lists all the HTTP routers information."
@@ -196,9 +181,7 @@ marked dev-only (see A13 and the quick-start warning below).
 
 URL: https://doc.traefik.io/traefik/reference/install-configuration/api-dashboard/
 
-Plan change: §7 uses these endpoints as the cross-check for the gateway index page. It also fixes
-the "overview of everything the agents run" requirement: the registry itself knows every
-registration, and the API confirms what Traefik actually loaded.
+Plan change: used as the cross-check for the overview/index page (§8 of the plan).
 
 ### A13 — Exposing the dashboard/API is dangerous by default — **AGREE**
 
@@ -211,22 +194,16 @@ registration, and the API confirms what Traefik actually loaded.
 
 URL: https://doc.traefik.io/traefik/reference/install-configuration/api-dashboard/
 
-And from the Docker quick start:
-
 > "Port 8080 serves the dashboard because we enabled `--api.insecure=true` (development use only)"
 > "Because we explicitly enabled insecure mode, the dashboard is reachable on port 8080 without
 > authentication. Do not enable this flag in production."
 
 URL: https://doc.traefik.io/traefik/getting-started/docker/
 
-Plan change: §8 forbids `api.insecure` on a LAN-reachable port and requires middleware protection
-plus network restriction.
-
 ### A14 — EntryPoints bind an address/port and routers attach to them — **AGREE**
 
 > "address — Define the port, and optionally the hostname, on which to listen for incoming
-> connections and packets. It also defines the protocol to use (TCP or UDP). If no protocol is
-> specified, the default is TCP. The format is: `[host]:port[/tcp|/udp]` — Yes"
+> connections and packets. … The format is: `[host]:port[/tcp|/udp]` — Yes"
 > "In the Helm Chart, the entryPoints web (port 80), websecure (port 443), traefik (port 8080) and
 > metrics (port 9100) are created by default."
 
@@ -237,9 +214,6 @@ URL: https://doc.traefik.io/traefik/reference/install-configuration/entrypoints/
 
 URL: https://doc.traefik.io/traefik/reference/routing-configuration/http/routing/router/
 
-Plan change: none; §7/Candidate B use `web`/`websecure` and keep the dashboard entryPoint
-separate.
-
 ### A15 — A router serves exactly one service — **AGREE**
 
 > "service — The name of the service that will handle the matched requests. Services can be load
@@ -249,10 +223,10 @@ separate.
 
 URL: https://doc.traefik.io/traefik/reference/routing-configuration/http/routing/router/
 
-Plan change: §5.1 now states the limitation explicitly: the wildcard-per-project router
-(`Host(`*.<project>.<zone>`)`) covers all branches of a project but can only ever serve **one**
-backend, so it is valid only when concurrent branches of a project share a port. The recommended
-design is one exact-`Host` router per registration.
+Plan change: the plan now presents the three strategies explicitly (A exact-Host router per
+registration / B wildcard router per project with a branch-aware dispatcher / C `HostRegexp`) and
+records the user's confirmation of **A** (D2): one router + one service per registration, added
+and removed atomically, without touching any other registration.
 
 ### A16 — A service can point at a host:port that is not a container — **AGREE**
 
@@ -260,16 +234,13 @@ design is one exact-`Host` router per registration.
 
 URL: https://doc.traefik.io/traefik/reference/routing-configuration/http/load-balancing/service/
 
-and the file-provider example:
-
 > "http: routers: my-router: rule: \"Host(`example.com`)\" service: my-service services:
 > my-service: loadBalancer: servers: - url: \"http://localhost:8080\""
 
 URL: https://doc.traefik.io/traefik/reference/routing-configuration/dynamic-configuration-methods/
 
-Plan change: §5 registration record now specifies the backend as a plain URL to this container's
-address and the registered port (or the relay port of decision D4). The plan explicitly does **not**
-rely on Docker labels or on container discovery for this hop.
+Plan change: the backend is a plain URL to this container's address and the registered port (or the
+relay port of D6).
 
 ### A17 — Image tag and published ports — **AGREE**
 
@@ -278,9 +249,6 @@ rely on Docker labels or on container discovery for this hop.
 > volumes: - /var/run/docker.sock:/var/run/docker.sock"
 
 URL: https://doc.traefik.io/traefik/getting-started/docker/
-
-Plan change: Candidate B specifies the Traefik container image `traefik:v3.7` publishing `80:80`
-(and `443:443` when TLS is chosen); `8080` stays off the LAN.
 
 ### A18 — `Host(...)` wildcard matches exactly one label — **AGREE**
 
@@ -293,10 +261,9 @@ Plan change: Candidate B specifies the Traefik container image `traefik:v3.7` pu
 
 URL: https://doc.traefik.io/traefik/reference/routing-configuration/http/routing/rules-and-priority/
 
-Plan change: §5.1 and §6 now carry the central asymmetry — Traefik's `Host` wildcard is
-single-label, so `Host(`*.<zone>`)` does **not** match `branch.project.<zone>`, while
-`Host(`*.<project>.<zone>`)` does. The recommended design therefore never relies on a Traefik
-wildcard: every registration gets an exact `Host(...)` rule.
+Plan change: `Host(`*.home.malarstrom.com`)` is explicitly ruled out for the two-label shape;
+`Host(`*.<project>.home.malarstrom.com`)` (option B) is the only Traefik wildcard that could work,
+and it needs a branch-aware dispatcher because one router = one service.
 
 ### A19 — `Host` is preferred over `HostRegexp` — **AGREE**
 
@@ -305,15 +272,11 @@ wildcard: every registration gets an exact `Host(...)` rule.
 
 URL: https://doc.traefik.io/traefik/reference/routing-configuration/http/routing/rules-and-priority/
 
-Plan change: `HostRegexp` is demoted to "only if a genuinely dynamic branch label must be matched",
-and the TLS decision (D7) notes the TLS-option advantage of exact `Host` rules.
+### A20 — A DNS wildcard covers a multi-label prefix — **AGREE** (confirmed by live DNS)
 
-### A20 — A DNS wildcard covers a multi-label prefix — **AGREE**
-
-> "The owner name of the wildcard RRs is of the form \"*.<anydomain>\", where <anydomain> is any
-> domain name. <anydomain> should not contain other * labels, and should be in the authoritative
-> data of the zone. The wildcards potentially apply to descendants of <anydomain>, but not to
-> <anydomain> itself."
+> "The owner name of the wildcard RRs is of the form \"*.<anydomain>\", where `<anydomain>` is any
+> domain name. … The wildcards potentially apply to descendants of `<anydomain>`, but not to
+> `<anydomain>` itself."
 > "Another way to look at this is that the \"*\" label always matches at least one whole label and
 > sometimes more, but always whole labels."
 
@@ -324,9 +287,18 @@ URL: https://www.rfc-editor.org/rfc/rfc1034#section-4.3.3
 
 URL: https://www.rfc-editor.org/rfc/rfc4592#section-2.2.1
 
-Plan change: §6 now states that the user's **single** `*.<zone>` wildcard record is sufficient for
-`branch.project.<zone>` — no per-project DNS record is required — and contrasts this with
-Traefik's single-label `Host` wildcard.
+Live check (Cloudflare DoH, public resolvers), re-verified while writing this file:
+
+| Query | Answer |
+| --- | --- |
+| `malarstrom.com NS` | `dan.ns.cloudflare.com.`, `isla.ns.cloudflare.com.` |
+| `home.malarstrom.com A` | `10.10.1.50` (TTL 300) — private RFC 1918 address |
+| `x.home.malarstrom.com A` | CNAME `home.malarstrom.com.` → `10.10.1.50` |
+| `a.b.home.malarstrom.com A` | CNAME `home.malarstrom.com.` → `10.10.1.50` |
+| `*.home.malarstrom.com CNAME` | `home.malarstrom.com.` |
+
+Plan change: the user's **single** CNAME wildcard covers the whole namespace at arbitrary depth —
+no per-project or per-branch DNS record is needed (§1.2 of the plan).
 
 ### A21 — A closer existing name kills the DNS wildcard — **AGREE**
 
@@ -338,7 +310,8 @@ Traefik's single-label `Host` wildcard.
 
 URL: https://www.rfc-editor.org/rfc/rfc1034#section-4.3.3
 
-Plan change: §6 carries this as the explicit caveat on the wildcard record.
+Plan change: stated as a caveat; the gateway must not create concrete names under
+`home.malarstrom.com`.
 
 ### A22 — Industry standard for branch-scoped hostnames — **AGREE**
 
@@ -357,18 +330,17 @@ URL: https://docs.gitlab.com/ci/variables/predefined_variables/
 
 > "To safely satisfy these needs, four domain names are reserved as listed and described below.
 > `.test` `.example` `.invalid` `.localhost` — \".test\" is recommended for use in testing of current
-> or new DNS related code. \".example\" is recommended for use in documentation or as examples. ...
+> or new DNS related code. \".example\" is recommended for use in documentation or as examples. …
 > The \".localhost\" TLD has traditionally been statically defined in host DNS implementations as
 > having an A record pointing to the loop back IP address and is reserved for such use."
 
 URL: https://www.rfc-editor.org/rfc/rfc2606
 
-Plan change: §5.2 adopts the GitLab slug rule for branch and project labels; §5.3 records that the
-industry shape is project-scoped + branch-qualified but that the **ordering differs** (Vercel:
-project first; the user wants branch first), which is decision D3.
+Plan change: the slug rule is adopted for the branch and project labels; the confirmed branch-first
+ordering (D1) differs from Vercel's project-first ordering and is recorded as a deliberate
+difference. RFC 2606's reserved names do not apply (the confirmed zone is a real public zone).
 
-Not cited: the GitLab review-apps page returned HTTP 403 to a plain fetch, so no claim is made
-from it.
+Not cited: the GitLab review-apps page returned HTTP 403 to a plain fetch.
 
 ### A23 — Only published ports are LAN-reachable — **AGREE**
 
@@ -384,11 +356,6 @@ URL: https://docs.docker.com/engine/network/
 
 URL: https://docs.docker.com/engine/network/port-publishing/
 
-Plan change: **Candidate A ruled out from inside this container** — publishing is decided when the
-container is created, and this container cannot be re-created from within (§2). Candidate B is
-preferred because the host creates the Traefik container and therefore controls its published
-ports.
-
 ### A24 — Publishing to loopback is not LAN-reachable — **AGREE**
 
 > "If you include the localhost IP address (127.0.0.1, or ::1) with the publish flag, only the
@@ -400,9 +367,6 @@ ports.
 
 URL: https://docs.docker.com/engine/network/port-publishing/
 
-Plan change: §2/Candidate A and §8 now require publishing on `0.0.0.0`/the host's LAN address,
-never on loopback.
-
 ### A25 — User-defined network gives name/IP reachability — **AGREE**
 
 > "Once connected to a user-defined network, containers can communicate with each other using
@@ -410,48 +374,148 @@ never on loopback.
 > "With the default configuration, containers attached to the default bridge network have
 > unrestricted network access to each other using container IP addresses. They cannot refer to each
 > other by name."
-> "DNS services — Containers that attach to a custom network use Docker's embedded DNS server. ...
+> "DNS services — Containers that attach to a custom network use Docker's embedded DNS server. …
 > The embedded DNS server address is 127.0.0.11."
 
 URL: https://docs.docker.com/engine/network/
 
-Plan change: §2 records that this container is on a **custom** network (its `/etc/resolv.conf`
-points at `127.0.0.11`), which is what makes Candidate B viable and lets the registry endpoint be
-addressed by container name.
+Plan change: candidate B is viable, and the registry inside this container is reachable by the
+Traefik container and from the host.
 
 ### A26 — A `127.0.0.1`-bound process is unreachable from another container — **AGREE**
 
 > "Container networks — In addition to user-defined networks, you can attach a container to another
-> container's networking stack directly, using the `--network container:<name|id>` flag format. ...
+> container's networking stack directly, using the `--network container:<name|id>` flag format. …
 > The following example runs a Redis container, with Redis binding to 127.0.0.1, then running the
 > `redis-cli` command and connecting to the Redis server over 127.0.0.1."
 
 URL: https://docs.docker.com/engine/network/
 
-Plan change: Candidate B cannot route to a loopback-bound dev server directly; decision D4 offers
-(a) rebinding dev servers to `0.0.0.0` or (b) a relay inside this container (the namespace-sharing
-trick above is the documented way to reach a loopback-bound service from another container's stack).
+Plan change: decision D6 offers rebind (i), relay (ii) and namespace sharing (iii), each with the
+host-side work it requires and what it breaks.
 
 ### A27 — This container can be re-created from inside — **CONTRADICT (environment fact)**
 
-Observed in this container: `ls -la /var/run/docker.sock` → `No such file or directory`;
-`docker info` → `docker: command not found`; `which traefik` → not found.
+Observed: `ls -la /var/run/docker.sock` → "No such file or directory"; `docker info` → "docker:
+command not found"; `which traefik` → not found.
 
-Plan change: Candidate A is explicitly marked as a **host-side task** for the user, and everything
-in the recommended path (Candidate B) is designed to require only host-side work that the user
-performs anyway (creating one more container on the same network).
+### A28 — The confirmed zone resolves `<branch>.<project>.home.malarstrom.com` — **AGREE**
+
+Live DNS (§A20 table): `*.home.malarstrom.com` is a **CNAME** to `home.malarstrom.com`, and
+`a.b.home.malarstrom.com` already resolves to `10.10.1.50`. Combined with RFC 1034 §4.3.3 ("the
+\"*\" label always matches at least one whole label and sometimes more, but always whole labels")
+and RFC 4592 §2.2.1, the two-label prefix `<branch>.<project>` is covered by the user's single
+record.
+
+Plan change: the namespace is fixed to `<branch>.<project>.home.malarstrom.com` (D1); the two
+placeholder layouts (`example.test`, `apps.example.test`) were removed.
+
+### A29 — A public-CA certificate for this zone is possible at all — **AGREE, but only via dns-01**
+
+> "With HTTP validation, the client in an ACME transaction proves its control over a domain name by
+> proving that it can provision HTTP resources on a server accessible under that domain name. …
+> the server will connect to at least one of the hosts found in the DNS A and AAAA records"
+
+URL: https://www.rfc-editor.org/rfc/rfc8555#section-8.3
+
+The zone's only A record is `10.10.1.50` — not reachable from the internet — so **http-01 can
+never succeed** for this zone.
+
+> "When the identifier being validated is a domain name, the client can prove control over that
+> domain by provisioning a TXT resource record containing a designated value for a specific
+> validation domain name. … The client constructs the validation domain name by prepending the
+> label \"_acme-challenge\" to the domain name being validated"
+
+URL: https://www.rfc-editor.org/rfc/rfc8555#section-8.4
+
+Traefik agrees:
+
+> "The DNS-01 challenge to generate and renew ACME certificates by provisioning a DNS record.
+> Traefik relies internally on Lego for ACME."
+> "ACME v2 supports wildcard certificates. As described in Let's Encrypt's post wildcard certificates
+> can only be generated through a DNS-01 challenge. **It is not possible to request a double
+> wildcard certificate for a domain (for example `*.*.local.com`).**"
+
+URL: https://doc.traefik.io/traefik/reference/install-configuration/tls/certificate-resolvers/acme/
+
+Plan change: TLS option (b) is defined as dns-01 only; option (a) plain HTTP stays first.
+
+### A30 — One wildcard certificate covers all branches of a project — **AGREE**
+
+> "If the wildcard character is the only character of the left-most label in the presented
+> identifier, the client SHOULD NOT compare against anything but the left-most label of the
+> reference identifier (e.g., `*.example.com` would match `foo.example.com` but not
+> `bar.foo.example.com` or `example.com`)."
+
+URL: https://www.rfc-editor.org/rfc/rfc6125#section-6.4.3
+
+So `*.home.malarstrom.com` does **not** cover `<branch>.<project>.home.malarstrom.com`, but
+`*.<project>.home.malarstrom.com` covers **every** branch of that project.
+
+Plan change: **the TLS unit of issuance is the project, not the branch** — exactly the user's
+"project owns a label" model. One certificate per project suffices (§7.2 of the plan).
+
+### A31 — A router can request a wildcard domain for its certificate — **AGREE**
+
+Router keys (router docs): `tls` ("TLS configuration for the router. When specified, the router will
+only handle HTTPS requests."), `tls.certResolver` ("The name of the certificate resolver to use for
+automatic certificate generation."), and the router example
+
+> "tls: certResolver: \"letsencrypt\" options: \"modern\" domains: - main: \"example.com\" sans: -
+> \"www.example.com\""
+
+URL: https://doc.traefik.io/traefik/reference/routing-configuration/http/routing/router/
+
+Resolver behaviour (ACME docs):
+
+> "A certificate resolver requests certificates for a set of domain names inferred from routers …
+> You can set SANs (alternative domains) for each main domain. Every domain must have A/AAAA records
+> pointing to Traefik. Each domain & SAN will lead to a certificate request."
+
+> "acme.dnsChallenge — Enable DNS-01 challenge. … acme.dnsChallenge.provider — DNS provider to use.
+> — \"\" — No … acme.dnsChallenge.resolvers — DNS servers to resolve the FQDN authority. — []"
+
+URL: https://doc.traefik.io/traefik/reference/install-configuration/tls/certificate-resolvers/acme/
+
+Plan change: the plan now shows the concrete configuration — router `tls.domains.main =
+*.<project>.home.malarstrom.com` plus `tls.certResolver`, and the resolver with
+`acme.dnsChallenge.provider: cloudflare`.
+
+### A32 — DNS-01 at Cloudflare is available for this zone — **AGREE**
+
+Live DNS: `malarstrom.com NS` → `dan.ns.cloudflare.com.`, `isla.ns.cloudflare.com.` — the zone is
+served by Cloudflare, whose DNS API is what a DNS-01 challenge needs.
+
+Traefik's ACME page points at the Lego provider list: "You can find the list of all the supported
+DNS providers in their documentation with instructions about which environment variables need to be
+setup." The Cloudflare provider's variables:
+
+> "CF_API_EMAIL — Account email · CF_API_KEY — API key · **CF_DNS_API_TOKEN — API token with
+> DNS:Edit permission (since v3.1.0)** · CF_ZONE_API_TOKEN — API token with Zone:Read permission
+> (since v3.1.0)" (plus `CLOUDFLARE_*` aliases; "The environment variable names can be suffixed by
+> `_FILE` to reference a file instead of a value.")
+
+URL: https://go-acme.github.io/lego/dns/cloudflare/
+
+Plan change: the Cloudflare API token (DNS:Edit) becomes an explicit secret-handling decision for
+the user (§11.4).
 
 ---
 
 ## Facts that no official doc settles (recorded as "undocumented", not guessed)
 
-1. Whether Traefik's TLS handling supports a **wildcard certificate** for the zone: the TLS
-   reference pages fetched (`/reference/routing-configuration/http/tls/overview/` and
-   `.../tls-certificates/`) contain no occurrence of "wildcard". Left as decision D7(b), to be
-   verified before it is relied upon.
-2. A **`rest` provider** appears in the v3.7 default provider-precedence list
+1. A **`rest` provider** appears in the v3.7 default provider-precedence list
    (https://doc.traefik.io/traefik/reference/install-configuration/providers/overview/), but no
-   provider documentation page for it exists under `/reference/install-configuration/providers/others/rest/`
-   (HTTP 404). It is therefore **not** considered as a configuration channel.
-3. The exact content of the user's wildcard DNS record, and the label position of the project
-   prefix inside it, are still unconfirmed — the plan keeps that position a parameter.
+   documentation page for it exists under
+   `/reference/install-configuration/providers/others/rest/` (HTTP 404). It is therefore **not**
+   considered as a configuration channel.
+2. The GitLab **review-apps** page returned HTTP 403 to a plain fetch — not cited; the GitLab
+   *predefined variables* page was fetched and is cited for the slug rule only.
+3. Whether the ACME server would accept a **certificate for a private-IP-only name**: RFC 8555
+   §8.3 requires an internet-reachable server for http-01, and dns-01 does not, so a dns-01-issued
+   certificate is technically obtainable — but the CA's own policy on the name is outside the
+   documentation read here. Marked as a residual risk of TLS option (b).
+
+*Previously flagged as undocumented and now closed:* wildcard-certificate support in Traefik — it
+**is** documented ("ACME v2 supports wildcard certificates…", `tls.domains.main`,
+`tls.certResolver`), see A30/A31.
