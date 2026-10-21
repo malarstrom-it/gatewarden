@@ -633,6 +633,11 @@ listed below.
 | per-FQDN router `tls: {certResolver}` (§7.3) | the same, plus `tls.domains` in wildcard mode | the user's live resolver is named `cloudflare` and uses dns-01, so wildcards are possible |
 | the user's shared middlewares are not mentioned | `securityHeaders` and `compressMiddleware` (both `false` by default) add `default-security-headers@file` / `compress@file` to the dev routers | the user's live file provider owns those middlewares; `frameDeny`/`stsPreload` can break dev previews, so they are opt-in |
 
+Traefik decodes the dynamic configuration with **paerser**, and an empty map is rejected as a
+standalone element ("middlewares cannot be a standalone element (type map[string]*dynamic.Middleware)"
+— `paerser/parser/nodes_metadata.go`). A section without entries must therefore be **omitted**, not
+rendered as `{}`; the renderer prunes every empty map (at any depth) before serialising.
+
 The relay's trust boundary accepts IPv4 and IPv6 CIDRs; the listeners are dual stack, and the
 container's own IPv6 prefix (`fdd0:0:0:2::/64`) is derived at runtime and added to `allowedCidrs`,
 because the Docker name `devbox` resolves to both an A and an AAAA record and the Traefik container

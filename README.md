@@ -28,7 +28,8 @@ user laptop ──https://<branch>.<project>.home.malarstrom.com──▶ Traefi
 ```
 
 One registration = one Traefik router + one service + one dispatch middleware, added and removed
-atomically. The FQDN is `<branch>.<project>.home.malarstrom.com`; the branch label is a DNS-safe
+atomically. A section without entries is **omitted** from the document (never rendered as `{}`):
+Traefik's decoder rejects an empty map. The FQDN is `<branch>.<project>.home.malarstrom.com`; the branch label is a DNS-safe
 slug (GitLab `CI_COMMIT_REF_SLUG` convention).
 
 ## What an agent needs to run
