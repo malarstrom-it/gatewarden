@@ -1,6 +1,14 @@
-# Traefik Dev Gateway — architecture plan (under review)
+# Traefik Dev Gateway — architecture plan
 
-Status: **plan only**. Nothing here is implemented. Every technical claim that carries a decision is
+Status: **implemented (container side)**. The registry, the relay and the `traefik-dev` CLI are in
+`src/`; see [`README.md`](../README.md) for usage and
+[`docs/traefik-wiring.md`](../docs/traefik-wiring.md) for the Traefik-side patch. The Traefik side
+itself is **not** part of this repository.
+
+Implementation notes and the deviations from the plan are listed in
+[§12 Implementation notes](#12-implementation-notes).
+
+Every technical claim that carries a decision is
 backed by an official source; the citation table and verdicts live in
 [`grill-findings.md`](./grill-findings.md).
 
@@ -606,3 +614,25 @@ with a GET HTTP request."
 
 Implementation (no Traefik install, no containers, no compose files, no service scripts) waits until
 the §2.2 checklist is answered.
+
+---
+
+## 12. Implementation notes
+
+Container side implemented in this repository (`src/`, `bin/`, `test/`), zero runtime dependencies,
+Node 24 native TypeScript execution. Decisions of §0 are implemented as planned; the deviations are
+listed below.
+
+| Plan said | Implementation | Why |
+| --- | --- | --- |
+| registry endpoint `/dynamic` on port `9000`, relay on `9100` (§3, §4.1) | `/traefik` on `45002`, relay on `45001` | port and path were fixed by the task brief; both are configuration |
+| middleware named `<name>-target` (§4.2) | `devhdr-<project>-<branch>-<hash>`, routers/services `dev-<project>-<branch>-<hash>`, index `dev-index` | the user's live Traefik has plain object names (`truenas`, `compress`); one prefix per object kind keeps the gateway objects collision-free. The prefix lives in one place (`src/document.ts`) |
+| one process with two listeners (§5.2 D7) | one supervisor (`traefik-devd`) with two supervised workers (registry, relay) | the brief requires that a crash of one listener must not take the other down and that a crashed worker is respawned; a supervisor does that, and the relay still serves **all** registrations from one port (D7 unchanged) |
+| relay trusts "the Traefik container's source address" (§5.2) | `allowedCidrs` (default `172.16.2.0/24`, the `private` Docker network) plus the loopback, and an optional shared secret header | the exact source address is not known in advance |
+| TLS granularity (ii) recommended (§7.3) | implemented as the default (`tlsMode: "wildcard"`), `tlsMode: "fqdn"` selects (i) | both are needed; the wildcard keeps the Let's Encrypt budget small |
+| per-FQDN router `tls: {certResolver}` (§7.3) | the same, plus `tls.domains` in wildcard mode | the user's live resolver is named `cloudflare` and uses dns-01, so wildcards are possible |
+| the user's shared middlewares are not mentioned | `securityHeaders` and `compressMiddleware` (both `false` by default) add `default-security-headers@file` / `compress@file` to the dev routers | the user's live file provider owns those middlewares; `frameDeny`/`stsPreload` can break dev previews, so they are opt-in |
+
+Verified against the running Traefik (dashboard API, no authentication): 18 routers / 19 services /
+3 middlewares before the `http` provider exists, and no name in the live configuration starts with
+`dev-` or `devhdr-`.
