@@ -65,6 +65,27 @@ Global options: `--config <path>`, `--state-dir <path>`, `--json`.
 | `https://<branch>.<project>.home.malarstrom.com` | the registered dev server |
 | `https://index.home.malarstrom.com` | the index: every registration, its URL, port and up/down state |
 
+## The `traefik-dev-gateway` pi skill
+
+A **pi skill** in [`skills/traefik-dev-gateway/`](skills/traefik-dev-gateway/) teaches any pi agent
+— in this project or in any other — that a dev server started inside this container can be
+published on the user's LAN. The skill is advertised to pi by name and description, and its body is
+loaded only when a task matches ("start a dev server and give me a URL").
+
+Install it globally by adding the skills directory to the **user** settings
+(`~/.pi/agent/settings.json`):
+
+```json
+"skills": ["~/projects/traefik-api/skills"]
+```
+
+Then, in any project, the agent registers a dev server with the same command as above and hands the
+user `https://<branch>.<project>.home.malarstrom.com`.
+
+The skill body is short on purpose; the depth lives in
+[`references/troubleshooting.md`](skills/traefik-dev-gateway/references/troubleshooting.md) and
+[`references/architecture.md`](skills/traefik-dev-gateway/references/architecture.md).
+
 ## Installation
 
 Nothing to install: Node 24 (native TypeScript execution) is enough, and there are **no runtime
