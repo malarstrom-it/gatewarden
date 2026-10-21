@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { RegistrationStore } from '../src/state.ts';
-import { buildDynamicConfig, objectName, middlewareName, renderDocument, DISPATCH_HEADER } from '../src/document.ts';
+import { buildDynamicConfig, objectName, middlewareName, renderDocument, findEmptyMapPaths, pruneEmptyMaps, DISPATCH_HEADER } from '../src/document.ts';
 import { parseYaml } from './helpers/yaml.ts';
 import { makeConfig } from './helpers/fixtures.ts';
 
@@ -172,4 +172,82 @@ test('object names are prefixed so they cannot collide with other providers', ()
   const doc = buildDynamicConfig(store.list(), config);
   for (const name of Object.keys(doc.http.routers)) assert.ok(name.startsWith('dev-'));
   assert.ok(objectName(registration).startsWith('dev-'));
+});
+
+test('a document without registrations contains no empty map', () => {
+  const { store } = tempStore();
+  const config = makeConfig({ zone: ZONE });
+
+  const doc = buildDynamicConfig(store.list(), config);
+  assert.deepEqual(findEmptyMapPaths(doc), [], 'the document must not contain an empty map');
+
+  // The section itself is omitted, not rendered as an empty map.
+  assert.equal('middlewares' in doc.http, false);
+  assert.ok(doc.http.routers['dev-index']);
+  assert.ok(doc.http.services['dev-index']);
+
+  const parsed = parseYaml(renderDocument(store.list(), config)) as Record<string, unknown>;
+  assert.deepEqual(findEmptyMapPaths(parsed), []);
+  assert.equal('middlewares' in (parsed['http'] as Record<string, unknown>), false);
+});
+
+test('a document with one registration has exactly one non-empty router, service and middleware', () => {
+  const { store } = tempStore();
+  const config = makeConfig({ zone: ZONE });
+  const registration = store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: ZONE });
+
+  const doc = buildDynamicConfig(store.list(), config);
+  const routers = Object.entries(doc.http.routers).filter(([name]) => name !== 'dev-index');
+  const services = Object.entries(doc.http.services).filter(([name]) => name !== 'dev-index');
+  const middlewares = Object.entries(doc.http.middlewares);
+
+  assert.equal(routers.length, 1);
+  assert.equal(services.length, 1);
+  assert.equal(middlewares.length, 1);
+  assert.equal(routers[0][0], objectName(registration));
+  assert.equal(middlewares[0][0], middlewareName(registration));
+  assert.ok(Object.keys(routers[0][1] as object).length > 0);
+  assert.ok(Object.keys(services[0][1] as object).length > 0);
+  assert.ok(Object.keys(middlewares[0][1] as object).length > 0);
+  assert.deepEqual(findEmptyMapPaths(doc), []);
+});
+
+test('the renderer never produces an empty map, in any format', () => {
+  const { store } = tempStore();
+  const config = makeConfig({ zone: ZONE });
+
+  for (const registrations of [[], ['one'], ['one', 'two']]) {
+    const dir = tempStore();
+    for (const name of registrations) {
+      dir.store.upsert({ project: name, branch: 'main', devPort: 3000, zone: ZONE });
+    }
+    const doc = buildDynamicConfig(dir.store.list(), config);
+    assert.deepEqual(findEmptyMapPaths(doc), [], `empty map in the object for ${registrations.length} registrations`);
+    assert.deepEqual(
+      findEmptyMapPaths(parseYaml(renderDocument(dir.store.list(), config))),
+      [],
+      `empty map in the YAML for ${registrations.length} registrations`,
+    );
+    const jsonConfig = makeConfig({ zone: ZONE, documentFormat: 'json' });
+    assert.deepEqual(
+      findEmptyMapPaths(JSON.parse(renderDocument(dir.store.list(), jsonConfig))),
+      [],
+      `empty map in the JSON for ${registrations.length} registrations`,
+    );
+    void store;
+  }
+});
+
+test('pruneEmptyMaps drops empty maps at any depth and keeps the rest', () => {
+  const pruned = pruneEmptyMaps({
+    keep: { a: 1 },
+    drop: {},
+    nested: { drop: {}, keep: { b: 2 } },
+    list: [{ drop: {} }, { keep: 3 }],
+  });
+  assert.deepEqual(pruned, {
+    keep: { a: 1 },
+    nested: { keep: { b: 2 } },
+    list: [{ keep: 3 }],
+  });
 });

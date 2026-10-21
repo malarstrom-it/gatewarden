@@ -55,6 +55,62 @@ export interface DynamicConfig {
   };
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Remove every key whose value is an empty map.
+ *
+ * Traefik decodes the document with paerser, and an empty map is rejected:
+ * "middlewares cannot be a standalone element (type map[string]*dynamic.Middleware)"
+ * — a section without entries must be omitted, not rendered as `{}`.
+ *
+ * The rule is applied to the whole document, so no future section can
+ * reintroduce the bug.
+ */
+export function pruneEmptyMaps<T>(value: T): T {
+  if (Array.isArray(value)) {
+    const items: unknown[] = [];
+    for (const item of value) {
+      const pruned = pruneEmptyMaps(item);
+      if (isPlainObject(pruned) && Object.keys(pruned).length === 0) continue;
+      items.push(pruned);
+    }
+    return items as unknown as T;
+  }
+  if (isPlainObject(value)) {
+    const out: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(value)) {
+      const pruned = pruneEmptyMaps(child);
+      if (isPlainObject(pruned) && Object.keys(pruned).length === 0) continue;
+      out[key] = pruned;
+    }
+    return out as unknown as T;
+  }
+  return value;
+}
+
+/** Find every key in the object whose value is an empty map (used by the tests). */
+export function findEmptyMapPaths(value: unknown, prefix = ''): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) => findEmptyMapPaths(item, `${prefix}[${index}]`));
+  }
+  if (isPlainObject(value)) {
+    const paths: string[] = [];
+    for (const [key, child] of Object.entries(value)) {
+      const path = prefix ? `${prefix}.${key}` : key;
+      if (isPlainObject(child) && Object.keys(child).length === 0) {
+        paths.push(path);
+        continue;
+      }
+      paths.push(...findEmptyMapPaths(child, path));
+    }
+    return paths;
+  }
+  return [];
+}
+
 /**
  * Build the dynamic configuration object for the given registrations.
  */
@@ -112,7 +168,7 @@ export function buildDynamicConfig(registrations: Registration[], config: Config
     loadBalancer: { servers: [{ url: `http://${host}:${config.registryPort}` }] },
   };
 
-  return { http: { routers, services, middlewares } };
+  return pruneEmptyMaps({ http: { routers, services, middlewares } }) as DynamicConfig;
 }
 
 /** Render the dynamic configuration in the configured format. */
