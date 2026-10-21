@@ -633,6 +633,16 @@ listed below.
 | per-FQDN router `tls: {certResolver}` (§7.3) | the same, plus `tls.domains` in wildcard mode | the user's live resolver is named `cloudflare` and uses dns-01, so wildcards are possible |
 | the user's shared middlewares are not mentioned | `securityHeaders` and `compressMiddleware` (both `false` by default) add `default-security-headers@file` / `compress@file` to the dev routers | the user's live file provider owns those middlewares; `frameDeny`/`stsPreload` can break dev previews, so they are opt-in |
 
+The relay's trust boundary accepts IPv4 and IPv6 CIDRs; the listeners are dual stack, and the
+container's own IPv6 prefix (`fdd0:0:0:2::/64`) is derived at runtime and added to `allowedCidrs`,
+because the Docker name `devbox` resolves to both an A and an AAAA record and the Traefik container
+may connect over either stack.
+
+`advertisedHost` defaults to `devbox`, the compose service name of this container on the Docker
+network `private` (verified with Docker's embedded DNS: `devbox` and `devbox.private` resolve to
+`172.16.2.13`, `traefik` resolves to `172.16.2.6`); it is used in the served document's service
+URLs, so the container keeps its identity when it is re-created with a new IP.
+
 Verified against the running Traefik (dashboard API, no authentication): 18 routers / 19 services /
 3 middlewares before the `http` provider exists, and no name in the live configuration starts with
 `dev-` or `devhdr-`.

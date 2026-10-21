@@ -11,7 +11,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadConfig, resolveConfigPath, writeConfigFile, CONFIG_KEYS } from './config.ts';
+import { loadConfig, resolveConfigPath, writeConfigFile, listenHost, CONFIG_KEYS } from './config.ts';
 import { RegistrationStore } from './state.ts';
 import { ensureDaemon, daemonStatus, logFilePath, pidFilePath } from './daemonControl.ts';
 import { isPortListening } from './util/net.ts';
@@ -206,9 +206,9 @@ async function commandStatus(flags: Record<string, string | boolean>): Promise<n
       `pidfile:      ${status.pidFile}`,
       `logfile:      ${logFilePath(config)}`,
       `config file:  ${configPath}${fs.existsSync(configPath) ? '' : ' (missing, defaults are used)'}`,
-      `registry:     0.0.0.0:${config.registryPort}`,
-      `relay:        0.0.0.0:${config.relayPort}`,
-      `advertised:   ${config.advertisedIp}`,
+      `registry:     ${listenHost()}:${config.registryPort}`,
+      `relay:        ${listenHost()}:${config.relayPort}`,
+      `advertised:   ${config.advertisedHost || config.advertisedIp} (ip ${config.advertisedIp})`,
       `zone:         ${config.zone}`,
       `index host:   ${config.indexHost}`,
       `entryPoints:  ${config.entryPoints.join(', ')}`,

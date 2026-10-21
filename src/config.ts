@@ -11,7 +11,7 @@ export const DEFAULT_CONFIG: Config = {
   registryPort: 45002,
   relayPort: 45001,
   advertisedIp: '',
-  advertisedHost: '',
+  advertisedHost: 'devbox',
   zone: 'home.malarstrom.com',
   indexHost: 'index.home.malarstrom.com',
   entryPoints: ['websecure'],
@@ -34,7 +34,7 @@ export const CONFIG_KEYS: Record<string, string> = {
   relayPort: 'Port the relay listener binds on 0.0.0.0 (dispatches to 127.0.0.1:<devPort>).',
   advertisedIp: 'IP this container advertises to Traefik for the service URLs (default: first non-loopback IPv4).',
   advertisedHost:
-    'Host name or IP the Traefik container reaches this container under (Docker network "private"). Default: advertisedIp. A stable container name is preferred.',
+    'Host name the Traefik container reaches this container under (Docker network "private"). Default: "devbox", the compose service name. Use the container IP if the name is not resolvable.',
   zone: 'DNS zone the FQDNs are built from.',
   indexHost: 'Host name of the index router (the "what is running" page).',
   entryPoints: 'Traefik entryPoint names the generated routers attach to.',
@@ -69,6 +69,30 @@ export function detectIpv4(): string {
   // Prefer a private (RFC 1918) address: this container lives on a Docker network.
   const priv = candidates.find((a) => a.startsWith('10.') || a.startsWith('172.') || a.startsWith('192.168.'));
   return priv ?? candidates[0] ?? '127.0.0.1';
+}
+
+/**
+ * Derive the IPv6 prefixes of this container's own networks (`/64`), so that a
+ * peer on the same Docker network is accepted when it connects over IPv6.
+ */
+export function detectIpv6Prefixes(): string[] {
+  const prefixes = new Set<string>();
+  for (const infos of Object.values(os.networkInterfaces())) {
+    for (const info of infos ?? []) {
+      if (info.family !== 'IPv6' || info.internal) continue;
+      const address = info.address.toLowerCase();
+      if (address.startsWith('fe80:')) continue; // link local
+      const groups = address.split(':');
+      if (groups.length < 4) continue;
+      prefixes.add(`${groups.slice(0, 4).join(':')}::/64`);
+    }
+  }
+  return [...prefixes];
+}
+
+/** The address the listeners bind to: dual stack when IPv6 is available. */
+export function listenHost(): string {
+  return detectIpv6Prefixes().length > 0 ? '::' : '0.0.0.0';
 }
 
 /** Resolve the config file path. */
@@ -121,6 +145,13 @@ export function loadConfig(opts: { configPath?: string; stateDir?: string; overr
 
   if (!merged.advertisedIp) merged.advertisedIp = detectIpv4();
   if (!merged.advertisedHost) merged.advertisedHost = merged.advertisedIp;
+  // A peer on the same Docker network may connect over IPv6; accept the
+  // container's own IPv6 prefixes unless the user listed them already.
+  for (const prefix of detectIpv6Prefixes()) {
+    if (!merged.allowedCidrs.some((cidr) => cidr.toLowerCase() === prefix.toLowerCase())) {
+      merged.allowedCidrs = [...merged.allowedCidrs, prefix];
+    }
+  }
   merged.registryPort = Number(merged.registryPort);
   merged.relayPort = Number(merged.relayPort);
   if (!Array.isArray(merged.entryPoints) || merged.entryPoints.length === 0) merged.entryPoints = ['websecure'];
@@ -141,7 +172,16 @@ export function writeConfigFile(configPath: string, config: Config): void {
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
   const data: Record<string, unknown> = {};
   for (const key of Object.keys(DEFAULT_CONFIG)) {
-    data[key] = (config as unknown as Record<string, unknown>)[key];
+    const value = (config as unknown as Record<string, unknown>)[key];
+    // Keep auto-detected IPv6 prefixes out of the file: they are derived at
+    // runtime and would go stale.
+    if (key === 'allowedCidrs' && Array.isArray(value)) {
+      data[key] = value.filter(
+        (cidr) => !String(cidr).includes(':') || DEFAULT_CONFIG.allowedCidrs.includes(String(cidr)),
+      );
+      continue;
+    }
+    data[key] = value;
   }
   fs.writeFileSync(configPath, JSON.stringify(data, null, 2) + '\n');
 }

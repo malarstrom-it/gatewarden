@@ -33,7 +33,7 @@ test('a registration produces exactly one router, one service and one middleware
   assert.deepEqual(router['middlewares'], [middlewareName(registration)]);
 
   const service = doc.http.services[names[0]] as { loadBalancer: { servers: Array<{ url: string }> } };
-  assert.equal(service.loadBalancer.servers[0].url, `http://${config.advertisedIp}:${config.relayPort}`);
+  assert.equal(service.loadBalancer.servers[0].url, `http://${config.advertisedHost || config.advertisedIp}:${config.relayPort}`);
 
   const middleware = doc.http.middlewares[middlewareName(registration)] as {
     headers: { customRequestHeaders: Record<string, string> };

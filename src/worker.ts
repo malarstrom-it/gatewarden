@@ -7,7 +7,7 @@
  * Usage: node src/worker.ts <registry|relay>
  */
 
-import { loadConfig } from './config.ts';
+import { loadConfig, listenHost } from './config.ts';
 import { RegistrationStore } from './state.ts';
 import { createRegistryServer } from './registry.ts';
 import { createRelayServer } from './relay.ts';
@@ -28,6 +28,7 @@ async function main(): Promise<void> {
 
   const server = role === 'registry' ? createRegistryServer(store, config) : createRelayServer(store, config);
   const port = role === 'registry' ? config.registryPort : config.relayPort;
+  const host = listenHost();
 
   server.on('error', (error: Error) => {
     log('error', SCOPE, `${role} listener failed`, error.message);
@@ -36,13 +37,13 @@ async function main(): Promise<void> {
 
   await new Promise<void>((resolve, reject) => {
     server.once('error', reject);
-    server.listen(port, '0.0.0.0', () => {
+    server.listen(port, host, () => {
       server.removeListener('error', reject);
       resolve();
     });
   });
 
-  log('info', SCOPE, `${role} listening on 0.0.0.0:${port}`);
+  log('info', SCOPE, `${role} listening on ${host}:${port}`);
 
   const shutdown = () => {
     log('info', SCOPE, `${role} shutting down`);

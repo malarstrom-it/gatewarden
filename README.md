@@ -19,7 +19,7 @@ static configuration patch in [`docs/traefik-wiring.md`](docs/traefik-wiring.md)
 user laptop ──https://<branch>.<project>.home.malarstrom.com──▶ Traefik (host, 10.10.1.50)
                                                                     │  HTTP provider polls /traefik
                                                                     ▼
-   this container (172.16.2.13, Docker network "private")
+   this container ("devbox" on the Docker network "private", 172.16.2.13)
      ├─ registry :45002  ── /traefik  (dynamic configuration document)
      │                ── /         (HTML index: what is running)
      │                ── /api/registrations
@@ -103,8 +103,8 @@ Everything lives in `~/.traefik-dev/` (a mounted volume, so it survives containe
 | --- | --- | --- |
 | `registryPort` | `45002` | port the registry binds on `0.0.0.0` |
 | `relayPort` | `45001` | port the relay binds on `0.0.0.0` |
-| `advertisedIp` | detected (`172.16.2.13`) | IP this container advertises to Traefik |
-| `advertisedHost` | `advertisedIp` | host name the Traefik container reaches this container under; a stable container name is preferred over the Docker-generated one |
+| `advertisedIp` | detected (`172.16.2.13`) | IP this container has on the Docker network (used in the status output) |
+| `advertisedHost` | `devbox` | host name the Traefik container reaches this container under; `devbox` is the compose service name and resolves on the `private` network, so it survives an IP change |
 | `zone` | `home.malarstrom.com` | DNS zone the FQDNs are built from |
 | `indexHost` | `index.home.malarstrom.com` | host name of the index router |
 | `entryPoints` | `["websecure"]` | Traefik entryPoints the routers attach to |
@@ -113,7 +113,7 @@ Everything lives in `~/.traefik-dev/` (a mounted volume, so it survives containe
 | `securityHeaders` | `false` | also apply the user's `default-security-headers@file` middleware |
 | `compressMiddleware` | `false` | also apply the user's `compress@file` middleware |
 | `middlewareProvider` | `file` | provider that owns those shared middlewares |
-| `allowedCidrs` | `["172.16.2.0/24", "127.0.0.1/32", "::1/128"]` | sources allowed to use the `X-Dev-Target` header |
+| `allowedCidrs` | `["172.16.2.0/24", "127.0.0.1/32", "::1/128"]` | sources allowed to use the `X-Dev-Target` header; the container's own IPv6 prefix is added automatically |
 | `secret` | `""` | optional shared secret (checked on the registry document and the relay dispatch) |
 | `stateDir` | `~/.traefik-dev` | state, pidfile and logs |
 | `documentFormat` | `yaml` | `yaml` or `json` for the dynamic configuration document |

@@ -64,7 +64,7 @@ export function renderIndex(registrations: Registration[], up: Map<string, boole
 ${rows || '        <tr><td colspan="6">nothing registered</td></tr>'}
       </tbody>
     </table>
-    <p class="meta">zone: ${escapeHtml(config.zone)} &middot; relay: ${escapeHtml(config.advertisedIp)}:${config.relayPort} &middot; registry port: ${config.registryPort}</p>
+    <p class="meta">zone: ${escapeHtml(config.zone)} &middot; relay: ${escapeHtml(config.advertisedHost || config.advertisedIp)}:${config.relayPort} &middot; registry port: ${config.registryPort}</p>
   </body>
 </html>
 `;

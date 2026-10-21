@@ -79,7 +79,7 @@ providers:
     filename: /etc/traefik/config/config.yml
     watch: true
   http:                                                   # <-- added
-    endpoint: "http://172.16.2.13:45002/traefik"
+    endpoint: "http://devbox:45002/traefik"
     pollInterval: 5s
     pollTimeout: 5s
     # headers:                                          # <-- only when a secret is configured
@@ -92,32 +92,52 @@ Then **restart Traefik** (the static configuration is only read at start-up):
 docker restart <traefik-container>
 ```
 
-### Which host name in `endpoint`?
+### The name `devbox` is verified, not assumed
 
-`172.16.2.13` is this container's current IP on the `private` network and works as it is. The
-Docker-generated container name (`e1e518cfcc56`) changes when the container is re-created, so a
-**stable name is better**:
+Resolved from inside this container with Docker's embedded DNS (resolver `127.0.0.11`, network
+`private`):
+
+| Name | Resolves to |
+| --- | --- |
+| `devbox` | `172.16.2.13` (and `fdd0:0:0:2::d`) |
+| `devbox.private` | `172.16.2.13` |
+| `e1e518cfcc56` (the Docker-generated hostname) | `172.16.2.13` |
+| `traefik` | `172.16.2.6` (fqdn `ix-traefik-traefik-1.private`) |
+
+`devbox` is the compose service name, so it survives a container re-creation (a new IP) — the
+Docker-generated hostname does not. Both the IPv4 and the IPv6 address of `devbox` are reachable from
+the Traefik container (verified with a TCP connect to the Traefik container over both stacks).
+
+### The service URLs in the served document
+
+Because `advertisedHost` defaults to `devbox`, the document the registry serves points at:
 
 ```yaml
-  http:
-    endpoint: "http://<stable-container-name>:45002/traefik"
+  services:
+    dev-<project>-<branch>-<hash>:
+      loadBalancer:
+        servers:
+          - url: "http://devbox:45001"     # the relay
+    dev-index:
+      loadBalancer:
+        servers:
+          - url: "http://devbox:45002"     # the registry index
 ```
 
-When the user gives the container a stable name, set it in the gateway configuration as well:
-
-```json
-{ "advertisedHost": "<stable-container-name>" }
-```
-
-That value is what the generated Traefik services point at (`http://<advertisedHost>:45001` for the
-relay, `http://<advertisedHost>:45002` for the index).
+To use the container IP instead, set `"advertisedHost": "172.16.2.13"` in
+`~/.traefik-dev/config.json` — the `endpoint` in the provider must then match.
 
 ### Reachability
 
 * the registry port `45002` must be reachable from the Traefik container (same Docker network
-  `private`) — it is bound on `0.0.0.0`;
-* the relay port `45001` must be reachable from the Traefik container — it is bound on `0.0.0.0`;
+  `private`) — it is bound on all interfaces;
+* the relay port `45001` must be reachable from the Traefik container — it is bound on all
+  interfaces;
 * neither port is published on the host, so they are not reachable from the LAN.
+
+The listeners are dual stack (`::` when the container has IPv6), and the relay accepts the dispatch
+header from `172.16.2.0/24`, the loopback and the container's own IPv6 prefix
+(`fdd0:0:0:2::/64`, derived at runtime) — so a Traefik connection over either stack is accepted.
 
 ### Shared secret (optional)
 

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
+import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -158,6 +159,27 @@ test('X-Forwarded-* headers pass through untouched', async () => {
       await dev.close();
     }
   });
+});
+
+test('the relay also answers over IPv6', async () => {
+  const store = tempStore();
+  const server = createRelayServer(store, makeConfig({}));
+  const port = await new Promise<number>((resolve) => {
+    server.listen(0, '::', () => resolve((server.address() as net.AddressInfo).port));
+  });
+  try {
+    const dev = await startDevServer((_req, res) => res.end('over-ipv6'));
+    try {
+      const registration = store.upsert({ project: 'alpha', branch: 'main', devPort: dev.port, zone: 'home.malarstrom.com' });
+      const response = await fetch(`http://[::1]:${port}/`, { headers: { [DISPATCH_HEADER]: registration.id } });
+      assert.equal(response.status, 200);
+      assert.equal(await response.text(), 'over-ipv6');
+    } finally {
+      await dev.close();
+    }
+  } finally {
+    await close(server);
+  }
 });
 
 test('a dev server that is not listening is answered with 502 and a clear message', async () => {
