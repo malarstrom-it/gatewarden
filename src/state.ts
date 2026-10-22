@@ -111,6 +111,23 @@ export class RegistrationStore {
     return record;
   }
 
+  /**
+   * Remove a registration by its dispatch id (`<project-slug>/<branch-slug>`).
+   *
+   * The id is the key the store uses everywhere else (the `X-Dev-Target`
+   * header value, the object-name hash input), so the HTTP endpoint and the
+   * CLI address exactly the same registration.
+   *
+   * Returns true when something was removed.
+   */
+  removeById(id: string): boolean {
+    const registrations = this.list();
+    const next = registrations.filter((r) => r.id !== id);
+    if (next.length === registrations.length) return false;
+    this.write(next);
+    return true;
+  }
+
   /** Remove a registration. Returns true when something was removed. */
   remove(project: string, branch: string): boolean {
     const registrations = this.list();

@@ -36,6 +36,11 @@ node ~/projects/traefik-api/bin/traefik-dev.js unregister --project <project> --
 
 Do this when the dev server is stopped, so the index does not keep dead links.
 
+**You must still unregister yourself.** The user can also remove a stale route by hand from the
+index page (`https://index.home.malarstrom.com/`, the **Remove** button on a row), which is a
+fallback for the case where an agent forgot. Do not rely on it: unregister when you stop the dev
+server, and use the CLI.
+
 ## Inspect
 
 ```bash

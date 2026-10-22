@@ -23,6 +23,7 @@ user laptop ──https://<branch>.<project>.home.malarstrom.com──▶ Traefi
      ├─ registry :45002  ── /traefik  (dynamic configuration document)
      │                ── /         (HTML index: what is running)
      │                ── /api/registrations
+     │                ── DELETE /api/registrations/<project>/<branch>
      │                ── /healthz
      └─ relay    :45001  ── dispatches on the X-Dev-Target header to 127.0.0.1:<dev port>
 ```
@@ -57,6 +58,40 @@ Other commands:
 | `traefik-dev config [--write]` | show the configuration and every key (`--write` writes the file) |
 
 Global options: `--config <path>`, `--state-dir <path>`, `--json`.
+
+## Removing a registration by hand
+
+The index page has a **Remove** button on every row. The user clicks it, confirms, and the
+registration is gone: the router, service and middleware disappear from the dynamic configuration
+document, and Traefik drops the route on its next poll (≈5 s).
+
+This exists for the case where an agent forgot to unregister a dev server it stopped: the user can
+clean the index up without needing the CLI. The CLI is unchanged and remains the normal way to
+unregister.
+
+The endpoint behind the button:
+
+```
+DELETE /api/registrations/<project-slug>/<branch-slug>
+X-Gateway-UI: 1
+X-Registry-Secret: <secret>     # only when a secret is configured
+```
+
+* `204` on success, `404` when the registration does not exist.
+* The slugs are the ones in the URL (`<branch>.<project>.<zone>`), which is also the id the store
+  keys on and the value of the `X-Dev-Target` dispatch header.
+* `X-Gateway-UI: 1` is a **CSRF guard**. A custom header is never sent by a plain form submission
+  or by a "simple" cross-origin request, so sending it forces a CORS preflight — and the registry
+  sends no CORS headers, so a page on another origin can never trigger a deletion. Only the index
+  page itself (same origin) can.
+* When a `secret` is configured, `X-Registry-Secret` must match it, the same convention the http
+  provider uses for `/traefik`. With no secret configured (the user's current setup), the UI header
+  is the only guard.
+* Every removal is logged in `~/.traefik-dev/daemon.log` with project, branch and source address.
+
+Trust boundary: anyone who can reach the index URL can remove a registration. The index is only
+reachable from networks that can route the private address `10.10.1.50`, and the Traefik dashboard
+next to it is already unauthenticated. A `secret` in `~/.traefik-dev/config.json` raises the bar.
 
 ## URLs the user can click
 

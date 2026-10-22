@@ -15,7 +15,10 @@ dev server            relay                 Traefik (separate container)        
 
 * The **registry** (`devbox:45002`) serves the Traefik dynamic-configuration document to the
   `http` provider (`http://devbox:45002/traefik`, polled every 5 s) and an HTML index page with
-  everything that is currently registered. It also exposes `/api/registrations` and `/healthz`.
+  everything that is currently registered. It also exposes `/api/registrations`, `/healthz` and
+  `DELETE /api/registrations/<project>/<branch>` — the last one is what the **Remove** button on
+  the index page calls (guarded by the `X-Gateway-UI` header, plus `X-Registry-Secret` when a
+  secret is configured).
 * The **relay** (`devbox:45001`) receives the request and forwards it to the dev server on
   `127.0.0.1:<port>`, WebSocket upgrades included (Vite HMR, Next.js). The Traefik router carries
   the dispatch header (`X-Dev-Target`) that says which registration the request belongs to.

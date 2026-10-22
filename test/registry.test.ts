@@ -7,6 +7,7 @@ import test from 'node:test';
 import { RegistrationStore } from '../src/state.ts';
 import { createRegistryServer } from '../src/registry.ts';
 import { REGISTRY_SECRET_HEADER } from '../src/document.ts';
+import { UI_HEADER } from '../src/registry.ts';
 import { close, listen, makeConfig } from './helpers/fixtures.ts';
 
 function tempStore(): RegistrationStore {
@@ -133,5 +134,79 @@ test('the registry answers http/1.1 requests from a raw client', async () => {
       request.on('error', reject);
     });
     assert.equal(body.trim(), 'ok');
+  });
+});
+
+test('a manual removal deletes the registration and leaves the others alone', async () => {
+  await withRegistry({}, async ({ url, store }) => {
+    store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
+    store.upsert({ project: 'beta', branch: 'feature/x', devPort: 5173, zone: 'home.malarstrom.com' });
+
+    const response = await fetch(`${url}/api/registrations/alpha/main`, {
+      method: 'DELETE',
+      headers: { [UI_HEADER]: '1' },
+    });
+    assert.equal(response.status, 204);
+
+    const remaining = store.list();
+    assert.equal(remaining.length, 1);
+    assert.equal(remaining[0].id, 'beta/feature-x');
+
+    const document = await (await fetch(`${url}/traefik`)).text();
+    assert.ok(!document.includes('main.alpha.home.malarstrom.com'));
+    assert.ok(document.includes('feature-x.beta.home.malarstrom.com'));
+  });
+});
+
+test('removing an unknown registration is answered with 404', async () => {
+  await withRegistry({}, async ({ url, store }) => {
+    store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
+    const response = await fetch(`${url}/api/registrations/alpha/nope`, {
+      method: 'DELETE',
+      headers: { [UI_HEADER]: '1' },
+    });
+    assert.equal(response.status, 404);
+    assert.equal(store.list().length, 1);
+  });
+});
+
+test('a removal without the UI header is refused and the registration survives', async () => {
+  await withRegistry({}, async ({ url, store }) => {
+    store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
+    const response = await fetch(`${url}/api/registrations/alpha/main`, { method: 'DELETE' });
+    assert.equal(response.status, 403);
+    assert.equal(store.list().length, 1);
+  });
+});
+
+test('a removal needs the registry secret when one is configured', async () => {
+  await withRegistry({ secret: 'topsecret' }, async ({ url, store }) => {
+    store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
+
+    const withoutSecret = await fetch(`${url}/api/registrations/alpha/main`, {
+      method: 'DELETE',
+      headers: { [UI_HEADER]: '1' },
+    });
+    assert.equal(withoutSecret.status, 403);
+    assert.equal(store.list().length, 1);
+
+    const withSecret = await fetch(`${url}/api/registrations/alpha/main`, {
+      method: 'DELETE',
+      headers: { [UI_HEADER]: '1', [REGISTRY_SECRET_HEADER]: 'topsecret' },
+    });
+    assert.equal(withSecret.status, 204);
+    assert.equal(store.list().length, 0);
+  });
+});
+
+test('the index page has one remove control per registration', async () => {
+  await withRegistry({}, async ({ url, store }) => {
+    store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
+    store.upsert({ project: 'beta', branch: 'feature/x', devPort: 5173, zone: 'home.malarstrom.com' });
+    const html = await (await fetch(`${url}/`)).text();
+    const controls = html.match(/class="remove"/g) ?? [];
+    assert.equal(controls.length, 2);
+    assert.match(html, /data-registration-id="alpha\/main"/);
+    assert.match(html, /data-registration-id="beta\/feature-x"/);
   });
 });

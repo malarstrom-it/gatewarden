@@ -196,6 +196,11 @@ curl -sS https://traefik.home.malarstrom.com/api/http/services | grep dev-probe
 node ~/projects/traefik-api/bin/traefik-dev.js unregister --project probe --branch main
 ```
 
+The index router (`index.home.malarstrom.com`) forwards every path of that host to the registry, so
+the index page can also call `DELETE /api/registrations/<project>/<branch>` on the same origin —
+that is the **Remove** button on the index page. It needs the `X-Gateway-UI: 1` header (a CSRF
+guard) and, when a secret is configured, `X-Registry-Secret`.
+
 ## 6. Rollback
 
 Remove the `http:` block from `providers:` in `traefik.yml` and restart Traefik. The gateway keeps

@@ -51,6 +51,18 @@ should never need manual handling.
 The listeners bind dual stack (`::`) and the relay's trust list covers the container's IPv6 prefix
 (`fdd0:0:0:2::/64`, derived at runtime). Do **not** "fix" this by hard-coding an IPv4 address.
 
+## A stale route the agent forgot to unregister
+
+The user can remove a registration by hand from the index page
+(`https://index.home.malarstrom.com/`): every row has a **Remove** button, the user confirms, and
+the route is gone on Traefik's next poll (≈5 s). It is a manual fallback — an agent must still
+unregister with the CLI when it stops a dev server.
+
+The endpoint behind the button is `DELETE /api/registrations/<project-slug>/<branch-slug>` with the
+header `X-Gateway-UI: 1`. That header is a CSRF guard: it forces a CORS preflight for any
+cross-site caller and the registry sends no CORS headers, so only the index page itself can trigger
+a removal. When a `secret` is configured, `X-Registry-Secret` is required as well.
+
 ## The relay answers 403
 
 By design: the relay only accepts the dispatch header (`X-Dev-Target`) from the Docker network
