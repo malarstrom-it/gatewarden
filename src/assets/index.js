@@ -86,7 +86,10 @@
       if (registrations[i].state === 'up') answering += 1;
     }
     if (countEl) countEl.textContent = registrations.length + ' ' + plural(registrations.length, 'route', 'routes');
-    if (answeringEl) answeringEl.textContent = answering + ' answering';
+    if (answeringEl) {
+      answeringEl.textContent = answering + ' answering';
+      answeringEl.setAttribute('data-live', answering > 0 ? 'true' : 'false');
+    }
   }
 
   /**
@@ -195,9 +198,11 @@
         var original = button.getAttribute('data-label') || button.textContent;
         button.setAttribute('data-label', original);
         button.textContent = 'Copied';
+        button.classList.add('is-done');
         button.disabled = true;
         setTimeout(function () {
           button.textContent = original;
+          button.classList.remove('is-done');
           button.disabled = false;
         }, 1600);
       }
@@ -315,7 +320,16 @@
       .catch(function (error) {
         yes.disabled = false;
         no.disabled = false;
-        say('Could not remove ' + host + '. ' + error.message + '.', 'error');
+        // The failure belongs to the row the user is looking at, so it is
+        // said there and not only at the top of the page.
+        var confirm = yes.closest ? yes.closest('.route__confirm') : null;
+        if (confirm) {
+          var problem = document.createElement('span');
+          problem.className = 'route__error';
+          problem.setAttribute('role', 'alert');
+          problem.textContent = 'Could not remove ' + host + '. ' + error.message + '.';
+          confirm.appendChild(problem);
+        }
       });
   }
 

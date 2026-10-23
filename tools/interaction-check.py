@@ -14,7 +14,9 @@ from playwright.sync_api import sync_playwright
 
 URL = sys.argv[1] if len(sys.argv) > 1 else "https://index.home.malarstrom.com/"
 CLI = ["node", "bin/traefik-dev.js"]
-OUT = Path("artifacts/screenshots")
+# Extra flags for the CLI, e.g. --state-dir /tmp/preview --config /tmp/preview/config.json
+CLI_EXTRA = sys.argv[3:]
+OUT = Path(sys.argv[2] if len(sys.argv) > 2 else "artifacts/screenshots")
 OUT.mkdir(parents=True, exist_ok=True)
 
 problems = []
@@ -22,7 +24,7 @@ notes = []
 
 
 def cli(*args):
-    result = subprocess.run(CLI + list(args), capture_output=True, text=True)
+    result = subprocess.run(CLI + list(args) + CLI_EXTRA, capture_output=True, text=True)
     return result.returncode, result.stdout.strip(), result.stderr.strip()
 
 
@@ -105,7 +107,8 @@ with sync_playwright() as p:
     duration = reduced.evaluate(
         "() => getComputedStyle(document.querySelector('.route')).transitionDuration"
     )
-    check(float(duration.replace("s", "")) < 0.01, f"the route transition is off under reduced motion ({duration})")
+    longest = max(float(part.replace("s", "").strip()) for part in duration.split(","))
+    check(longest < 0.01, f"the route transition is off under reduced motion ({duration})")
     reduced.screenshot(path=str(OUT / "index-reduced-motion.png"), full_page=True)
     reduced.close()
 

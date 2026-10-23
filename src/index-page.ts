@@ -91,6 +91,16 @@ export function groupByProject(routes: RouteView[]): ProjectGroup[] {
   return groups;
 }
 
+/**
+ * A host name that may break at its dots.
+ *
+ * The text is the same; the only addition is a break opportunity after every
+ * dot, so a long host name wraps between labels instead of inside one.
+ */
+function breakableFqdn(fqdn: string): string {
+  return escapeHtml(fqdn).replace(/\./g, '.<wbr>');
+}
+
 function renderRoute(route: RouteView, now: number): string {
   const registration = route.registration;
   const url = `https://${registration.fqdn}`;
@@ -102,7 +112,7 @@ function renderRoute(route: RouteView, now: number): string {
     `      <li class="route" data-registration-id="${escapeHtml(registration.id)}" data-state="${route.state}">`,
     `        <span class="route__lamp" aria-hidden="true"></span>`,
     `        <span class="route__name"><span class="route__branch">${escapeHtml(registration.branchSlug)}</span>${label}</span>`,
-    `        <span class="route__route"><a class="route__address" href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(registration.fqdn)}</a><span class="route__inside">127.0.0.1:${registration.devPort}</span><span class="route__age">${escapeHtml(age)}</span><span class="route__state">${stateText}</span></span>`,
+    `        <span class="route__route"><a class="route__address" href="${escapeHtml(url)}" target="_blank" rel="noopener">${breakableFqdn(registration.fqdn)}</a><span class="route__inside">127.0.0.1:${registration.devPort}</span><span class="route__age">${escapeHtml(age)}</span><span class="route__state">${stateText}</span></span>`,
     `        <span class="route__actions">`,
     `          <button type="button" class="copy" data-copy="${escapeHtml(url)}">Copy address</button>`,
     `          <button type="button" class="remove" data-registration-id="${escapeHtml(registration.id)}" data-project="${escapeHtml(registration.projectSlug)}" data-branch="${escapeHtml(registration.branchSlug)}" data-host="${escapeHtml(registration.fqdn)}">Remove</button>`,
@@ -187,7 +197,7 @@ export function renderIndex(routes: RouteView[], config: Config, now: number = D
         <div class="masthead__state">
           <p class="masthead__counts">
             <span id="route-count">${count} ${plural(count, 'route', 'routes')}</span>
-            <span id="route-answering">${answering} answering</span>
+            <span id="route-answering" data-live="${answering > 0}">${answering} answering</span>
           </p>
           <p class="masthead__checked">checked <time id="checked-at">${formatClock(now)}</time></p>
         </div>

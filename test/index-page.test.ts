@@ -121,6 +121,17 @@ test('the registration list reports the state of every route', async () => {
   });
 });
 
+test('a host name may break at its dots, never inside a label', async () => {
+  await withRegistry({}, async ({ url, store }) => {
+    store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
+    const html = await (await fetch(`${url}/`)).text();
+    assert.match(html, /main\.<wbr>alpha\.<wbr>home\.<wbr>malarstrom\.<wbr>com/);
+    // The text of the link is still the host name itself.
+    const link = /<a class="route__address"[^>]*>(.*?)<\/a>/.exec(html)?.[1] ?? '';
+    assert.equal(link.replace(/<wbr>/g, ''), 'main.alpha.home.malarstrom.com');
+  });
+});
+
 test('the route fragment holds the same rows as the page', async () => {
   await withRegistry({}, async ({ url, store }) => {
     store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
