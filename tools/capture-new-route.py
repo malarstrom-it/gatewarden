@@ -25,6 +25,11 @@ with sync_playwright() as p:
     desktop.click("#new-route-toggle")
     desktop.wait_for_timeout(200)
     desktop.screenshot(path=str(OUT / "new-route-panel.png"))
+    # The certificate line appears once the project is one the page has not
+    # seen before.
+    desktop.fill("#new-route-project", "a-project-the-page-has-not-seen")
+    desktop.wait_for_timeout(150)
+    desktop.screenshot(path=str(OUT / "new-route-certificate.png"))
     desktop.close()
 
     phone = browser.new_page(viewport={"width": 390, "height": 844})
@@ -32,6 +37,8 @@ with sync_playwright() as p:
     phone.evaluate("document.fonts.ready")
     phone.click("#new-route-toggle")
     phone.wait_for_timeout(200)
+    phone.fill("#new-route-project", "a-project-the-page-has-not-seen")
+    phone.wait_for_timeout(150)
     phone.screenshot(path=str(OUT / "new-route-phone.png"), full_page=True)
     phone.close()
 
