@@ -45,6 +45,10 @@ right now, the host name of each route, the port inside the container, whether
 it answers, and a way to open or clear a route. The overview lives at
 `https://index.home.malarstrom.com/`. (confirmed)
 
+The client can also **create a route by hand** from that page — project,
+branch and port — so a dev server that was started outside the agents' flow
+can be published without an agent. (confirmed)
+
 Success means the client can see what is running and act on it — open a dev
 server, copy an address, or clear a stale route — without asking an agent.
 (inferred from the brief: the page's job is to be scanned at a glance and acted
@@ -83,6 +87,10 @@ Confirmed constraints that any future work must preserve:
 - The Remove flow, the `X-Gateway-UI: 1` guard, the `data-registration-id`
   attribute, the `X-Dev-Target` contract and the relay's trust boundaries stay
   as they are. (confirmed)
+- **Creating a route by hand** goes through `POST /api/registrations` with the
+  same `X-Gateway-UI: 1` guard, the same slug rule as the CLI and the same
+  state file; a project and branch that already has a route is a conflict
+  (409), never a silent update. (confirmed)
 - No secret is configured for the registry, by the client's decision; the
   `X-Gateway-UI` header is the only guard. Do not raise this again.
   (confirmed)

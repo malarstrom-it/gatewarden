@@ -80,6 +80,7 @@ that matter.
 | Behaviour | How it works |
 | --- | --- |
 | Live without a reload | the page polls `GET /api/registrations` every 4 s and patches the rows that changed in place; no flashing, no scroll jumps, and the focus stays on the button you are about to click |
+| Make a route by hand | the **New route** panel in the masthead creates a route without an agent: project, branch and port, the port the dev server listens on inside this container. The panel is inline (never a modal), Escape closes it and gives the focus back, and a route made by hand is an ordinary route from the first second — its own badge, its own band, its own Remove button |
 | The page does not move under your hands | while a band is open under a route — a confirmation, a failure, a "copied" — a background refresh is **held** until the band closes, and the focus is never dropped on the document body |
 | Honest state | `Up` / `Down` comes from the gateway's own probe of the dev server's port; a filled badge against an outlined one, and a solid edge against a broken one, so the two are told apart by shape and not only by colour. A change is announced once, in a live region |
 | Open a route | the host name is a link, and the copy button puts the long URL on the clipboard |
@@ -95,6 +96,37 @@ visible keyboard focus ring, keeps its text contrast at 4.5:1 or better, and
 drops its motion when the reader asks for reduced motion.
 
 ![The index page on a phone](artifacts/screenshots/index-phone.png)
+
+### Creating a route by hand
+
+The client can create a route from the page, without an agent:
+
+```
+POST /api/registrations
+X-Gateway-UI: 1
+Content-Type: application/json
+{ "project": "my-app", "branch": "feature", "port": 5173 }
+```
+
+| Answer | When |
+| --- | --- |
+| `201` | the route was created; the body is the registration (its id and its FQDN) |
+| `400` | the route was refused; the body says why (`{ "error": …, "field": … }`) and the page says it next to the field it was wrong about |
+| `403` | the `X-Gateway-UI` header was missing — the same CSRF guard the removal uses |
+| `409` | that project and branch already has a route; the body names the route that is there |
+
+The rules are the CLI's rules, in one place: the project and branch are
+slugged by `slugify()` (`src/util/slug.ts`), the port must be an integer
+between 1 and 65535, and it must not be a port the gateway itself listens
+on. The registry writes the **same state file the CLI writes**, through the
+store's own `upsert`, so a route made in the page is a route the CLI lists
+and the CLI can remove.
+
+**One difference from the CLI, on purpose.** `traefik-dev register`
+*updates* an existing project+branch in place — that is what an agent wants
+when it restarts a dev server on another port. The page's create never
+does that: a route the client can see is never silently changed behind
+their back, so it answers `409` and names the route that already exists.
 
 ### The styles
 

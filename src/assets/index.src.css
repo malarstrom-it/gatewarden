@@ -228,6 +228,50 @@
     @apply text-muted-foreground;
   }
 
+  /* The panel that creates a route by hand. It is a card like every other
+     card on the page: white, a hairline, no shadow. */
+  .new-route {
+    @apply mt-6 px-6 py-5;
+  }
+
+  .new-route__title {
+    @apply text-lg font-semibold tracking-tight;
+  }
+
+  .new-route__hint {
+    @apply mt-1 max-w-2xl text-sm text-muted-foreground;
+  }
+
+  .new-route__fields {
+    @apply mt-5 grid gap-5 sm:grid-cols-2 lg:grid-cols-3;
+  }
+
+  .field__label {
+    @apply mb-1 block text-sm font-medium;
+  }
+
+  .field__input {
+    @apply w-full rounded-md border border-input bg-card px-3 py-2 text-sm;
+    @apply placeholder:text-subtle-foreground;
+    @apply focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none;
+  }
+
+  .field__hint {
+    @apply mt-1 text-xs text-subtle-foreground;
+  }
+
+  .field__error {
+    @apply mt-1 text-xs text-danger;
+  }
+
+  .new-route__error {
+    @apply mt-4 text-sm text-danger;
+  }
+
+  .new-route__actions {
+    @apply mt-5 flex flex-wrap items-center gap-3;
+  }
+
   .route-body--changed td {
     animation: var(--animate-route-flash);
   }

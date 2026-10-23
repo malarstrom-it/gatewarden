@@ -62,6 +62,137 @@ function readAsset(url: URL): Buffer | null {
 }
 
 /**
+ * The largest request body the registry reads: a route is three short
+ * fields, so anything bigger is not a route.
+ */
+const MAX_BODY_BYTES = 8192;
+
+/** Read a request body, refusing to read more than {@link MAX_BODY_BYTES}. */
+function readBody(req: http.IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > MAX_BODY_BYTES) {
+        reject(new Error('body too large'));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    req.on('error', reject);
+  });
+}
+
+/**
+ * Handle `POST /api/registrations`: create a route by hand from the index
+ * page.
+ *
+ * The guard is the same one the removal uses: the `X-Gateway-UI` header must
+ * be present. A custom header is never sent by a plain form submission nor
+ * by a "simple" cross-origin request, so sending it forces a CORS preflight,
+ * and the registry sends no CORS headers — only the index page itself, which
+ * is same origin, can create a route.
+ *
+ * Unlike the CLI's `register`, this never updates a route in place. A
+ * project and branch that already has a route is a conflict (409): a route
+ * the client can see is never silently changed behind their back.
+ */
+async function handleCreate(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  store: RegistrationStore,
+  config: Config,
+): Promise<void> {
+  if (req.headers[UI_HEADER.toLowerCase()] !== UI_HEADER_VALUE) {
+    res.writeHead(403, { 'content-type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ error: `forbidden: missing ${UI_HEADER} header`, field: 'form' }));
+    return;
+  }
+
+  if (config.secret) {
+    const provided = req.headers[REGISTRY_SECRET_HEADER.toLowerCase()];
+    if (provided !== config.secret) {
+      res.writeHead(403, { 'content-type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify({ error: 'forbidden: registry secret missing or wrong', field: 'form' }));
+      return;
+    }
+  }
+
+  const fail = (status: number, error: string, field: string): void => {
+    res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ error, field }));
+  };
+
+  let raw: string;
+  try {
+    raw = await readBody(req);
+  } catch {
+    fail(400, 'The route was too big to read. A route is three short fields.', 'form');
+    return;
+  }
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    fail(400, 'The route could not be read. Try again.', 'form');
+    return;
+  }
+  if (!payload || typeof payload !== 'object') {
+    fail(400, 'The route could not be read. Try again.', 'form');
+    return;
+  }
+
+  const input = payload as Record<string, unknown>;
+  const project = typeof input['project'] === 'string' ? input['project'].trim() : '';
+  const branch = typeof input['branch'] === 'string' ? input['branch'].trim() : '';
+  const label = typeof input['label'] === 'string' && input['label'].trim() ? input['label'].trim() : undefined;
+
+  // The same slug rule the CLI uses — one rule, not two.
+  const projectSlug = slugify(project);
+  const branchSlug = slugify(branch);
+  if (!projectSlug) {
+    fail(400, 'Give the route a project name: the name of the project it belongs to.', 'project');
+    return;
+  }
+  if (!branchSlug) {
+    fail(400, 'Give the route a branch name.', 'branch');
+    return;
+  }
+
+  const devPort = Number(input['port']);
+  if (!Number.isInteger(devPort) || devPort < 1 || devPort > 65535) {
+    fail(400, 'The port must be a number between 1 and 65535.', 'port');
+    return;
+  }
+  if (devPort === config.registryPort || devPort === config.relayPort) {
+    fail(400, 'That port is the gateway’s own. Give the port your dev server listens on.', 'port');
+    return;
+  }
+
+  const id = `${projectSlug}/${branchSlug}`;
+  const existing = store.find(id);
+  if (existing) {
+    fail(
+      409,
+      `${existing.fqdn} already points at 127.0.0.1:${existing.devPort}. Remove it first, or use another branch.`,
+      'branch',
+    );
+    return;
+  }
+
+  const registration = store.upsert({ project, branch, devPort, label, zone: config.zone });
+  const source = req.socket.remoteAddress ?? 'unknown';
+  log('info', SCOPE, 'registration created', `project=${projectSlug} branch=${branchSlug} port=${devPort} source=${source}`);
+
+  res.writeHead(201, { 'content-type': 'application/json; charset=utf-8' });
+  res.end(JSON.stringify(registration));
+}
+
+/**
  * Handle `DELETE /api/registrations/<project-slug>/<branch-slug>`.
  *
  * Two guards, in this order:
@@ -136,6 +267,7 @@ async function handleDelete(
  *
  * Routes: `GET /traefik` (dynamic configuration), `GET /` (index),
  * `GET /api/registrations` (JSON),
+ * `POST /api/registrations` (create a route by hand),
  * `DELETE /api/registrations/<project>/<branch>` (manual removal),
  * `GET /healthz`.
  */
@@ -169,8 +301,13 @@ export function createRegistryServer(store: RegistrationStore, config: Config): 
         return;
       }
 
+      if (req.method === 'POST' && url.pathname === '/api/registrations') {
+        await handleCreate(req, res, store, config);
+        return;
+      }
+
       if (req.method !== 'GET' && req.method !== 'HEAD') {
-        res.writeHead(405, { 'content-type': 'text/plain; charset=utf-8', allow: 'GET, HEAD, DELETE' });
+        res.writeHead(405, { 'content-type': 'text/plain; charset=utf-8', allow: 'GET, HEAD, DELETE, POST' });
         res.end('method not allowed\n');
         return;
       }

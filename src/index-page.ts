@@ -251,7 +251,10 @@ export function renderIndex(routes: RouteView[], config: Config, now: number = D
     <div class="mx-auto w-full max-w-6xl px-6 py-10">
       <header class="flex flex-wrap items-end justify-between gap-x-10 gap-y-4 border-b border-border pb-6">
         <div class="space-y-2">
-          <h1 class="text-3xl font-semibold tracking-tight">Dev gateway</h1>
+          <div class="flex flex-wrap items-center gap-3">
+            <h1 class="text-3xl font-semibold tracking-tight">Dev gateway</h1>
+            <button type="button" class="btn btn-outline" id="new-route-toggle" aria-expanded="false" aria-controls="new-route">New route</button>
+          </div>
           <p class="head__subject max-w-xl text-base font-light text-muted-foreground">Routes for the dev servers agents run in this container.</p>
         </div>
         <div class="flex flex-col gap-2 sm:items-end">
@@ -269,6 +272,71 @@ export function renderIndex(routes: RouteView[], config: Config, now: number = D
           </p>
         </div>
       </header>
+
+      <section class="new-route card mt-6" id="new-route" aria-labelledby="new-route-title" hidden>
+        <form class="new-route__form" id="new-route-form" novalidate>
+          <h2 class="new-route__title" id="new-route-title">New route</h2>
+          <p class="new-route__hint">
+            The route is served at <code class="font-mono">&lt;branch&gt;.&lt;project&gt;.${escapeHtml(config.zone)}</code>, with the
+            project's wildcard certificate.
+          </p>
+          <div class="new-route__fields">
+            <div class="field">
+              <label class="field__label" for="new-route-project">Project</label>
+              <input
+                class="field__input"
+                id="new-route-project"
+                name="project"
+                type="text"
+                placeholder="my-app"
+                autocomplete="off"
+                spellcheck="false"
+                data-hint="new-route-project-hint"
+                aria-describedby="new-route-project-hint"
+              />
+              <p class="field__hint" id="new-route-project-hint">The project the route belongs to.</p>
+              <p class="field__error" id="new-route-project-error" role="alert" hidden></p>
+            </div>
+            <div class="field">
+              <label class="field__label" for="new-route-branch">Branch</label>
+              <input
+                class="field__input"
+                id="new-route-branch"
+                name="branch"
+                type="text"
+                placeholder="feature"
+                autocomplete="off"
+                spellcheck="false"
+                data-hint="new-route-branch-hint"
+                aria-describedby="new-route-branch-hint"
+              />
+              <p class="field__hint" id="new-route-branch-hint">The branch of the project.</p>
+              <p class="field__error" id="new-route-branch-error" role="alert" hidden></p>
+            </div>
+            <div class="field">
+              <label class="field__label" for="new-route-port">Port</label>
+              <input
+                class="field__input"
+                id="new-route-port"
+                name="port"
+                type="text"
+                inputmode="numeric"
+                placeholder="5173"
+                autocomplete="off"
+                data-hint="new-route-port-hint"
+                aria-describedby="new-route-port-hint"
+              />
+              <p class="field__hint" id="new-route-port-hint">The port the dev server listens on inside this container.</p>
+              <p class="field__error" id="new-route-port-error" role="alert" hidden></p>
+            </div>
+          </div>
+          <p class="new-route__error" id="new-route-error" role="alert" hidden></p>
+          <div class="new-route__actions">
+            <button type="submit" class="btn btn-primary">Create route</button>
+            <button type="button" class="btn btn-ghost" id="new-route-cancel">Cancel</button>
+          </div>
+        </form>
+      </section>
 
       <p class="message min-h-6 pt-4 text-sm text-muted-foreground" id="message" role="status" aria-live="polite"></p>
       <p class="sr-only" id="announcer" role="status" aria-live="polite"></p>

@@ -643,6 +643,144 @@ if (typeof document !== 'undefined') {
         });
     }
 
+    /* --------------------------------------------------- the new-route form */
+
+    var newRouteToggle = document.getElementById('new-route-toggle');
+    var newRoutePanel = document.getElementById('new-route');
+    var newRouteForm = document.getElementById('new-route-form');
+    var newRouteCancel = document.getElementById('new-route-cancel');
+    var newRouteError = document.getElementById('new-route-error');
+    var NEW_ROUTE_FIELDS = ['project', 'branch', 'port'];
+
+    function newRouteField(name) {
+      return newRouteForm ? newRouteForm.querySelector('#new-route-' + name) : null;
+    }
+
+    function newRouteFieldError(name) {
+      return newRouteForm ? newRouteForm.querySelector('#new-route-' + name + '-error') : null;
+    }
+
+    /** Clear every message the form is showing. */
+    function clearFormErrors() {
+      for (var i = 0; i < NEW_ROUTE_FIELDS.length; i += 1) {
+        var name = NEW_ROUTE_FIELDS[i];
+        var input = newRouteField(name);
+        var error = newRouteFieldError(name);
+        if (error) {
+          error.textContent = '';
+          error.hidden = true;
+        }
+        if (input) {
+          var hint = input.getAttribute('data-hint');
+          input.setAttribute('aria-describedby', hint || '');
+        }
+      }
+      if (newRouteError) {
+        newRouteError.textContent = '';
+        newRouteError.hidden = true;
+      }
+    }
+
+    /**
+     * Say what was wrong, next to the field it was wrong about.
+     *
+     * The reason is the gateway's own: one rule for what a route may look
+     * like, and the same words wherever the route was made.
+     */
+    function showFormError(field, message) {
+      var target = field && NEW_ROUTE_FIELDS.indexOf(field) >= 0 ? field : null;
+      if (!target) {
+        if (newRouteError) {
+          newRouteError.textContent = message;
+          newRouteError.hidden = false;
+        }
+        return;
+      }
+      var input = newRouteField(target);
+      var error = newRouteFieldError(target);
+      if (error) {
+        error.textContent = message;
+        error.hidden = false;
+      }
+      if (input) {
+        var hint = input.getAttribute('data-hint');
+        var errorId = 'new-route-' + target + '-error';
+        input.setAttribute('aria-describedby', hint ? hint + ' ' + errorId : errorId);
+        input.focus();
+      }
+    }
+
+    /** Open or close the panel; the control keeps the focus when it closes. */
+    function setPanelOpen(open, moveFocus) {
+      if (!newRoutePanel || !newRouteToggle) return;
+      newRoutePanel.hidden = !open;
+      newRouteToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open) {
+        var first = newRoutePanel.querySelector('input');
+        if (first) first.focus();
+      } else if (moveFocus) {
+        newRouteToggle.focus();
+      }
+    }
+
+    /** Create the route the client described, and say what happened. */
+    function submitNewRoute(event) {
+      event.preventDefault();
+      if (!newRouteForm) return;
+      clearFormErrors();
+
+      var project = (newRouteField('project') || {}).value || '';
+      var branch = (newRouteField('branch') || {}).value || '';
+      var port = (newRouteField('port') || {}).value || '';
+
+      fetch('/api/registrations', {
+        method: 'POST',
+        headers: { 'X-Gateway-UI': '1', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          project: String(project).trim(),
+          branch: String(branch).trim(),
+          port: Number(String(port).trim()),
+        }),
+      })
+        .then(function (response) {
+          return response.text().then(function (text) {
+            var body = {};
+            try {
+              body = text ? JSON.parse(text) : {};
+            } catch (error) {
+              body = {};
+            }
+            return { status: response.status, body: body };
+          });
+        })
+        .then(function (result) {
+          if (result.status === 201) {
+            var created = result.body || {};
+            newRouteForm.reset();
+            setPanelOpen(false, false);
+            // A new route is a page-level event: it belongs on the page's
+            // own line, not in the row of one route.
+            say('Created ' + (created.fqdn || 'the route') + '.', 'done');
+            refreshList().then(function () {
+              var link = created.id
+                ? listEl.querySelector('[data-registration-id="' + created.id + '"] .route-address')
+                : null;
+              if (link) link.focus();
+              else if (newRouteToggle) newRouteToggle.focus();
+            });
+            return;
+          }
+          var body = result.body || {};
+          showFormError(
+            body.field,
+            body.error || 'The route could not be created. Try again.',
+          );
+        })
+        .catch(function (error) {
+          showFormError('form', 'The gateway could not be reached: ' + error.message + '. Try again.');
+        });
+    }
+
     document.addEventListener('click', function (event) {
       var target = event.target;
       if (!(target instanceof Element)) return;
@@ -682,6 +820,28 @@ if (typeof document !== 'undefined') {
 
     indexRows();
     plan.applied(currentIds());
+
+    if (newRouteToggle && newRoutePanel) {
+      newRouteToggle.addEventListener('click', function () {
+        setPanelOpen(newRouteToggle.getAttribute('aria-expanded') !== 'true', false);
+      });
+      // Escape closes the panel and gives the focus back to the control.
+      newRoutePanel.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          setPanelOpen(false, true);
+        }
+      });
+    }
+    if (newRouteCancel) {
+      newRouteCancel.addEventListener('click', function () {
+        setPanelOpen(false, true);
+      });
+    }
+    if (newRouteForm) {
+      newRouteForm.addEventListener('submit', submitNewRoute);
+    }
+
     poll();
     setInterval(poll, POLL_INTERVAL_MS);
   })();

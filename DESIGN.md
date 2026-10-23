@@ -221,6 +221,16 @@ is muted, because it is not going to open.
 **The route edge** — a 2px left border on the first cell of a route: solid
 `up` when the route answers, dashed `down` when it does not.
 
+**The new-route panel** — a card under the masthead, revealed by the
+**New route** control beside the title. It is inline, never a modal: a task
+that needs neither interruption nor protected focus does not get one. Three
+fields — project, branch, port — each with a real `<label>`, a hint that
+says what the value becomes (`<branch>.<project>.<zone>`), and an
+`aria-describedby` that points at the field's own error when it has one.
+The control carries `aria-expanded`; Escape closes the panel and gives the
+focus back to the control. A route made here is an ordinary route from the
+first second: its own Up/Down badge, its own band, its own Remove button.
+
 **The band** — `.route-band`, a row under a route that carries everything
 said about that route: the confirmation, a failed removal, "Copied …". It
 continues the row's edge, so it reads as part of the row it belongs to, and
@@ -244,6 +254,9 @@ the edge says the shape, and both change together.
 
 **Do** say things about a route in that route's own band. A message at the
 top of the page is a message the user cannot see.
+
+**Do** make a task inline when it needs neither interruption nor protected
+focus. The new-route panel is a card under the masthead, not a dialog.
 
 **Do** keep the numbers that change in place on tabular figures.
 
