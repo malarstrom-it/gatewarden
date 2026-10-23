@@ -106,7 +106,9 @@ ground, one family (Hanken Grotesk) at four sizes, hairline rules, and a
 single indigo accent for the things that act. Everything is composed with
 Tailwind utilities over a shadcn/ui token set, and the shadcn components
 (button, badge, card, table) are written out as plain classes because the
-page is server rendered HTML with no runtime dependency.
+page is server rendered HTML: no framework, no runtime dependency, no
+runtime build. The stylesheet is Tailwind, compiled ahead of time and
+committed, and the daemon serves it as one static file.
 
 **Key Characteristics:**
 
@@ -238,7 +240,9 @@ thing to do there.
 does not, red destroys. Nothing else gets a colour.
 
 **Don't** let a utility class reach the page without compiling the
-stylesheet: `npm run build:css` after every change to the markup.
+stylesheet: `npm run build:css` after every change to the markup. The test
+`test/build-css.test.ts` fails the suite when the committed stylesheet is
+stale, so a forgotten build is caught before it reaches the page.
 
 **Don't** ask a CDN for anything. The font is self hosted; a request to a
 third party would leak every visit on this private network.

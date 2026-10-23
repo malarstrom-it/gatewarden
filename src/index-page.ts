@@ -4,7 +4,9 @@
  *
  * The page is server rendered and self contained: one HTML document, one
  * stylesheet, one script and one self hosted font, all served by the
- * registry itself. No build step at runtime, no framework, no CDN request.
+ * registry itself. No framework, no runtime dependency, no runtime build, no
+ * CDN request: the stylesheet is Tailwind, compiled ahead of time and
+ * committed.
  *
  * The subject is a routing table. Rows are grouped by project, because a
  * project is the unit the proxy certificate is issued for; every row is one

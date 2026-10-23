@@ -6,7 +6,12 @@
  * still serves one static stylesheet and the page still asks no third party
  * for anything.
  *
- *   npx @tailwindcss/cli -i src/assets/index.src.css -o src/assets/index.css
+ *   npm run build:css
+ *
+ * which runs the pinned local CLI (tailwindcss and @tailwindcss/cli, both
+ * 4.3.3, in devDependencies) — `tailwindcss -i src/assets/index.src.css -o
+ * src/assets/index.css`. It never reaches the network: `npm ci` installs the
+ * exact versions from package-lock.json.
  *
  * The tokens below are the shadcn token names: the same handful of roles a
  * shadcn/ui project uses, filled with the Daylight palette.

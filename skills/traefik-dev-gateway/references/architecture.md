@@ -19,6 +19,10 @@ dev server            relay                 Traefik (separate container)        
   `DELETE /api/registrations/<project>/<branch>` — the last one is what the **Remove** button on
   the index page calls (guarded by the `X-Gateway-UI` header, plus `X-Registry-Secret` when a
   secret is configured).
+  The index page itself is static and self contained: one HTML document, one stylesheet, one
+  script and the self-hosted font files, all from the repository. The stylesheet is Tailwind,
+  compiled ahead of time and committed — the daemon compiles nothing at runtime, and the page
+  asks no third party for anything.
 * The **relay** (`devbox:45001`) receives the request and forwards it to the dev server on
   `127.0.0.1:<port>`, WebSocket upgrades included (Vite HMR, Next.js). The Traefik router carries
   the dispatch header (`X-Dev-Target`) that says which registration the request belongs to.

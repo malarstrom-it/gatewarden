@@ -158,6 +158,7 @@ here**; the plan cannot be finalised until they are known.
         ▼
   this container (172.16.2.13)
         ├── registry :9000  — serves the dynamic configuration document + the index page (D4)
+        │                    (static HTML, one compiled stylesheet, one script, self-hosted fonts)
         └── relay   :<relay-port> — forwards to 127.0.0.1:<dev-port>  (D3)
                     └── dev server (agent's process)
 ```

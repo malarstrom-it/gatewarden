@@ -64,10 +64,10 @@ Global options: `--config <path>`, `--state-dir <path>`, `--json`.
 ## The index page
 
 `https://index.home.malarstrom.com` is a live console of the dev servers agents publish through
-the gateway. It is server rendered by the registry, has no framework and no runtime dependency,
-and asks no third party for anything: the typeface is **self hosted** from `src/assets/fonts/`
-(Hanken Grotesk, under the SIL Open Font License, the licence next to the file). A CDN font
-request would leak every visit on this private network.
+the gateway. It is server rendered by the registry, has no framework, no runtime dependency and no
+runtime build, and asks no third party for anything: the typeface is **self hosted** from
+`src/assets/fonts/` (Hanken Grotesk, under the SIL Open Font License, the licence next to the
+file). A CDN font request would leak every visit on this private network.
 
 ![The index page on a desktop](artifacts/screenshots/index-desktop.png)
 
@@ -101,14 +101,21 @@ components that shadcn ships as React — the button, the badge, the card, the t
 plain classes in `@layer components`, because the page is server rendered HTML and must stay free
 of a runtime dependency.
 
-Tailwind is compiled ahead of time:
+Tailwind is compiled **ahead of time** and the compiled stylesheet is committed; the daemon
+serves it as one static file and compiles nothing at runtime:
 
-    npm run build:css     # npx @tailwindcss/cli -i src/assets/index.src.css -o src/assets/index.css
+    npm ci            # installs the pinned toolchain (tailwindcss and @tailwindcss/cli, 4.3.3)
+    npm run build:css # tailwindcss -i src/assets/index.src.css -o src/assets/index.css
 
 `src/assets/index.src.css` is the source; `src/assets/index.css` is the compiled file the
-registry serves, and it is committed. **When the markup in `src/index-page.ts` gains or loses a
-utility class, the stylesheet has to be compiled again** — a missing class is silently unstyled
-until `npm run build:css` has run.
+registry serves. The build uses the **local** binary from `node_modules/.bin`, so it never
+reaches the network and never picks up a different Tailwind version than the committed artifact
+was built with.
+
+**When the markup in `src/index-page.ts` gains or loses a utility class, the stylesheet has to be
+compiled again** — a missing class is silently unstyled until `npm run build:css` has run. The
+test `test/build-css.test.ts` compiles the source into a temporary file and compares it with the
+committed stylesheet, so a stale artifact fails the suite instead of the page.
 
 `tools/screenshot.py` and `tools/interaction-check.py` drive the page with Playwright; they are
 review tools, not part of the gateway, and the daemon never loads them.

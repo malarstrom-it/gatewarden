@@ -6,7 +6,9 @@
  * and leaves the rest of the page alone, so a button the user is about to
  * click keeps its focus.
  *
- * No dependencies, no build step, no network calls except to this origin.
+ * No dependencies, no network calls except to this origin. The stylesheet is
+ * Tailwind, compiled ahead of time and committed; nothing is compiled at
+ * runtime.
  */
 (function () {
   'use strict';

@@ -201,6 +201,11 @@ the index page can also call `DELETE /api/registrations/<project>/<branch>` on t
 that is the **Remove** button on the index page. It needs the `X-Gateway-UI: 1` header (a CSRF
 guard) and, when a secret is configured, `X-Registry-Secret`.
 
+What the registry serves for the index is static and self contained: one HTML document, one
+stylesheet, one script and the self-hosted font files, all from the repository. The stylesheet is
+Tailwind, compiled ahead of time and committed; the daemon compiles nothing at runtime, and the
+page asks no third party for anything.
+
 ## 6. Rollback
 
 Remove the `http:` block from `providers:` in `traefik.yml` and restart Traefik. The gateway keeps

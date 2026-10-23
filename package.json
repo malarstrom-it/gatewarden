@@ -11,14 +11,16 @@
   "scripts": {
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "build:css": "npx @tailwindcss/cli -i src/assets/index.src.css -o src/assets/index.css",
+    "build:css": "tailwindcss -i src/assets/index.src.css -o src/assets/index.css",
     "start": "node src/daemon.ts"
   },
   "engines": {
     "node": ">=22.6.0"
   },
   "devDependencies": {
+    "@tailwindcss/cli": "4.3.3",
     "@types/node": "^22.10.0",
+    "tailwindcss": "4.3.3",
     "typescript": "^5.7.0"
   }
 }
