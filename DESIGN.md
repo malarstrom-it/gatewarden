@@ -228,6 +228,15 @@ its box is a `role="status"` live region. While a band is open the page
 does not rebuild itself under the user's hands: a background refresh is
 held until the band closes.
 
+**What a band does with time** — three kinds, one rule: an *outcome* ("Copied
+…", "Removed …") fades out on its own after four seconds; a *question* (the
+removal confirmation) and a *failure* stay until the user acts. The fade is
+one authored moment: the message lifts 4px and fades over 240 ms on the
+page's own curve, and the band's padding collapses with it instead of the
+band snapping shut. Under `prefers-reduced-motion: reduce` the message is
+removed without the transition — the content never depends on the animation
+to be read.
+
 ## Do's and Don'ts
 
 **Do** keep the state legible by more than colour: the badge says the word,

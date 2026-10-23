@@ -77,8 +77,11 @@
   --radius-lg: 0.5rem;
   --radius-xl: 0.75rem;
 
+  /* The one easing curve of the page: an exponential ease-out. */
+  --ease-curve: cubic-bezier(0.16, 1, 0.3, 1);
+
   /* The one moment of motion in the page: a route that changed state. */
-  --animate-route-flash: route-flash 900ms ease-out;
+  --animate-route-flash: route-flash 900ms var(--ease-curve);
 }
 
 @keyframes route-flash {
@@ -88,6 +91,33 @@
 
   100% {
     background-color: transparent;
+  }
+}
+
+/* The fade of an outcome message: it lifts a little as it goes, and the
+   band closes with it instead of snapping shut. */
+@keyframes band-fade {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes band-collapse {
+  0%,
+  45% {
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+  }
+
+  100% {
+    padding-top: 0;
+    padding-bottom: 0;
   }
 }
 
@@ -202,8 +232,14 @@
     animation: var(--animate-route-flash);
   }
 
-  .route-body--leaving td {
-    @apply opacity-0 transition-opacity duration-200;
+  /* The fade of an outcome message. The message is lifted and fades on the
+     page's own curve; the band's own padding collapses with it. */
+  .route-band--fading > td {
+    animation: band-collapse 240ms var(--ease-curve) forwards;
+  }
+
+  .route-band--fading .route-band__box {
+    animation: band-fade 240ms var(--ease-curve) forwards;
   }
 
   /* The band under a route: where everything that is said about that route

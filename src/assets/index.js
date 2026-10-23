@@ -106,10 +106,23 @@
     return branch + ' is now ' + (state === 'up' ? 'up' : 'down');
   }
 
+  /**
+   * How long a band stays.
+   *
+   * An outcome — "Copied …", "Removed …" — says what happened and fades on
+   * its own. A question (the removal confirmation) waits for an answer, and a
+   * failure says what went wrong and what to do instead; neither may vanish
+   * under the user.
+   */
+  function bandLifetime(kind) {
+    return kind === 'outcome' ? 'fade' : 'stay';
+  }
+
   root.TraefikPage = {
     sameIds: sameIds,
     createRefreshPlan: createRefreshPlan,
     stateAnnouncement: stateAnnouncement,
+    bandLifetime: bandLifetime,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
@@ -118,8 +131,8 @@ if (typeof document !== 'undefined') {
     'use strict';
 
     var POLL_INTERVAL_MS = 4000;
-    var BAND_TIMEOUT_MS = 2600;
-    var REMOVED_TIMEOUT_MS = 2200;
+    var BAND_OUTCOME_MS = 4000;
+    var BAND_FADE_MS = 240;
 
     var api = (typeof globalThis !== 'undefined' ? globalThis : this).TraefikPage;
 
@@ -328,6 +341,9 @@ if (typeof document !== 'undefined') {
         box: box,
         text: text,
         actions: actions,
+        kind: 'empty',
+        timer: null,
+        fading: false,
         closed: false,
         close: function () {
           closeBand(handle);
@@ -344,6 +360,10 @@ if (typeof document !== 'undefined') {
     function closeBand(handle) {
       if (!handle || handle.closed) return;
       handle.closed = true;
+      if (handle.timer) {
+        clearTimeout(handle.timer);
+        handle.timer = null;
+      }
       if (handle.band.parentNode) handle.band.parentNode.removeChild(handle.band);
       var id = handle.row.getAttribute('data-registration-id');
       if (bands[id] === handle) delete bands[id];
@@ -351,12 +371,61 @@ if (typeof document !== 'undefined') {
       flushHeld();
     }
 
-    /** Say something in a route's band. */
-    function setBandText(handle, text, tone) {
+    /**
+     * Say something in a route's band, and say how long it stays.
+     *
+     * `kind` decides the lifetime: an outcome fades on its own, a question
+     * and a failure stay until the user acts.
+     */
+    function setBandMessage(handle, text, tone, kind) {
+      // A message that is on its way out is called back: the new one replaces
+      // it and starts its own clock.
+      if (handle.timer) {
+        clearTimeout(handle.timer);
+        handle.timer = null;
+      }
+      handle.fading = false;
+      handle.band.classList.remove('route-band--fading');
+
+      handle.kind = kind || 'outcome';
       handle.text.textContent = text;
       if (tone) handle.text.setAttribute('data-tone', tone);
       else handle.text.removeAttribute('data-tone');
       reveal(handle.band);
+
+      if (api.bandLifetime(handle.kind) === 'fade') {
+        handle.timer = setTimeout(function () {
+          fadeBand(handle);
+        }, BAND_OUTCOME_MS);
+      }
+    }
+
+    /**
+     * Fade an outcome message out and close the band.
+     *
+     * The message is removed, not emptied: a live region that is emptied
+     * says something again, and this one has already said its piece.
+     */
+    function fadeBand(handle) {
+      if (!handle || handle.closed || handle.fading) return;
+      // A band that holds a question or a failure is not the user's to lose.
+      if (api.bandLifetime(handle.kind) !== 'fade') return;
+      handle.fading = true;
+
+      var reduced =
+        typeof window !== 'undefined' &&
+        window.matchMedia &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (reduced) {
+        // No transition: the content must not depend on the animation.
+        closeBand(handle);
+        return;
+      }
+
+      handle.band.classList.add('route-band--fading');
+      setTimeout(function () {
+        closeBand(handle);
+      }, BAND_FADE_MS + 40);
     }
 
     /** Put the buttons of a band in place. */
@@ -450,20 +519,27 @@ if (typeof document !== 'undefined') {
         var row = button && button.closest ? button.closest('.route-body') : null;
         if (row) {
           var handle = openBand(row);
-          setBandText(handle, 'Copied ' + text, 'done');
+          setBandMessage(handle, 'Copied ' + text, 'done', 'outcome');
           setBandActions(handle, []);
-          setTimeout(function () {
-            handle.close();
-          }, BAND_TIMEOUT_MS);
         } else {
           say('Copied ' + text, 'done');
         }
       };
 
+      var failed = function () {
+        var row = button && button.closest ? button.closest('.route-body') : null;
+        if (row) {
+          // A failure stays: it says what went wrong and what to do instead.
+          var handle = openBand(row);
+          setBandMessage(handle, 'Could not copy ' + text + '. Copy it from the page instead.', 'error', 'failure');
+          setBandActions(handle, []);
+          return;
+        }
+        say('Could not copy ' + text + '. Copy it from the page instead.', 'error');
+      };
+
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(done, function () {
-          say('Could not copy ' + text + '. Copy it from the page instead.', 'error');
-        });
+        navigator.clipboard.writeText(text).then(done, failed);
         return;
       }
       try {
@@ -477,9 +553,9 @@ if (typeof document !== 'undefined') {
         var copied = document.execCommand('copy');
         document.body.removeChild(area);
         if (copied) done();
-        else say('Could not copy ' + text + '. Copy it from the page instead.', 'error');
+        else failed();
       } catch (error) {
-        say('Could not copy ' + text + '. Copy it from the page instead.', 'error');
+        failed();
       }
     }
 
@@ -489,7 +565,8 @@ if (typeof document !== 'undefined') {
       if (!row) return;
 
       var handle = openBand(row);
-      setBandText(handle, 'Remove ' + button.getAttribute('data-branch') + '?');
+      // A question waits for an answer: it does not fade on its own.
+      setBandMessage(handle, 'Remove ' + button.getAttribute('data-branch') + '?', undefined, 'question');
 
       var no = document.createElement('button');
       no.type = 'button';
@@ -545,28 +622,24 @@ if (typeof document !== 'undefined') {
         .then(function (response) {
           if (response.status === 204) return null;
           if (response.status === 404) {
-            setBandText(handle, host + ' was already gone.', 'done');
+            setBandMessage(handle, host + ' was already gone.', 'done', 'outcome');
             return null;
           }
           throw new Error('the gateway answered ' + response.status);
         })
         .then(function () {
-          if (row) row.classList.add('route-body--leaving');
-          setBandText(handle, 'Removed ' + host + '.', 'done');
+          // The route is gone: the row leaves, and the band under it says so.
+          if (row && row.parentNode) row.parentNode.removeChild(row);
+          setBandMessage(handle, 'Removed ' + host + '.', 'done', 'outcome');
           setBandActions(handle, []);
-          setTimeout(function () {
-            handle.close();
-            if (row && row.parentNode) row.parentNode.removeChild(row);
-            refreshList().then(function () {
-              var first = listEl.querySelector('.route-body .copy') || listEl.querySelector('.copy');
-              if (first) first.focus();
-            });
-          }, REMOVED_TIMEOUT_MS);
+          // The focus must not fall to the body with the row.
+          var next = listEl.querySelector('.route-body .copy') || listEl.querySelector('.copy');
+          if (next) next.focus();
         })
         .catch(function (error) {
           yes.disabled = false;
           no.disabled = false;
-          setBandText(handle, 'Could not remove ' + host + '. ' + error.message + '.', 'error');
+          setBandMessage(handle, 'Could not remove ' + host + '. ' + error.message + '.', 'error', 'failure');
         });
     }
 

@@ -85,6 +85,7 @@ that matter.
 | Open a route | the host name is a link, and the copy button puts the long URL on the clipboard |
 | Clear a route | the bin button asks first in a band under the route; `Escape` cancels it and the route is left alone. The band then says what happened |
 | Everything is said in the row it is about | the confirmation, a failed removal and "Copied …" all appear in that route's own band, where the eye already is — not in a line at the top of the page |
+| Outcomes fade, questions do not | "Copied …" and "Removed …" fade out on their own after four seconds; the removal confirmation and a failure stay until the user acts — a question waiting for an answer, and a message that says what to do instead, must not vanish |
 | Nothing running | the empty state names the one command that publishes something, with a copy button |
 | Freshness | the masthead shows when the data was last checked |
 

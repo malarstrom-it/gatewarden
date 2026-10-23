@@ -51,7 +51,8 @@
     --color-down: #64748b;
     --color-danger: #b03a2a;
     --color-scrollbar: #c7cfdb;
-    --animate-route-flash: route-flash 900ms ease-out;
+    --ease-curve: cubic-bezier(0.16, 1, 0.3, 1);
+    --animate-route-flash: route-flash 900ms var(--ease-curve);
   }
 }
 @layer base {
@@ -586,6 +587,26 @@
     background-color: transparent;
   }
 }
+@keyframes band-fade {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+@keyframes band-collapse {
+  0%, 45% {
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+  }
+  100% {
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+}
 @layer components {
   .card {
     border-radius: var(--radius-xl);
@@ -810,13 +831,11 @@
   .route-body--changed td {
     animation: var(--animate-route-flash);
   }
-  .route-body--leaving td {
-    opacity: 0%;
-    transition-property: opacity;
-    transition-timing-function: var(--tw-ease, var(--default-transition-timing-function));
-    transition-duration: var(--tw-duration, var(--default-transition-duration));
-    --tw-duration: 200ms;
-    transition-duration: 200ms;
+  .route-band--fading > td {
+    animation: band-collapse 240ms var(--ease-curve) forwards;
+  }
+  .route-band--fading .route-band__box {
+    animation: band-fade 240ms var(--ease-curve) forwards;
   }
   .route-band td {
     background-color: color-mix(in srgb, #eef1f6 70%, transparent);

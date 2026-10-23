@@ -35,6 +35,7 @@ interface PageApi {
   sameIds(left: string[], right: string[]): boolean;
   createRefreshPlan(): RefreshPlan;
   stateAnnouncement(branch: string, state: 'up' | 'down'): string;
+  bandLifetime(kind: 'outcome' | 'question' | 'failure'): 'fade' | 'stay';
 }
 
 /** Load the shipped script and take the rules out of it. */
@@ -117,4 +118,11 @@ test('the live region is told what changed', () => {
   const { stateAnnouncement } = loadPageApi();
   assert.equal(stateAnnouncement('feat/index-polish', 'down'), 'feat/index-polish is now down');
   assert.equal(stateAnnouncement('main', 'up'), 'main is now up');
+});
+
+test('an outcome fades, a question and a failure stay', () => {
+  const { bandLifetime } = loadPageApi();
+  assert.equal(bandLifetime('outcome'), 'fade');
+  assert.equal(bandLifetime('question'), 'stay');
+  assert.equal(bandLifetime('failure'), 'stay');
 });
