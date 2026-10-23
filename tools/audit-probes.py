@@ -33,15 +33,15 @@ with sync_playwright() as p:
 
     print("--- does a poll that re-renders the list destroy a pending confirmation?")
     page.locator("button.remove").first.click()
-    page.wait_for_selector(".route-confirm", timeout=5000)
-    print("  confirm rows before the poll:", page.locator(".route-confirm").count())
+    page.wait_for_selector(".route-band", timeout=5000)
+    print("  confirm rows before the poll:", page.locator(".route-band").count())
     # Exactly what the page's own poll does when the set of routes changes.
     page.evaluate(
         "async () => { const html = await fetch('/api/routes', {cache: 'no-store'}).then(r => r.text());"
         " document.getElementById('routes').innerHTML = html; }"
     )
     page.wait_for_timeout(300)
-    print("  confirm rows after the poll:", page.locator(".route-confirm").count())
+    print("  confirm rows after the poll:", page.locator(".route-band").count())
     print("  focus after the poll:", page.evaluate("() => document.activeElement.tagName + ' ' + (document.activeElement.getAttribute('aria-label') || document.activeElement.textContent || '')").strip())
 
     print("--- what a screen reader is told when a route changes state")

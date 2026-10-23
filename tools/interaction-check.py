@@ -75,22 +75,26 @@ with sync_playwright() as p:
 
     # --- the removal asks first --------------------------------------------
     row.locator("button.remove").click()
-    page.wait_for_selector(".route-confirm", timeout=5000)
-    check(page.locator(".route-confirm").count() == 1, "the removal asks before it acts")
+    page.wait_for_selector(".route-band", timeout=5000)
+    check(page.locator(".route-band").count() == 1, "the removal asks before it acts")
     page.screenshot(path=str(OUT / "index-confirm.png"))
 
-    page.locator(".route-confirm .confirm-no").click()
+    page.locator(".route-band .confirm-no").click()
     check(page.locator('tr[data-registration-id="demo/polltest"]').count() == 1, "keeping the route leaves it alone")
 
     page.locator('tr[data-registration-id="demo/polltest"] button.remove').click()
-    page.wait_for_selector(".route-confirm .confirm-yes", timeout=5000)
-    page.locator(".route-confirm .confirm-yes").click()
+    page.wait_for_selector(".route-band .confirm-yes", timeout=5000)
+    page.locator(".route-band .confirm-yes").click()
+    # The removal is said in the route's own band, under the row.
+    page.wait_for_function(
+        "() => [...document.querySelectorAll('.route-band__text')].some(n => n.textContent.includes('Removed'))",
+        timeout=15000,
+    )
+    check(True, "the removal says what happened, in the route's band")
     page.wait_for_function(
         "() => !document.querySelector('[data-registration-id=\\'demo/polltest\\']')", timeout=15000
     )
     check(True, "the row is gone after the removal")
-    message = page.locator("#message").inner_text()
-    check("Removed" in message, f"the removal says what happened ({message!r})")
     page.screenshot(path=str(OUT / "index-removed.png"))
 
     # --- the keyboard ------------------------------------------------------

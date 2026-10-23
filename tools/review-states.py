@@ -42,17 +42,17 @@ with sync_playwright() as p:
 
     # --- the confirmation --------------------------------------------------
     page.locator("tr.route-body >> nth=0 >> button.remove").click()
-    page.wait_for_selector(".route-confirm", timeout=5000)
+    page.wait_for_selector(".route-band", timeout=5000)
     page.screenshot(path=str(OUT / "state-confirm.png"))
-    page.locator(".route-confirm .confirm-no").click()
+    page.locator(".route-band .confirm-no").click()
 
     # --- a failed removal --------------------------------------------------
     page.route("**/api/registrations/**", lambda route: route.fulfill(status=500, body="boom"))
     page.locator("tr.route-body >> nth=0 >> button.remove").click()
-    page.wait_for_selector(".route-confirm .confirm-yes", timeout=5000)
-    page.locator(".route-confirm .confirm-yes").click()
+    page.wait_for_selector(".route-band .confirm-yes", timeout=5000)
+    page.locator(".route-band .confirm-yes").click()
     page.wait_for_timeout(800)
-    print("row error:", repr(page.locator(".route-error").inner_text()))
+    print("row error:", repr(page.locator(".route-band__text").inner_text()))
     print("page message:", repr(page.locator("#message").inner_text()))
     page.screenshot(path=str(OUT / "state-error.png"))
     page.unroute("**/api/registrations/**")

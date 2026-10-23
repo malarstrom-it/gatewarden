@@ -176,8 +176,8 @@ written.
   The last column holds the two icon buttons.
 - Below 768px the table stops being a table: each route becomes a stacked
   block — the branch name with its badge on the first line, the host name on
-  the second, the two actions on the third. Port and age are hidden, they
-  are the two facts the client can live without on a phone.
+  the second, the age and the two actions on the third. The port is hidden,
+  it is the one fact the client can live without on a phone.
 
 ## Elevation & Depth
 
@@ -221,10 +221,20 @@ is muted, because it is not going to open.
 **The route edge** — a 2px left border on the first cell of a route: solid
 `up` when the route answers, dashed `down` when it does not.
 
+**The band** — `.route-band`, a row under a route that carries everything
+said about that route: the confirmation, a failed removal, "Copied …". It
+continues the row's edge, so it reads as part of the row it belongs to, and
+its box is a `role="status"` live region. While a band is open the page
+does not rebuild itself under the user's hands: a background refresh is
+held until the band closes.
+
 ## Do's and Don'ts
 
 **Do** keep the state legible by more than colour: the badge says the word,
 the edge says the shape, and both change together.
+
+**Do** say things about a route in that route's own band. A message at the
+top of the page is a message the user cannot see.
 
 **Do** keep the numbers that change in place on tabular figures.
 

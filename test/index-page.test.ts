@@ -76,7 +76,7 @@ test('every route can be copied and removed', async () => {
     store.upsert({ project: 'alpha', branch: 'feature/login', devPort: 5173, zone: 'home.malarstrom.com' });
     const html = await (await fetch(`${url}/`)).text();
     assert.match(html, /class="[^"]*\bcopy\b[^"]*" data-copy="https:\/\/feature-login\.alpha\.home\.malarstrom\.com"/);
-    assert.match(html, /aria-label="Copy the address of feature-login\.alpha\.home\.malarstrom\.com"/);
+    assert.match(html, /aria-label="Copy address"/);
     assert.match(html, /class="[^"]*\bremove\b[^"]*" data-registration-id="alpha\/feature-login"/);
   });
 });

@@ -44,10 +44,10 @@ with sync_playwright() as p:
 
     print("--- Escape while a removal is pending")
     page.locator("button.remove").first.click()
-    page.wait_for_selector(".route-confirm", timeout=5000)
+    page.wait_for_selector(".route-band", timeout=5000)
     page.keyboard.press("Escape")
     page.wait_for_timeout(200)
-    print("  confirm row still there:", page.locator(".route-confirm").count())
+    print("  confirm row still there:", page.locator(".route-band").count())
     print("  focus after Escape:", page.evaluate("() => document.activeElement.tagName + ' ' + (document.activeElement.textContent || '')"))
 
     browser.close()

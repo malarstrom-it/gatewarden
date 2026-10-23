@@ -235,6 +235,9 @@
   .order-4 {
     order: 4;
   }
+  .order-5 {
+    order: 5;
+  }
   .container {
     width: 100%;
     @media (width >= 40rem) {
@@ -525,6 +528,9 @@
     }
   }
   @media (width >= 48rem) {
+    .md\:ml-0 {
+      margin-left: 0px;
+    }
     .md\:table {
       display: table;
     }
@@ -543,8 +549,8 @@
     .md\:w-auto {
       width: auto;
     }
-    .md\:min-w-32 {
-      min-width: calc(var(--spacing) * 32);
+    .md\:max-w-80 {
+      max-width: calc(var(--spacing) * 80);
     }
     .md\:flex-none {
       flex: none;
@@ -796,10 +802,7 @@
   .route-body[data-state='down'] .route-edge {
     --tw-border-style: dashed;
     border-style: dashed;
-    border-color: color-mix(in srgb, #64748b 60%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      border-color: color-mix(in oklab, var(--color-down) 60%, transparent);
-    }
+    border-color: var(--color-down);
   }
   .route-body[data-state='down'] .route-address {
     color: var(--color-muted-foreground);
@@ -815,24 +818,51 @@
     --tw-duration: 200ms;
     transition-duration: 200ms;
   }
-  .route-confirm-row td {
-    background-color: var(--color-muted);
+  .route-band td {
+    background-color: color-mix(in srgb, #eef1f6 70%, transparent);
+    @supports (color: color-mix(in lab, red, red)) {
+      background-color: color-mix(in oklab, var(--color-muted) 70%, transparent);
+    }
+    padding-inline: calc(var(--spacing) * 6);
+    padding-block: calc(var(--spacing) * 3);
   }
-  .route-confirm {
+  .route-band[data-state='up'] td {
+    border-left-style: var(--tw-border-style);
+    border-left-width: 2px;
+    border-color: var(--color-up);
+  }
+  .route-band[data-state='down'] td {
+    border-left-style: var(--tw-border-style);
+    border-left-width: 2px;
+    --tw-border-style: dashed;
+    border-style: dashed;
+    border-color: var(--color-down);
+  }
+  .route-band__box {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    justify-content: flex-end;
     column-gap: calc(var(--spacing) * 4);
     row-gap: calc(var(--spacing) * 2);
     font-size: var(--text-sm);
     line-height: var(--tw-leading, var(--text-sm--line-height));
   }
-  .route-confirm-text {
+  .route-band__text {
     margin-right: auto;
     color: var(--color-muted-foreground);
   }
-  .route-confirm .btn {
+  .route-band__text[data-tone='error'] {
+    color: var(--color-danger);
+  }
+  .route-band__text[data-tone='done'] {
+    color: var(--color-up);
+  }
+  .route-band__actions {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--spacing) * 2);
+  }
+  .route-band .btn {
     height: calc(var(--spacing) * 8);
     padding-inline: calc(var(--spacing) * 3);
     font-size: var(--text-xs);
@@ -867,14 +897,6 @@
         color: var(--color-foreground);
       }
     }
-  }
-  .route-error {
-    width: 100%;
-    text-align: right;
-    font-size: var(--text-xs);
-    line-height: var(--tw-leading, var(--text-xs--line-height));
-    overflow-wrap: break-word;
-    color: var(--color-danger);
   }
   .copy.is-done {
     color: var(--color-up);

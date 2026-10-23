@@ -184,7 +184,7 @@
   }
 
   .route-body[data-state='down'] .route-edge {
-    @apply border-dashed border-down/60;
+    @apply border-dashed border-down;
   }
 }
 
@@ -206,19 +206,42 @@
     @apply opacity-0 transition-opacity duration-200;
   }
 
-  .route-confirm-row td {
-    @apply bg-muted;
+  /* The band under a route: where everything that is said about that route
+     is said — a confirmation, a failure, a "copied". It continues the row's
+     edge, so it reads as part of the row it belongs to. */
+  .route-band td {
+    @apply bg-muted/70 px-6 py-3;
   }
 
-  .route-confirm {
-    @apply flex flex-wrap items-center justify-end gap-x-4 gap-y-2 text-sm;
+  .route-band[data-state='up'] td {
+    @apply border-l-2 border-up;
   }
 
-  .route-confirm-text {
+  .route-band[data-state='down'] td {
+    @apply border-l-2 border-dashed border-down;
+  }
+
+  .route-band__box {
+    @apply flex flex-wrap items-center gap-x-4 gap-y-2 text-sm;
+  }
+
+  .route-band__text {
     @apply mr-auto text-muted-foreground;
   }
 
-  .route-confirm .btn {
+  .route-band__text[data-tone='error'] {
+    @apply text-danger;
+  }
+
+  .route-band__text[data-tone='done'] {
+    @apply text-up;
+  }
+
+  .route-band__actions {
+    @apply flex items-center gap-2;
+  }
+
+  .route-band .btn {
     @apply h-8 px-3 text-xs;
   }
 
@@ -228,10 +251,6 @@
 
   .confirm-no {
     @apply text-muted-foreground hover:text-foreground;
-  }
-
-  .route-error {
-    @apply w-full text-right text-xs break-words text-danger;
   }
 
   /* The copy that worked says so in the colour of the good news. */

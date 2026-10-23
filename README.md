@@ -80,15 +80,18 @@ that matter.
 | Behaviour | How it works |
 | --- | --- |
 | Live without a reload | the page polls `GET /api/registrations` every 4 s and patches the rows that changed in place; no flashing, no scroll jumps, and the focus stays on the button you are about to click |
-| Honest state | `Up` / `Down` comes from the gateway's own probe of the dev server's port; a filled badge against an outlined one, and a solid edge against a broken one, so the two are told apart by shape and not only by colour |
+| The page does not move under your hands | while a band is open under a route — a confirmation, a failure, a "copied" — a background refresh is **held** until the band closes, and the focus is never dropped on the document body |
+| Honest state | `Up` / `Down` comes from the gateway's own probe of the dev server's port; a filled badge against an outlined one, and a solid edge against a broken one, so the two are told apart by shape and not only by colour. A change is announced once, in a live region |
 | Open a route | the host name is a link, and the copy button puts the long URL on the clipboard |
-| Clear a route | the bin button asks first on a row of its own, then removes the route and says what happened |
+| Clear a route | the bin button asks first in a band under the route; `Escape` cancels it and the route is left alone. The band then says what happened |
+| Everything is said in the row it is about | the confirmation, a failed removal and "Copied …" all appear in that route's own band, where the eye already is — not in a line at the top of the page |
 | Nothing running | the empty state names the one command that publishes something, with a copy button |
 | Freshness | the masthead shows when the data was last checked |
 
-The page is responsive down to a phone (below 768 px each route becomes a stacked block), has a
-visible keyboard focus ring, keeps its text contrast at 4.5:1 or better, and drops its motion when
-the reader asks for reduced motion.
+The page is responsive down to a phone (below 768 px each route becomes a stacked block —
+branch and state, then the host name, then the age and the two actions), has a
+visible keyboard focus ring, keeps its text contrast at 4.5:1 or better, and
+drops its motion when the reader asks for reduced motion.
 
 ![The index page on a phone](artifacts/screenshots/index-phone.png)
 

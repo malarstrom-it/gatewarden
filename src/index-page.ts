@@ -146,18 +146,18 @@ function renderRoute(route: RouteView, now: number): string {
 
   return [
     `        <tr class="route-body flex flex-wrap md:table-row" data-registration-id="${escapeHtml(registration.id)}" data-state="${route.state}">`,
-    `          <td class="route-edge order-1 min-w-0 flex-1 md:table-cell md:flex-none md:min-w-32">`,
+    `          <td class="route-edge order-1 min-w-0 flex-1 md:table-cell md:flex-none md:max-w-80">`,
     `            <div class="font-medium break-words">${escapeHtml(registration.branchSlug)}</div>`,
     label,
     '          </td>',
     `          <td class="route-address-cell order-3 w-full md:table-cell md:w-auto"><a class="route-address link break-words" href="${escapeHtml(url)}" target="_blank" rel="noopener">${breakableFqdn(registration.fqdn)}</a></td>`,
-    `          <td class="route-inside hidden whitespace-nowrap tabular-nums text-muted-foreground md:table-cell">127.0.0.1:${registration.devPort}</td>`,
-    `          <td class="route-age hidden whitespace-nowrap tabular-nums text-muted-foreground lg:table-cell">${escapeHtml(age)}</td>`,
+    `          <td class="route-inside order-4 hidden whitespace-nowrap tabular-nums text-muted-foreground md:table-cell">127.0.0.1:${registration.devPort}</td>`,
+    `          <td class="route-age order-4 whitespace-nowrap tabular-nums text-muted-foreground md:table-cell">${escapeHtml(age)}</td>`,
     `          <td class="order-2 md:table-cell"><span class="route-state badge">${stateWord(route.state)}</span></td>`,
-    '          <td class="order-4 w-full text-right md:table-cell md:w-auto">',
+    '          <td class="order-5 ml-auto text-right md:table-cell md:ml-0 md:w-auto">',
     '            <div class="route-actions flex items-center justify-end gap-1">',
-    `              <button type="button" class="btn btn-ghost btn-icon copy" data-copy="${escapeHtml(url)}" data-icon="1" aria-label="Copy the address of ${escapeHtml(registration.fqdn)}" title="Copy address">${copyIcon()}</button>`,
-    `              <button type="button" class="btn btn-ghost btn-icon remove text-subtle-foreground hover:text-danger" data-registration-id="${escapeHtml(registration.id)}" data-project="${escapeHtml(registration.projectSlug)}" data-branch="${escapeHtml(registration.branchSlug)}" data-host="${escapeHtml(registration.fqdn)}" aria-label="Remove ${escapeHtml(registration.fqdn)}" title="Remove">${trashIcon()}</button>`,
+    `              <button type="button" class="btn btn-ghost btn-icon copy" data-copy="${escapeHtml(url)}" data-icon="1" aria-label="Copy address" title="Copy address">${copyIcon()}</button>`,
+    `              <button type="button" class="btn btn-ghost btn-icon remove text-subtle-foreground hover:text-danger" data-registration-id="${escapeHtml(registration.id)}" data-project="${escapeHtml(registration.projectSlug)}" data-branch="${escapeHtml(registration.branchSlug)}" data-host="${escapeHtml(registration.fqdn)}" aria-label="Remove" title="Remove">${trashIcon()}</button>`,
     '            </div>',
     '          </td>',
     '        </tr>',
@@ -256,8 +256,10 @@ export function renderIndex(routes: RouteView[], config: Config, now: number = D
         </div>
         <div class="flex flex-col gap-2 sm:items-end">
           <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm sm:justify-end">
-            <span class="head__count text-muted-foreground" id="route-count">${count} ${plural(count, 'route', 'routes')}</span>
-            <span class="badge ${answering > 0 ? 'badge-up' : 'badge-down'}" id="route-answering" title="${answering} of ${count} ${plural(count, 'route', 'routes')} ${plural(count, 'answers', 'answer')}">${answering} up</span>
+            <span class="head__counts flex items-center gap-x-5" aria-live="polite" aria-atomic="true">
+              <span class="head__count text-muted-foreground" id="route-count">${count} ${plural(count, 'route', 'routes')}</span>
+              <span class="badge ${answering > 0 ? 'badge-up' : 'badge-down'}" id="route-answering" title="${answering} of ${count} ${plural(count, 'route', 'routes')} ${plural(count, 'answers', 'answer')}">${answering} up</span>
+            </span>
             <span class="head__checked text-xs text-subtle-foreground">checked <time class="tabular-nums" id="checked-at">${formatClock(now)}</time></span>
           </div>
           <p class="head__facts flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-subtle-foreground sm:justify-end">
@@ -269,6 +271,7 @@ export function renderIndex(routes: RouteView[], config: Config, now: number = D
       </header>
 
       <p class="message min-h-6 pt-4 text-sm text-muted-foreground" id="message" role="status" aria-live="polite"></p>
+      <p class="sr-only" id="announcer" role="status" aria-live="polite"></p>
 
       <main class="routes mt-6 space-y-6" id="routes" aria-label="Published routes">
 ${renderRoutes(routes, config, now)}
