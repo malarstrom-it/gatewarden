@@ -23,6 +23,8 @@ user laptop ──https://<branch>.<project>.home.malarstrom.com──▶ Traefi
      ├─ registry :45002  ── /traefik  (dynamic configuration document)
      │                ── /         (HTML index: what is running)
      │                ── /api/registrations
+     │                ── /api/routes  (the route list as an HTML fragment)
+     │                ── /index.css, /index.js, /fonts/…  (the page's own assets)
      │                ── DELETE /api/registrations/<project>/<branch>
      │                ── /healthz
      └─ relay    :45001  ── dispatches on the X-Dev-Target header to 127.0.0.1:<dev port>
@@ -58,6 +60,38 @@ Other commands:
 | `traefik-dev config [--write]` | show the configuration and every key (`--write` writes the file) |
 
 Global options: `--config <path>`, `--state-dir <path>`, `--json`.
+
+## The index page
+
+`https://index.home.malarstrom.com` is a live console of the dev servers agents publish through
+the gateway. It is server rendered by the registry, has no build step, no framework and no runtime
+dependency, and asks no third party for anything: the two typefaces are **self hosted** from
+`src/assets/fonts/` (Familjen Grotesk and Azeret Mono, both under the SIL Open Font License, the
+licences next to the files). A CDN font request would leak every visit on this private network.
+
+![The index page on a desktop](artifacts/screenshots/index-desktop.png)
+
+The page is grouped by project, because a project is the unit the proxy certificate is issued for;
+the certificate that covers the project's routes is named in the group header. Every route is one
+line: the branch, the public host name, the port the dev server listens on inside the container,
+how long ago it was registered, whether anything answers there, and the two actions that matter.
+
+| Behaviour | How it works |
+| --- | --- |
+| Live without a reload | the page polls `GET /api/registrations` every 4 s and patches the rows that changed in place; no flashing, no scroll jumps, and the focus stays on the button you are about to click |
+| Honest state | `answering` / `not answering` comes from the gateway's own probe of the dev server's port; a filled green lens against a hollow amber ring, so the two are told apart by shape and not only by colour |
+| Open a route | the host name is a link, and **Copy address** puts the long URL on the clipboard |
+| Clear a route | **Remove** asks first on a line of its own, then removes the route and says what happened |
+| Nothing running | the empty state names the one command that publishes something, with a copy button |
+| Freshness | the masthead shows when the data was last checked |
+
+The page is responsive down to a phone, has a visible keyboard focus ring, keeps its text
+contrast at 4.9:1 or better, and drops its motion when the reader asks for reduced motion.
+
+![The index page on a phone](artifacts/screenshots/index-phone.png)
+
+`tools/screenshot.py` and `tools/interaction-check.py` drive the page with Playwright; they are
+review tools, not part of the gateway, and the daemon never loads them.
 
 ## Removing a registration by hand
 
@@ -98,7 +132,7 @@ next to it is already unauthenticated. A `secret` in `~/.traefik-dev/config.json
 | URL | What it shows |
 | --- | --- |
 | `https://<branch>.<project>.home.malarstrom.com` | the registered dev server |
-| `https://index.home.malarstrom.com` | the index: every registration, its URL, port and up/down state |
+| `https://index.home.malarstrom.com` | the index: every registration, its URL, port and whether it answers |
 
 ## The `traefik-dev-gateway` pi skill
 
@@ -205,5 +239,6 @@ npm run typecheck # tsc --noEmit
 Covered: slug and FQDN derivation, the registration lifecycle and its atomicity, idempotent
 re-registration, the rendered document parsing back to the same object, relay dispatch, `404`/`403`/
 `502` paths, `X-Forwarded-*` passthrough, streaming and SSE, the WebSocket upgrade, the registry
-endpoints, the CLI, `ensureDaemon()` starting the daemon, the daemon restarting after a kill and
-the daemon respawning a dead worker.
+endpoints, the index page (empty state, status indicator, copy affordance, registration ids, the
+assets it serves and that it asks nothing from a third party), the CLI, `ensureDaemon()` starting
+the daemon, the daemon restarting after a kill and the daemon respawning a dead worker.

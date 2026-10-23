@@ -1,5 +1,6 @@
 /** The registry: serves the Traefik dynamic configuration document and the index page. */
 
+import fs from 'node:fs';
 import http from 'node:http';
 import type { Config, Registration } from './types.ts';
 import { RegistrationStore } from './state.ts';
@@ -7,6 +8,7 @@ import { REGISTRY_SECRET_HEADER, renderDocument } from './document.ts';
 import { slugify } from './util/slug.ts';
 import { isPortListening } from './util/net.ts';
 import { log } from './log.ts';
+import { renderIndex, renderRoutes, type RouteView, type RouteState } from './index-page.ts';
 
 const SCOPE = 'registry';
 
@@ -22,104 +24,41 @@ export const UI_HEADER = 'X-Gateway-UI';
 /** Value the index page sends in {@link UI_HEADER}. */
 export const UI_HEADER_VALUE = '1';
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
+/**
+ * Static assets of the index page.
+ *
+ * They live in the repository next to the code and are served by the registry
+ * itself, so the page never asks a CDN for anything: the gateway runs on a
+ * private network and a font request to a third party would leak every visit.
+ */
+const ASSETS = new Map<string, { file: URL; type: string }>([
+  ['/index.css', { file: new URL('./assets/index.css', import.meta.url), type: 'text/css; charset=utf-8' }],
+  ['/index.js', { file: new URL('./assets/index.js', import.meta.url), type: 'text/javascript; charset=utf-8' }],
+]);
 
-/** Render the "what is running" page. */
-export function renderIndex(registrations: Registration[], up: Map<string, boolean>, config: Config): string {
-  const rows = registrations
-    .map((registration) => {
-      const state = up.get(registration.id) ? 'up' : 'down';
-      const label = registration.label ? ` <span class="label">${escapeHtml(registration.label)}</span>` : '';
-      return [
-        '        <tr>',
-        `          <td>${escapeHtml(registration.projectSlug)}</td>`,
-        `          <td>${escapeHtml(registration.branchSlug)}${label}</td>`,
-        `          <td><a href="https://${escapeHtml(registration.fqdn)}">${escapeHtml(registration.fqdn)}</a></td>`,
-        `          <td>${registration.devPort}</td>`,
-        `          <td class="${state}">${state}</td>`,
-        `          <td>${escapeHtml(registration.updatedAt)}</td>`,
-        `          <td><button type="button" class="remove" data-registration-id="${escapeHtml(registration.id)}" data-project="${escapeHtml(registration.projectSlug)}" data-branch="${escapeHtml(registration.branchSlug)}">Remove</button></td>`,
-        '        </tr>',
-      ].join('\n');
-    })
-    .join('\n');
+const FONT_DIR = new URL('./assets/fonts/', import.meta.url);
+const FONT_TYPE = 'font/woff2';
 
-  return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>Traefik dev gateway</title>
-    <style>
-      body { font-family: system-ui, sans-serif; margin: 2rem; color: #111; }
-      h1 { font-size: 1.25rem; }
-      table { border-collapse: collapse; margin-top: 1rem; }
-      th, td { border-bottom: 1px solid #ddd; padding: 0.4rem 0.8rem; text-align: left; }
-      th { font-weight: 600; }
-      td.up { color: #0a7a28; }
-      td.down { color: #a02020; }
-      button.remove {
-        font: inherit; font-size: 0.85em; cursor: pointer; color: #a02020;
-        background: #fff; border: 1px solid #d8b4b4; border-radius: 3px; padding: 0.15rem 0.5rem;
-      }
-      button.remove:hover { background: #fdf2f2; }
-      button.remove:disabled { color: #999; border-color: #ddd; cursor: default; }
-      .notice { color: #a02020; font-size: 0.85em; margin: 0.5rem 0 0; }
-      .label { color: #666; font-size: 0.85em; }
-      .meta { color: #666; font-size: 0.85em; margin-top: 1rem; }
-    </style>
-  </head>
-  <body>
-    <h1>Dev servers in this container (${registrations.length})</h1>
-    <table>
-      <thead>
-        <tr><th>Project</th><th>Branch</th><th>URL</th><th>Port</th><th>State</th><th>Last change</th><th></th></tr>
-      </thead>
-      <tbody>
-${rows || '        <tr><td colspan="7">nothing registered</td></tr>'}
-      </tbody>
-    </table>
-    <p class="notice" id="notice" hidden></p>
-    <p class="meta">zone: ${escapeHtml(config.zone)} &middot; relay: ${escapeHtml(config.advertisedHost || config.advertisedIp)}:${config.relayPort} &middot; registry port: ${config.registryPort}</p>
-    <script>
-      // Manual removal: ask, DELETE the registration, reload.
-      // The X-Gateway-UI header is a CSRF guard -- it forces a CORS preflight
-      // for any cross-site caller, and this server sends no CORS headers.
-      (function () {
-        var notice = document.getElementById('notice');
-        function say(message) {
-          notice.textContent = message;
-          notice.hidden = false;
-        }
-        document.querySelectorAll('button.remove').forEach(function (button) {
-          button.addEventListener('click', function () {
-            var project = button.getAttribute('data-project');
-            var branch = button.getAttribute('data-branch');
-            if (!confirm('Remove the registration ' + project + '/' + branch + '?')) return;
-            button.disabled = true;
-            fetch('/api/registrations/' + encodeURIComponent(project) + '/' + encodeURIComponent(branch), {
-              method: 'DELETE',
-              headers: { 'X-Gateway-UI': '1' },
-            }).then(function (response) {
-              if (!response.ok) throw new Error('the gateway answered ' + response.status);
-              window.location.reload();
-            }).catch(function (error) {
-              button.disabled = false;
-              say('Could not remove ' + project + '/' + branch + ': ' + error.message);
-            });
-          });
-        });
-      })();
-    </script>
-  </body>
-</html>
-`;
+const assetCache = new Map<string, { mtimeMs: number; body: Buffer }>();
+
+/**
+ * Read an asset from disk.
+ *
+ * The body is cached, but only for as long as the file on disk is unchanged:
+ * the stylesheet and the script are edited in place during development and a
+ * stale copy would be worse than a second read.
+ */
+function readAsset(url: URL): Buffer | null {
+  try {
+    const stat = fs.statSync(url);
+    const cached = assetCache.get(url.href);
+    if (cached && cached.mtimeMs === stat.mtimeMs) return cached.body;
+    const body = fs.readFileSync(url);
+    assetCache.set(url.href, { mtimeMs: stat.mtimeMs, body });
+    return body;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -212,6 +151,14 @@ export function createRegistryServer(store: RegistrationStore, config: Config): 
     return value;
   }
 
+  /** Probe every registration and pair it with the state the probe found. */
+  async function probeRoutes(registrations: Registration[]): Promise<RouteView[]> {
+    const states = await Promise.all(
+      registrations.map(async (registration): Promise<RouteState> => ((await probe(registration)) ? 'up' : 'down')),
+    );
+    return registrations.map((registration, index) => ({ registration, state: states[index] }));
+  }
+
   const server = http.createServer((req, res) => {
     void (async () => {
       const url = new URL(req.url ?? '/', 'http://localhost');
@@ -250,17 +197,64 @@ export function createRegistryServer(store: RegistrationStore, config: Config): 
       }
 
       if (url.pathname === '/api/registrations') {
-        const body = JSON.stringify({ registrations }, null, 2) + '\n';
-        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
+        const routes = await probeRoutes(registrations);
+        const body =
+          JSON.stringify(
+            {
+              registrations: routes.map((route) => ({ ...route.registration, state: route.state })),
+              checkedAt: new Date().toISOString(),
+            },
+            null,
+            2,
+          ) + '\n';
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
         res.end(body);
         return;
       }
 
+      if (url.pathname === '/api/routes') {
+        const routes = await probeRoutes(registrations);
+        const body = renderRoutes(routes, config);
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+        res.end(body);
+        return;
+      }
+
+      if (ASSETS.has(url.pathname)) {
+        const asset = ASSETS.get(url.pathname)!;
+        const body = readAsset(asset.file);
+        if (!body) {
+          res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+          res.end('not found\n');
+          return;
+        }
+        res.writeHead(200, { 'content-type': asset.type, 'cache-control': 'no-cache' });
+        res.end(req.method === 'HEAD' ? undefined : body);
+        return;
+      }
+
+      if (url.pathname.startsWith('/fonts/')) {
+        const name = url.pathname.slice('/fonts/'.length);
+        if (!/^[a-z0-9-]+\.woff2$/.test(name)) {
+          res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+          res.end('not found\n');
+          return;
+        }
+        const body = readAsset(new URL(name, FONT_DIR));
+        if (!body) {
+          res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+          res.end('not found\n');
+          return;
+        }
+        res.writeHead(200, { 'content-type': FONT_TYPE, 'cache-control': 'max-age=604800' });
+        res.end(req.method === 'HEAD' ? undefined : body);
+        return;
+      }
+
       if (url.pathname === '/' || url.pathname === '/index.html') {
-        const up = new Map<string, boolean>();
-        await Promise.all(registrations.map(async (r) => up.set(r.id, await probe(r))));
-        const body = renderIndex(registrations, up, config);
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        const routes = await probeRoutes(registrations);
+        const body = renderIndex(routes, config);
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
         res.end(body);
         return;
       }
