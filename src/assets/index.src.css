@@ -1,0 +1,289 @@
+/*
+ * The index page of the dev gateway — source stylesheet.
+ *
+ * Tailwind (v4) is compiled from this file into `index.css`, which is the
+ * file the registry serves. The compiled file is committed, so the daemon
+ * still serves one static stylesheet and the page still asks no third party
+ * for anything.
+ *
+ *   npx @tailwindcss/cli -i src/assets/index.src.css -o src/assets/index.css
+ *
+ * The tokens below are the shadcn token names: the same handful of roles a
+ * shadcn/ui project uses, filled with the Daylight palette.
+ */
+
+@import 'tailwindcss';
+
+@source '../../src';
+
+/* The one family of the page, self-hosted. Latin and Latin Extended. */
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 300 800;
+  font-display: swap;
+  src: url('/fonts/hanken-grotesk-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Hanken Grotesk';
+  font-style: normal;
+  font-weight: 300 800;
+  font-display: swap;
+  src: url('/fonts/hanken-grotesk-latin-ext.woff2') format('woff2');
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+    U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020,
+    U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@theme {
+  --font-sans: 'Hanken Grotesk', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  /* The shadcn roles, filled with the Daylight palette. */
+  --color-background: #f6f8fb;
+  --color-foreground: #14181d;
+  --color-card: #ffffff;
+  --color-card-foreground: #14181d;
+  --color-popover: #ffffff;
+  --color-primary: #2a49c9;
+  --color-primary-foreground: #ffffff;
+  --color-muted: #eef1f6;
+  --color-muted-foreground: #57616d;
+  --color-subtle-foreground: #636c77;
+  --color-border: #e2e6ee;
+  --color-input: #dde2ea;
+  --color-ring: #2a49c9;
+
+  /* The two states of a route. */
+  --color-up: #0f7a55;
+  --color-up-soft: #e7f4ee;
+  --color-up-border: #b6dfcd;
+  --color-down: #64748b;
+  --color-down-soft: #f2f4f8;
+  --color-danger: #b03a2a;
+
+  /* The browser's own surfaces: the scrollbar, the selection, the caret. */
+  --color-scrollbar: #c7cfdb;
+
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+
+  /* The one moment of motion in the page: a route that changed state. */
+  --animate-route-flash: route-flash 900ms ease-out;
+}
+
+@keyframes route-flash {
+  0% {
+    background-color: var(--color-up-soft);
+  }
+
+  100% {
+    background-color: transparent;
+  }
+}
+
+/*
+ * The components: the shadcn/ui parts, written out as plain classes so the
+ * page needs no framework. Each one is the same shape as its shadcn
+ * counterpart -- a button with variants, a badge, a card, a table.
+ */
+@layer components {
+  .card {
+    @apply rounded-xl border border-border bg-card text-card-foreground;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium whitespace-nowrap;
+  }
+
+  .badge-up {
+    @apply border-up-border bg-up-soft text-up;
+  }
+
+  .badge-down {
+    @apply border-border bg-transparent text-down;
+  }
+
+  /* The badge of a route follows the state of the row, so a route that
+     changes state changes its badge with it. */
+  .route-body[data-state='up'] .route-state {
+    @apply border-up-border bg-up-soft text-up;
+  }
+
+  .route-body[data-state='down'] .route-state {
+    @apply border-border bg-transparent text-down;
+  }
+
+  .badge-muted {
+    @apply border-border bg-muted text-muted-foreground;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150 select-none;
+    @apply focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none;
+    @apply disabled:pointer-events-none disabled:opacity-50;
+  }
+
+  .btn-ghost {
+    @apply text-muted-foreground hover:bg-muted hover:text-foreground;
+  }
+
+  .btn-outline {
+    @apply border border-border bg-card hover:bg-muted hover:text-foreground;
+  }
+
+  .btn-primary {
+    @apply bg-primary text-primary-foreground hover:bg-primary/90;
+  }
+
+  .btn-icon {
+    @apply size-8 p-0;
+  }
+
+  .link {
+    @apply text-primary underline-offset-4 hover:underline;
+  }
+
+  .table {
+    @apply w-full caption-bottom text-sm;
+  }
+
+  .table-head {
+    @apply border-b border-border;
+  }
+
+  .table-head th {
+    @apply px-6 py-3 text-left text-xs font-medium tracking-wide whitespace-nowrap text-muted-foreground uppercase;
+  }
+
+  .table-body tr {
+    @apply border-b border-border transition-colors last:border-0 hover:bg-muted/50;
+  }
+
+  .table-body td {
+    @apply px-6 py-4 align-middle;
+  }
+
+  /* The edge of a route: a solid rule when it answers, a broken one when it
+     does not. The shape carries the state as well as the colour. */
+  .route-edge {
+    @apply border-l-2;
+  }
+
+  .route-body[data-state='up'] .route-edge {
+    @apply border-up;
+  }
+
+  .route-body[data-state='down'] .route-edge {
+    @apply border-dashed border-down/60;
+  }
+}
+
+/*
+ * The parts of the page that are not a shadcn component: the route row
+ * itself, the flash when a route changes state, and the confirmation that
+ * replaces the row's actions while a removal is pending.
+ */
+@layer components {
+  .route-body[data-state='down'] .route-address {
+    @apply text-muted-foreground;
+  }
+
+  .route-body--changed td {
+    animation: var(--animate-route-flash);
+  }
+
+  .route-body--leaving td {
+    @apply opacity-0 transition-opacity duration-200;
+  }
+
+  .route-confirm-row td {
+    @apply bg-muted;
+  }
+
+  .route-confirm {
+    @apply flex flex-wrap items-center justify-end gap-x-4 gap-y-2 text-sm;
+  }
+
+  .route-confirm-text {
+    @apply mr-auto text-muted-foreground;
+  }
+
+  .route-confirm .btn {
+    @apply h-8 px-3 text-xs;
+  }
+
+  .confirm-yes {
+    @apply border border-danger/30 text-danger hover:bg-danger/10 hover:text-danger;
+  }
+
+  .confirm-no {
+    @apply text-muted-foreground hover:text-foreground;
+  }
+
+  .route-error {
+    @apply w-full text-right text-xs break-words text-danger;
+  }
+
+  /* The copy that worked says so in the colour of the good news. */
+  .copy.is-done {
+    @apply text-up;
+  }
+
+  .message[data-tone='error'] {
+    @apply text-danger;
+  }
+
+  .message[data-tone='done'] {
+    @apply text-up;
+  }
+}
+
+/*
+ * Browser surfaces that belong to no design system: they are themed from the
+ * palette here, so the page looks built rather than assembled.
+ */
+@layer base {
+  html {
+    scrollbar-color: var(--color-scrollbar) var(--color-background);
+    scrollbar-width: thin;
+  }
+
+  body {
+    caret-color: var(--color-primary);
+  }
+
+  ::selection {
+    background: rgb(42 73 201 / 0.14);
+    color: var(--color-foreground);
+  }
+
+  ::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--color-background);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-scrollbar);
+    border: 3px solid var(--color-background);
+    border-radius: 999px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

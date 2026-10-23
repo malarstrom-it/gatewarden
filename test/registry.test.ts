@@ -204,7 +204,7 @@ test('the index page has one remove control per registration', async () => {
     store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
     store.upsert({ project: 'beta', branch: 'feature/x', devPort: 5173, zone: 'home.malarstrom.com' });
     const html = await (await fetch(`${url}/`)).text();
-    const controls = html.match(/class="remove"/g) ?? [];
+    const controls = html.match(/class="[^"]*\bremove\b[^"]*"/g) ?? [];
     assert.equal(controls.length, 2);
     assert.match(html, /data-registration-id="alpha\/main"/);
     assert.match(html, /data-registration-id="beta\/feature-x"/);

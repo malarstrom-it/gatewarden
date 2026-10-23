@@ -3,14 +3,17 @@
  * through the gateway.
  *
  * The page is server rendered and self contained: one HTML document, one
- * stylesheet, one script and two self hosted fonts, all served by the
- * registry itself. No build step, no framework, no CDN request.
+ * stylesheet, one script and one self hosted font, all served by the
+ * registry itself. No build step at runtime, no framework, no CDN request.
  *
- * The subject is a routing panel. Rows are grouped by project, because a
+ * The subject is a routing table. Rows are grouped by project, because a
  * project is the unit the proxy certificate is issued for; every row is one
  * route, from the public host name to the port the dev server listens on
- * inside the container, with a lamp that shows whether anything answers
+ * inside the container, with a badge that says whether anything answers
  * there.
+ *
+ * The styles are Tailwind utilities over a shadcn token set, compiled into
+ * `assets/index.css` from `assets/index.src.css`.
  */
 
 import type { Config, Registration } from './types.ts';
@@ -101,23 +104,61 @@ function breakableFqdn(fqdn: string): string {
   return escapeHtml(fqdn).replace(/\./g, '.<wbr>');
 }
 
+/** The word that names the state, on the badge in the status column. */
+function stateWord(state: RouteState): string {
+  return state === 'up' ? 'Up' : 'Down';
+}
+
+/** The copy icon: two overlapping squares, drawn in one stroke. */
+function copyIcon(): string {
+  return [
+    '<svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"',
+    ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">',
+    '<rect width="14" height="14" x="8" y="8" rx="2"></rect>',
+    '<path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>',
+    '</svg>',
+  ].join('');
+}
+
+/** The bin icon: a lid and a body, drawn in one stroke. */
+function trashIcon(): string {
+  return [
+    '<svg class="size-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"',
+    ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">',
+    '<path d="M3 6h18"></path>',
+    '<path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>',
+    '<path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>',
+    '<path d="M10 11v6"></path>',
+    '<path d="M14 11v6"></path>',
+    '</svg>',
+  ].join('');
+}
+
 function renderRoute(route: RouteView, now: number): string {
   const registration = route.registration;
   const url = `https://${registration.fqdn}`;
-  const label = registration.label ? `<span class="route__label">${escapeHtml(registration.label)}</span>` : '';
+  const label = registration.label
+    ? `<div class="mt-0.5 text-xs text-muted-foreground">${escapeHtml(registration.label)}</div>`
+    : '';
   const age = formatAge(registration.createdAt, now);
-  const stateText = route.state === 'up' ? 'answering' : 'not answering';
 
   return [
-    `      <li class="route" data-registration-id="${escapeHtml(registration.id)}" data-state="${route.state}">`,
-    `        <span class="route__lamp" aria-hidden="true"></span>`,
-    `        <span class="route__name"><span class="route__branch">${escapeHtml(registration.branchSlug)}</span>${label}</span>`,
-    `        <span class="route__route"><a class="route__address" href="${escapeHtml(url)}" target="_blank" rel="noopener">${breakableFqdn(registration.fqdn)}</a><span class="route__inside">127.0.0.1:${registration.devPort}</span><span class="route__age">${escapeHtml(age)}</span><span class="route__state">${stateText}</span></span>`,
-    `        <span class="route__actions">`,
-    `          <button type="button" class="copy" data-copy="${escapeHtml(url)}">Copy address</button>`,
-    `          <button type="button" class="remove" data-registration-id="${escapeHtml(registration.id)}" data-project="${escapeHtml(registration.projectSlug)}" data-branch="${escapeHtml(registration.branchSlug)}" data-host="${escapeHtml(registration.fqdn)}">Remove</button>`,
-    `        </span>`,
-    '      </li>',
+    `        <tr class="route-body flex flex-wrap md:table-row" data-registration-id="${escapeHtml(registration.id)}" data-state="${route.state}">`,
+    `          <td class="route-edge order-1 min-w-0 flex-1 md:table-cell md:flex-none md:min-w-32">`,
+    `            <div class="font-medium break-words">${escapeHtml(registration.branchSlug)}</div>`,
+    label,
+    '          </td>',
+    `          <td class="route-address-cell order-3 w-full md:table-cell md:w-auto"><a class="route-address link break-words" href="${escapeHtml(url)}" target="_blank" rel="noopener">${breakableFqdn(registration.fqdn)}</a></td>`,
+    `          <td class="route-inside hidden whitespace-nowrap tabular-nums text-muted-foreground md:table-cell">127.0.0.1:${registration.devPort}</td>`,
+    `          <td class="route-age hidden whitespace-nowrap tabular-nums text-muted-foreground lg:table-cell">${escapeHtml(age)}</td>`,
+    `          <td class="order-2 md:table-cell"><span class="route-state badge">${stateWord(route.state)}</span></td>`,
+    '          <td class="order-4 w-full text-right md:table-cell md:w-auto">',
+    '            <div class="route-actions flex items-center justify-end gap-1">',
+    `              <button type="button" class="btn btn-ghost btn-icon copy" data-copy="${escapeHtml(url)}" data-icon="1" aria-label="Copy the address of ${escapeHtml(registration.fqdn)}" title="Copy address">${copyIcon()}</button>`,
+    `              <button type="button" class="btn btn-ghost btn-icon remove text-subtle-foreground hover:text-danger" data-registration-id="${escapeHtml(registration.id)}" data-project="${escapeHtml(registration.projectSlug)}" data-branch="${escapeHtml(registration.branchSlug)}" data-host="${escapeHtml(registration.fqdn)}" aria-label="Remove ${escapeHtml(registration.fqdn)}" title="Remove">${trashIcon()}</button>`,
+    '            </div>',
+    '          </td>',
+    '        </tr>',
   ].join('\n');
 }
 
@@ -129,15 +170,30 @@ function renderGroup(group: ProjectGroup, config: Config, now: number): string {
   const rows = group.routes.map((route) => renderRoute(route, now)).join('\n');
 
   return [
-    `    <section class="group" data-project="${escapeHtml(group.projectSlug)}">`,
-    `      <div class="group__head">`,
-    `        <h2 class="group__name">${escapeHtml(group.projectSlug)}</h2>`,
-    `        <p class="group__certificate"><span class="group__certificate-label">certificate</span> <code>${escapeHtml(certificate)}</code></p>`,
-    `        <p class="group__count">${group.routes.length} ${plural(group.routes.length, 'route', 'routes')}</p>`,
+    `    <section class="card overflow-hidden">`,
+    '      <div class="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-6 py-4">',
+    `        <h2 class="group__name text-lg font-semibold tracking-tight">${escapeHtml(group.projectSlug)}</h2>`,
+    `        <span class="group__cert badge badge-muted font-mono"><code>${escapeHtml(certificate)}</code></span>`,
+    `        <span class="group__count ml-auto text-xs text-muted-foreground">${group.routes.length} ${plural(group.routes.length, 'route', 'routes')}</span>`,
     '      </div>',
-    '      <ul class="group__routes">',
+    '      <div class="overflow-x-auto">',
+    '        <table class="table block md:table">',
+    `          <caption class="sr-only">Routes published by ${escapeHtml(group.projectSlug)}</caption>`,
+    '          <thead class="table-head hidden md:table-header-group">',
+    '            <tr>',
+    '              <th scope="col">Route</th>',
+    '              <th scope="col">Endpoint</th>',
+    '              <th scope="col" class="hidden md:table-cell">Port</th>',
+    '              <th scope="col" class="hidden lg:table-cell">Age</th>',
+    '              <th scope="col">Status</th>',
+    '              <th scope="col" class="text-right"><span class="sr-only">Actions</span></th>',
+    '            </tr>',
+    '          </thead>',
+    '          <tbody class="table-body block md:table-row-group">',
     rows,
-    '      </ul>',
+    '          </tbody>',
+    '        </table>',
+    '      </div>',
     '    </section>',
   ].join('\n');
 }
@@ -146,12 +202,15 @@ function renderGroup(group: ProjectGroup, config: Config, now: number): string {
 export function renderEmptyState(): string {
   const command = registerCommand();
   return [
-    '    <section class="empty">',
-    '      <h2 class="empty__title">Nothing is running</h2>',
-    '      <p class="empty__body">When an agent starts a dev server in this container and registers it, the route shows up here within a few seconds.</p>',
-    '      <div class="empty__command">',
-    `        <code class="command">${escapeHtml(command)}</code>`,
-    `        <button type="button" class="copy" data-copy="${escapeHtml(command)}">Copy command</button>`,
+    '    <section class="card px-6 py-8">',
+    '      <h2 class="text-2xl font-semibold tracking-tight">Nothing is running</h2>',
+    '      <p class="mt-3 max-w-xl text-base font-light text-muted-foreground">',
+    '        When an agent starts a dev server in this container and registers it, the route shows up here',
+    '        within a few seconds.',
+    '      </p>',
+    '      <div class="mt-6 flex flex-wrap items-center gap-3">',
+    `        <code class="command block rounded-lg border border-border bg-muted px-4 py-3 text-sm break-words">${escapeHtml(command)}</code>`,
+    `        <button type="button" class="btn btn-primary copy" data-copy="${escapeHtml(command)}">Copy command</button>`,
     '      </div>',
     '    </section>',
   ].join('\n');
@@ -177,42 +236,39 @@ export function renderIndex(routes: RouteView[], config: Config, now: number = D
   const relay = `${config.advertisedHost || config.advertisedIp}:${config.relayPort}`;
 
   return `<!doctype html>
-<html lang="en">
+<html lang="en" class="h-full">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="light" />
-    <title>Traefik dev gateway</title>
+    <title>Dev gateway</title>
     <link rel="stylesheet" href="/index.css" />
-    <link rel="preload" href="/fonts/familjen-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin />
-    <link rel="preload" href="/fonts/azeret-mono-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/hanken-grotesk-latin.woff2" as="font" type="font/woff2" crossorigin />
   </head>
-  <body>
-    <div class="page">
-      <header class="masthead">
-        <div class="masthead__identity">
-          <h1 class="masthead__title">Dev gateway</h1>
-          <p class="masthead__subject">Routes for the dev servers agents run in this container.</p>
+  <body class="min-h-full bg-background text-foreground antialiased">
+    <div class="mx-auto w-full max-w-6xl px-6 py-10">
+      <header class="flex flex-wrap items-end justify-between gap-x-10 gap-y-4 border-b border-border pb-6">
+        <div class="space-y-2">
+          <h1 class="text-3xl font-semibold tracking-tight">Dev gateway</h1>
+          <p class="head__subject max-w-xl text-base font-light text-muted-foreground">Routes for the dev servers agents run in this container.</p>
         </div>
-        <div class="masthead__state">
-          <p class="masthead__counts">
-            <span id="route-count">${count} ${plural(count, 'route', 'routes')}</span>
-            <span id="route-answering" data-live="${answering > 0}">${answering} answering</span>
-          </p>
-          <p class="masthead__checked">checked <time id="checked-at">${formatClock(now)}</time></p>
+        <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
+          <span class="head__count text-muted-foreground" id="route-count">${count} ${plural(count, 'route', 'routes')}</span>
+          <span class="badge ${answering > 0 ? 'badge-up' : 'badge-down'}" id="route-answering" title="${answering} of ${count} ${plural(count, 'route', 'routes')} ${plural(count, 'answers', 'answer')}">${answering} up</span>
+          <span class="head__checked text-xs text-subtle-foreground">checked <time class="tabular-nums" id="checked-at">${formatClock(now)}</time></span>
         </div>
       </header>
 
-      <p class="message" id="message" role="status" aria-live="polite"></p>
+      <p class="message min-h-6 pt-4 text-sm text-muted-foreground" id="message" role="status" aria-live="polite"></p>
 
-      <main class="routes" id="routes" aria-label="Published routes">
+      <main class="routes mt-6 space-y-6" id="routes" aria-label="Published routes">
 ${renderRoutes(routes, config, now)}
       </main>
 
-      <footer class="footer">
-        <span>Zone <code>${escapeHtml(config.zone)}</code></span>
-        <span>Relay <code>${escapeHtml(relay)}</code></span>
-        <span>Registry port <code>${config.registryPort}</code></span>
+      <footer class="mt-10 flex flex-wrap gap-x-6 gap-y-1 border-t border-border pt-4 text-xs text-muted-foreground">
+        <span>Zone <code class="font-mono">${escapeHtml(config.zone)}</code></span>
+        <span>Relay <code class="font-mono">${escapeHtml(relay)}</code></span>
+        <span>Registry port <code class="font-mono">${config.registryPort}</code></span>
       </footer>
     </div>
     <script src="/index.js"></script>

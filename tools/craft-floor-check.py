@@ -3,9 +3,8 @@
 
 A review tool, not part of the gateway: it lives in tools/ and the runtime
 path of the daemon never touches it. It answers the questions that need a
-real render: are the figures tabular, does the shadow carry an offset and a
-blur, do the radii match the decision, do the text colours reach their
-contrast.
+real render: are the figures tabular, does anything cast a shadow, do the
+radii match the decision, do the text colours reach their contrast.
 
     python3 tools/craft-floor-check.py <url>
 """
@@ -40,23 +39,23 @@ with sync_playwright() as p:
     print("selection:", page.evaluate("getComputedStyle(document.body, '::selection').backgroundColor"))
     print("caret:", page.evaluate("getComputedStyle(document.body).caretColor"))
     print("scrollbar:", page.evaluate("getComputedStyle(document.documentElement).scrollbarColor"))
-    address = page.query_selector(".route__address")
+    address = page.query_selector(".route-address")
     if address:
         print("underline offset:", page.evaluate("e => getComputedStyle(e).textUnderlineOffset", address))
-    for selector in [".masthead__checked time", ".route__inside", ".route__age"]:
+    for selector in ["time", ".route-inside", ".route-age"]:
         node = page.query_selector(selector)
         if node:
             print(f"tabular figures {selector}:", page.evaluate("e => getComputedStyle(e).fontVariantNumeric", node))
 
     print("--- depth")
-    for selector in [".route__lamp", ".group", "button"]:
+    for selector in [".route-edge", ".card", ".btn", ".badge"]:
         node = page.query_selector(selector)
         if node:
             style = page.evaluate("e => getComputedStyle(e)", node)
             print(f"{selector}: shadow={style['boxShadow']!r} radius={style['borderRadius']!r}")
 
     print("--- spacing (computed)")
-    for selector in [".masthead", ".group", ".group__head", ".route", ".empty__title", ".empty__body"]:
+    for selector in ["header", ".card", ".table-head th", ".table-body td", ".empty__title", ".empty__body"]:
         node = page.query_selector(selector)
         if node:
             style = page.evaluate("e => getComputedStyle(e)", node)
@@ -66,7 +65,7 @@ with sync_playwright() as p:
             )
 
     print("--- type")
-    for selector in ["h1", ".group__name", ".route__branch", ".route__address", ".route__state", ".empty__body"]:
+    for selector in ["h1", ".group__name", ".route-edge", ".route-address", ".route-state", ".empty__body"]:
         node = page.query_selector(selector)
         if node:
             style = page.evaluate("e => getComputedStyle(e)", node)
@@ -90,14 +89,16 @@ with sync_playwright() as p:
     """
 
     pairs = [
-        (".masthead__subject", ".page"),
-        (".masthead__checked", ".page"),
-        (".route__age", ".group"),
-        (".route__inside", ".group"),
-        (".route__state", ".group"),
-        (".route__address", ".group"),
-        (".group__count", ".group"),
-        (".footer", ".page"),
+        (".head__subject", "body"),
+        (".head__checked", "body"),
+        (".head__count", "body"),
+        (".route-age", ".card"),
+        (".route-inside", ".card"),
+        (".route-state", ".card"),
+        (".route-address", ".card"),
+        (".group__count", ".card"),
+        (".group__cert", ".card"),
+        ("footer", "body"),
     ]
     for fg_selector, bg_selector in pairs:
         fg = page.query_selector(fg_selector)

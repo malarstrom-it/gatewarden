@@ -11,6 +11,7 @@
   "scripts": {
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
+    "build:css": "npx @tailwindcss/cli -i src/assets/index.src.css -o src/assets/index.css",
     "start": "node src/daemon.ts"
   },
   "engines": {

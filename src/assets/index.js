@@ -19,7 +19,7 @@
   var answeringEl = document.getElementById('route-answering');
   var checkedEl = document.getElementById('checked-at');
 
-  /** id -> { row, lamp, state, age } for every row currently on the page. */
+  /** id -> { row, state, age } for every row currently on the page. */
   var rows = {};
   /** The registration ids the page was built for, used to detect new work. */
   var knownIds = [];
@@ -68,13 +68,13 @@
   /** Remember the rows the page shows, so updates can be made in place. */
   function indexRows() {
     rows = {};
-    var list = listEl.querySelectorAll('.route');
+    var list = listEl.querySelectorAll('.route-body');
     for (var i = 0; i < list.length; i += 1) {
       var row = list[i];
       rows[row.getAttribute('data-registration-id')] = {
         row: row,
-        state: row.querySelector('.route__state'),
-        age: row.querySelector('.route__age'),
+        state: row.querySelector('.route-state'),
+        age: row.querySelector('.route-age'),
       };
     }
   }
@@ -87,8 +87,11 @@
     }
     if (countEl) countEl.textContent = registrations.length + ' ' + plural(registrations.length, 'route', 'routes');
     if (answeringEl) {
-      answeringEl.textContent = answering + ' answering';
-      answeringEl.setAttribute('data-live', answering > 0 ? 'true' : 'false');
+      answeringEl.textContent = answering + ' up';
+      answeringEl.classList.toggle('badge-up', answering > 0);
+      answeringEl.classList.toggle('badge-down', answering === 0);
+      answeringEl.title =
+        answering + ' of ' + registrations.length + ' ' + plural(registrations.length, 'route', 'routes') + ' ' + plural(registrations.length, 'answers', 'answer');
     }
   }
 
@@ -104,15 +107,15 @@
       var row = entry.row;
       if (row.getAttribute('data-state') !== registration.state) {
         row.setAttribute('data-state', registration.state);
-        row.classList.add('route--changed');
+        row.classList.add('route-body--changed');
         setTimeout(function (element) {
           return function () {
-            element.classList.remove('route--changed');
+            element.classList.remove('route-body--changed');
           };
         }(row), 1000);
       }
       if (entry.state) {
-        entry.state.textContent = registration.state === 'up' ? 'answering' : 'not answering';
+        entry.state.textContent = registration.state === 'up' ? 'Up' : 'Down';
       }
       if (entry.age) {
         entry.age.textContent = formatAge(registration.createdAt);
@@ -195,16 +198,23 @@
   function copyText(text, button) {
     var done = function () {
       if (button) {
-        var original = button.getAttribute('data-label') || button.textContent;
-        button.setAttribute('data-label', original);
-        button.textContent = 'Copied';
-        button.classList.add('is-done');
-        button.disabled = true;
-        setTimeout(function () {
-          button.textContent = original;
-          button.classList.remove('is-done');
-          button.disabled = false;
-        }, 1600);
+        if (button.getAttribute('data-icon')) {
+          // An icon button has no word to swap: it takes the colour of the
+          // good news for a moment instead.
+          button.classList.add('is-done');
+          setTimeout(function () {
+            button.classList.remove('is-done');
+          }, 1600);
+        } else {
+          var original = button.getAttribute('data-label') || button.textContent;
+          button.setAttribute('data-label', original);
+          button.textContent = 'Copied';
+          button.disabled = true;
+          setTimeout(function () {
+            button.textContent = original;
+            button.disabled = false;
+          }, 1600);
+        }
       }
       say('Copied ' + text);
     };
@@ -234,44 +244,47 @@
 
   /** Replace the row actions with a confirmation the user has to answer. */
   function askToRemove(button) {
-    var actions = button.closest('.route__actions');
+    var row = button.closest('.route-body');
     var host = button.getAttribute('data-host');
-    if (!actions) return;
+    if (!row) return;
 
-    var saved = [];
-    for (var i = 0; i < actions.childNodes.length; i += 1) saved.push(actions.childNodes[i]);
+    // The confirmation gets a row of its own, under the route it is about,
+    // so it never squeezes the table it belongs to.
+    var confirmRow = document.createElement('tr');
+    confirmRow.className = 'route-confirm-row';
 
-    var confirm = document.createElement('span');
-    confirm.className = 'route__confirm';
+    var cell = document.createElement('td');
+    cell.setAttribute('colspan', '6');
+
+    var confirm = document.createElement('div');
+    confirm.className = 'route-confirm';
 
     var question = document.createElement('span');
-    question.className = 'route__confirm-text';
+    question.className = 'route-confirm-text';
     question.textContent = 'Remove ' + button.getAttribute('data-branch') + '?';
 
     var yes = document.createElement('button');
     yes.type = 'button';
-    yes.className = 'confirm-yes';
+    yes.className = 'btn btn-outline confirm-yes';
     yes.textContent = 'Remove';
     yes.setAttribute('aria-label', 'Remove ' + host);
 
     var no = document.createElement('button');
     no.type = 'button';
-    no.className = 'confirm-no';
+    no.className = 'btn btn-ghost confirm-no';
     no.textContent = 'Keep it';
 
     confirm.appendChild(question);
-    confirm.appendChild(yes);
     confirm.appendChild(no);
+    confirm.appendChild(yes);
 
-    // The confirmation gets a line of its own under the route, so it never
-    // squeezes the row it belongs to.
-    actions.parentNode.insertBefore(confirm, actions.nextSibling);
-    actions.hidden = true;
+    cell.appendChild(confirm);
+    confirmRow.appendChild(cell);
+    row.parentNode.insertBefore(confirmRow, row.nextSibling);
     yes.focus();
 
     var restore = function () {
-      if (confirm.parentNode) confirm.parentNode.removeChild(confirm);
-      actions.hidden = false;
+      if (confirmRow.parentNode) confirmRow.parentNode.removeChild(confirmRow);
       button.focus();
     };
 
@@ -280,17 +293,17 @@
     yes.addEventListener('click', function () {
       yes.disabled = true;
       no.disabled = true;
-      removeRoute(button, yes, no);
+      removeRoute(button, yes, no, confirmRow);
     });
   }
 
   /** Delete a route and show the outcome where it happened. */
-  function removeRoute(button, yes, no) {
+  function removeRoute(button, yes, no, confirmRow) {
     var id = button.getAttribute('data-registration-id');
     var project = button.getAttribute('data-project');
     var branch = button.getAttribute('data-branch');
     var host = button.getAttribute('data-host');
-    var row = button.closest('.route');
+    var row = button.closest('.route-body');
 
     fetch('/api/registrations/' + encodeURIComponent(project) + '/' + encodeURIComponent(branch), {
       method: 'DELETE',
@@ -305,27 +318,29 @@
         throw new Error('the gateway answered ' + response.status);
       })
       .then(function () {
-        if (row) row.classList.add('route--leaving');
+        if (row) row.classList.add('route-body--leaving');
+        if (confirmRow && confirmRow.parentNode) confirmRow.parentNode.removeChild(confirmRow);
         say('Removed ' + host + '.', 'done');
         setTimeout(function () {
           knownIds = knownIds.filter(function (known) {
             return known !== id;
           });
+          if (row && row.parentNode) row.parentNode.removeChild(row);
           refreshList().then(function () {
-            var first = listEl.querySelector('.route .copy') || listEl.querySelector('.copy');
+            var first = listEl.querySelector('.route-body .copy') || listEl.querySelector('.copy');
             if (first) first.focus();
           });
-        }, 260);
+        }, 220);
       })
       .catch(function (error) {
         yes.disabled = false;
         no.disabled = false;
         // The failure belongs to the row the user is looking at, so it is
         // said there and not only at the top of the page.
-        var confirm = yes.closest ? yes.closest('.route__confirm') : null;
+        var confirm = yes.closest ? yes.closest('.route-confirm') : null;
         if (confirm) {
           var problem = document.createElement('span');
-          problem.className = 'route__error';
+          problem.className = 'route-error';
           problem.setAttribute('role', 'alert');
           problem.textContent = 'Could not remove ' + host + '. ' + error.message + '.';
           confirm.appendChild(problem);

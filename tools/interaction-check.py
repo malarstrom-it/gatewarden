@@ -49,13 +49,13 @@ with sync_playwright() as p:
     # --- a new route appears without a reload ------------------------------
     code, out, err = cli("register", "--project", "demo", "--branch", "polltest", "--port", "5202")
     check(code == 0, f"registered the throwaway route ({err})")
-    page.wait_for_selector('li[data-registration-id="demo/polltest"]', timeout=15000)
+    page.wait_for_selector('tr[data-registration-id="demo/polltest"]', timeout=15000)
     marker = page.evaluate("window.__marker")
     check(marker == "still here", "the page was not reloaded when the route appeared")
-    check(page.locator('li[data-registration-id="demo/polltest"]').count() == 1, "the new route is on the page")
+    check(page.locator('tr[data-registration-id="demo/polltest"]').count() == 1, "the new route is on the page")
 
     # --- the state follows the dev server ----------------------------------
-    row = page.locator('li[data-registration-id="demo/polltest"]')
+    row = page.locator('tr[data-registration-id="demo/polltest"]')
     check(row.get_attribute("data-state") == "down", "a route without a dev server is not answering")
     subprocess.Popen(["node", "/tmp/demo-server-2.mjs"])
     time.sleep(1)
@@ -75,16 +75,16 @@ with sync_playwright() as p:
 
     # --- the removal asks first --------------------------------------------
     row.locator("button.remove").click()
-    page.wait_for_selector(".route__confirm", timeout=5000)
-    check(page.locator(".route__confirm").count() == 1, "the removal asks before it acts")
+    page.wait_for_selector(".route-confirm", timeout=5000)
+    check(page.locator(".route-confirm").count() == 1, "the removal asks before it acts")
     page.screenshot(path=str(OUT / "index-confirm.png"))
 
-    page.locator(".route__confirm .confirm-no").click()
-    check(page.locator('li[data-registration-id="demo/polltest"]').count() == 1, "keeping the route leaves it alone")
+    page.locator(".route-confirm .confirm-no").click()
+    check(page.locator('tr[data-registration-id="demo/polltest"]').count() == 1, "keeping the route leaves it alone")
 
-    page.locator('li[data-registration-id="demo/polltest"] button.remove').click()
-    page.wait_for_selector(".route__confirm .confirm-yes", timeout=5000)
-    page.locator(".route__confirm .confirm-yes").click()
+    page.locator('tr[data-registration-id="demo/polltest"] button.remove').click()
+    page.wait_for_selector(".route-confirm .confirm-yes", timeout=5000)
+    page.locator(".route-confirm .confirm-yes").click()
     page.wait_for_function(
         "() => !document.querySelector('[data-registration-id=\\'demo/polltest\\']')", timeout=15000
     )
@@ -105,7 +105,7 @@ with sync_playwright() as p:
     reduced.emulate_media(reduced_motion="reduce")
     reduced.goto(URL, wait_until="networkidle", timeout=30000)
     duration = reduced.evaluate(
-        "() => getComputedStyle(document.querySelector('.route')).transitionDuration"
+        "() => getComputedStyle(document.querySelector('.route-body td')).transitionDuration"
     )
     longest = max(float(part.replace("s", "").strip()) for part in duration.split(","))
     check(longest < 0.01, f"the route transition is off under reduced motion ({duration})")

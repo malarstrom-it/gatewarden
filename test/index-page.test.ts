@@ -39,7 +39,7 @@ test('the index page shows the empty state when nothing is registered', async ()
 test('the empty state offers the command as a copyable snippet', async () => {
   await withRegistry({}, async ({ url }) => {
     const html = await (await fetch(`${url}/`)).text();
-    assert.match(html, /class="copy" data-copy="node [^"]*traefik-dev\.js register/);
+    assert.match(html, /class="btn btn-primary copy" data-copy="node [^"]*traefik-dev\.js register/);
     assert.match(html, />Copy command</);
   });
 });
@@ -48,8 +48,8 @@ test('every route carries a status indicator', async () => {
   await withRegistry({}, async ({ url, store }) => {
     store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
     const html = await (await fetch(`${url}/`)).text();
-    assert.match(html, /class="route" data-registration-id="alpha\/main" data-state="down"/);
-    assert.match(html, /not answering/);
+    assert.match(html, /class="route-body[^"]*" data-registration-id="alpha\/main" data-state="down"/);
+    assert.match(html, /class="route-state badge">Down</);
   });
 });
 
@@ -64,7 +64,7 @@ test('a route whose dev server listens is reported as answering', async () => {
       store.upsert({ project: 'alpha', branch: 'main', devPort: port, zone: 'home.malarstrom.com' });
       const html = await (await fetch(`${url}/`)).text();
       assert.match(html, /data-state="up"/);
-      assert.match(html, />answering</);
+      assert.match(html, /class="route-state badge">Up</);
     } finally {
       await close(server);
     }
@@ -75,9 +75,9 @@ test('every route can be copied and removed', async () => {
   await withRegistry({}, async ({ url, store }) => {
     store.upsert({ project: 'alpha', branch: 'feature/login', devPort: 5173, zone: 'home.malarstrom.com' });
     const html = await (await fetch(`${url}/`)).text();
-    assert.match(html, /class="copy" data-copy="https:\/\/feature-login\.alpha\.home\.malarstrom\.com"/);
-    assert.match(html, />Copy address</);
-    assert.match(html, /class="remove" data-registration-id="alpha\/feature-login"/);
+    assert.match(html, /class="[^"]*\bcopy\b[^"]*" data-copy="https:\/\/feature-login\.alpha\.home\.malarstrom\.com"/);
+    assert.match(html, /aria-label="Copy the address of feature-login\.alpha\.home\.malarstrom\.com"/);
+    assert.match(html, /class="[^"]*\bremove\b[^"]*" data-registration-id="alpha\/feature-login"/);
   });
 });
 
@@ -99,7 +99,7 @@ test('the routes are grouped by project and named after their certificate', asyn
     store.upsert({ project: 'alpha', branch: 'feature/x', devPort: 5173, zone: 'home.malarstrom.com' });
     store.upsert({ project: 'beta', branch: 'main', devPort: 4000, zone: 'home.malarstrom.com' });
     const html = await (await fetch(`${url}/`)).text();
-    assert.equal((html.match(/class="group"/g) ?? []).length, 2);
+    assert.equal((html.match(/<section class="card overflow-hidden">/g) ?? []).length, 2);
     assert.match(html, /<code>\*\.alpha\.home\.malarstrom\.com<\/code>/);
     assert.match(html, /<code>\*\.beta\.home\.malarstrom\.com<\/code>/);
     assert.match(html, /2 routes/);
@@ -127,7 +127,7 @@ test('a host name may break at its dots, never inside a label', async () => {
     const html = await (await fetch(`${url}/`)).text();
     assert.match(html, /main\.<wbr>alpha\.<wbr>home\.<wbr>malarstrom\.<wbr>com/);
     // The text of the link is still the host name itself.
-    const link = /<a class="route__address"[^>]*>(.*?)<\/a>/.exec(html)?.[1] ?? '';
+    const link = /<a class="route-address link break-words"[^>]*>(.*?)<\/a>/.exec(html)?.[1] ?? '';
     assert.equal(link.replace(/<wbr>/g, ''), 'main.alpha.home.malarstrom.com');
   });
 });
@@ -137,7 +137,7 @@ test('the route fragment holds the same rows as the page', async () => {
     store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
     const fragment = await (await fetch(`${url}/api/routes`)).text();
     assert.match(fragment, /data-registration-id="alpha\/main"/);
-    assert.match(fragment, /class="remove"/);
+    assert.match(fragment, /class="[^"]*\bremove\b[^"]*"/);
     assert.ok(!fragment.includes('<html'));
   });
 });
@@ -147,13 +147,13 @@ test('the page assets are served by the registry itself', async () => {
     const css = await fetch(`${url}/index.css`);
     assert.equal(css.status, 200);
     assert.match(css.headers.get('content-type') ?? '', /text\/css/);
-    assert.match(await css.text(), /font-family: 'Familjen Grotesk'/);
+    assert.match(await css.text(), /font-family: 'Hanken Grotesk'/);
 
     const script = await fetch(`${url}/index.js`);
     assert.equal(script.status, 200);
     assert.match(script.headers.get('content-type') ?? '', /javascript/);
 
-    const font = await fetch(`${url}/fonts/familjen-grotesk-latin.woff2`);
+    const font = await fetch(`${url}/fonts/hanken-grotesk-latin.woff2`);
     assert.equal(font.status, 200);
     assert.match(font.headers.get('content-type') ?? '', /woff2/);
     assert.ok((await font.arrayBuffer()).byteLength > 1000);
