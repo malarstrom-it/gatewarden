@@ -252,10 +252,17 @@ export function renderIndex(routes: RouteView[], config: Config, now: number = D
           <h1 class="text-3xl font-semibold tracking-tight">Dev gateway</h1>
           <p class="head__subject max-w-xl text-base font-light text-muted-foreground">Routes for the dev servers agents run in this container.</p>
         </div>
-        <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
-          <span class="head__count text-muted-foreground" id="route-count">${count} ${plural(count, 'route', 'routes')}</span>
-          <span class="badge ${answering > 0 ? 'badge-up' : 'badge-down'}" id="route-answering" title="${answering} of ${count} ${plural(count, 'route', 'routes')} ${plural(count, 'answers', 'answer')}">${answering} up</span>
-          <span class="head__checked text-xs text-subtle-foreground">checked <time class="tabular-nums" id="checked-at">${formatClock(now)}</time></span>
+        <div class="flex flex-col gap-2 sm:items-end">
+          <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm sm:justify-end">
+            <span class="head__count text-muted-foreground" id="route-count">${count} ${plural(count, 'route', 'routes')}</span>
+            <span class="badge ${answering > 0 ? 'badge-up' : 'badge-down'}" id="route-answering" title="${answering} of ${count} ${plural(count, 'route', 'routes')} ${plural(count, 'answers', 'answer')}">${answering} up</span>
+            <span class="head__checked text-xs text-subtle-foreground">checked <time class="tabular-nums" id="checked-at">${formatClock(now)}</time></span>
+          </div>
+          <p class="head__facts flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-subtle-foreground sm:justify-end">
+            <span>Zone <code class="font-mono">${escapeHtml(config.zone)}</code></span>
+            <span>Relay <code class="font-mono">${escapeHtml(relay)}</code></span>
+            <span>Registry port <code class="font-mono">${config.registryPort}</code></span>
+          </p>
         </div>
       </header>
 
@@ -264,12 +271,6 @@ export function renderIndex(routes: RouteView[], config: Config, now: number = D
       <main class="routes mt-6 space-y-6" id="routes" aria-label="Published routes">
 ${renderRoutes(routes, config, now)}
       </main>
-
-      <footer class="mt-10 flex flex-wrap gap-x-6 gap-y-1 border-t border-border pt-4 text-xs text-muted-foreground">
-        <span>Zone <code class="font-mono">${escapeHtml(config.zone)}</code></span>
-        <span>Relay <code class="font-mono">${escapeHtml(relay)}</code></span>
-        <span>Registry port <code class="font-mono">${config.registryPort}</code></span>
-      </footer>
     </div>
     <script src="/index.js"></script>
   </body>

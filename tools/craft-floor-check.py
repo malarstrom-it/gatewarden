@@ -98,7 +98,7 @@ with sync_playwright() as p:
         (".route-address", ".card"),
         (".group__count", ".card"),
         (".group__cert", ".card"),
-        ("footer", "body"),
+        (".head__facts", "body"),
     ]
     for fg_selector, bg_selector in pairs:
         fg = page.query_selector(fg_selector)

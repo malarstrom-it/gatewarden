@@ -128,7 +128,7 @@ page is server rendered HTML with no runtime dependency.
 | Ink | `ink` | `#14181d` | Titles, branch names, host names |
 | Muted ink | `muted-ink` | `#57616d` | Subject line, meta text, ghost buttons |
 | Subtle ink | `subtle-ink` | `#636c77` | The clock, the least important figures |
-| Hairline | `hairline` | `#e2e6ee` | Every rule: table lines, card edges, the page's footer |
+| Hairline | `hairline` | `#e2e6ee` | Every rule: table lines, card edges, the rule under the masthead |
 | Wash | `wash` | `#eef1f6` | Hovered rows, the confirmation band, code blocks |
 | Primary | `primary` | `#2a49c9` | Host names, the filled button, the focus ring |
 | Answering | `up` / `up-wash` / `up-edge` | `#0f7a55` / `#e7f4ee` / `#b6dfcd` | The badge and the edge of a route that answers |
@@ -163,8 +163,11 @@ written.
 
 - One column, `max-width: 72rem`, centred, 24px of side padding (16px on a
   phone), 40px above and below.
-- The masthead is a header row: title and subject on the left, the counts
-  and the clock on the right, separated from the content by one hairline.
+- The masthead is a header row: title and subject on the left; on the
+  right the counts and the clock, and under them the three facts about the
+  gateway itself — the zone, the relay and the registry port. One hairline
+  separates the masthead from the content. The page has no footer: the
+  facts belong with the title, where the eye starts.
 - The content is one card per project. The card's head carries the project
   name, the certificate badge and the route count; below it is the table.
 - The table has six columns: Route, Endpoint, Port, Age, Status, Actions.
