@@ -67,7 +67,6 @@
   /* Colour mixed from the palette, for the states that need a surface. */
   --live-wash: #e4efe9;
   --danger-wash: #f6ecec;
-  --danger-line: #d9bfc1;
 
   /* Type: two families, one scale. */
   --sans: 'Familjen Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif;
