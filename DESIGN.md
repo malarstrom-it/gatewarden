@@ -101,7 +101,7 @@ glance while agents work. It is not a dashboard to admire and not a terminal
 to type into: it is a well-lit page of type, held in one column, where the
 only thing that shouts is the state of a route.
 
-The world is the Daylight candidate of the visual round: a cool off-white
+The world is the Daylight world the client chose: a cool off-white
 ground, one family (Hanken Grotesk) at four sizes, hairline rules, and a
 single indigo accent for the things that act. Everything is composed with
 Tailwind utilities over a shadcn/ui token set, and the shadcn components
