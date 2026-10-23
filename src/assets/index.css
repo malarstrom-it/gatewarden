@@ -920,6 +920,13 @@
     line-height: var(--tw-leading, var(--text-sm--line-height));
     color: var(--color-danger);
   }
+  .new-route__certificate {
+    margin-top: calc(var(--spacing) * 4);
+    max-width: var(--container-2xl);
+    font-size: var(--text-xs);
+    line-height: var(--tw-leading, var(--text-xs--line-height));
+    color: var(--color-subtle-foreground);
+  }
   .new-route__actions {
     margin-top: calc(var(--spacing) * 5);
     display: flex;

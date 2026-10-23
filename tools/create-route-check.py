@@ -72,6 +72,24 @@ with sync_playwright() as p:
     )
     page.screenshot(path=str(OUT / "panel-open.png"))
 
+    # --- the certificate line -----------------------------------------------
+    certificate = page.locator("#new-route-certificate")
+    check(certificate.is_hidden(), "the certificate line starts hidden")
+    page.fill("#new-route-project", "a-project-the-page-has-not-seen")
+    page.wait_for_timeout(100)
+    check(certificate.is_visible(), "the certificate line appears for a project the page has not seen")
+    sentence = certificate.inner_text()
+    check(
+        "certificate is issued when its first route appears" in sentence
+        and "about ten seconds" in sentence,
+        f"the line says one sentence about the certificate ({sentence!r})",
+    )
+    known = page.locator(".group__name").first.inner_text().strip()
+    page.fill("#new-route-project", known)
+    page.wait_for_timeout(100)
+    check(certificate.is_hidden(), f"the certificate line is hidden for a known project ({known})")
+    page.fill("#new-route-project", "")
+
     # --- a route is created -------------------------------------------------
     page.fill("#new-route-project", PROJECT)
     page.fill("#new-route-branch", BRANCH)

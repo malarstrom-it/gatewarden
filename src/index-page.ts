@@ -172,7 +172,7 @@ function renderGroup(group: ProjectGroup, config: Config, now: number): string {
   const rows = group.routes.map((route) => renderRoute(route, now)).join('\n');
 
   return [
-    `    <section class="card overflow-hidden">`,
+    `    <section class="card overflow-hidden" data-project-slug="${escapeHtml(group.projectSlug)}" data-project-name="${escapeHtml(group.routes[0]?.registration.project ?? group.projectSlug)}">`,
     '      <div class="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-6 py-4">',
     `        <h2 class="group__name text-lg font-semibold tracking-tight">${escapeHtml(group.projectSlug)}</h2>`,
     `        <span class="group__cert badge badge-muted font-mono"><code>${escapeHtml(certificate)}</code></span>`,
@@ -331,6 +331,7 @@ export function renderIndex(routes: RouteView[], config: Config, now: number = D
             </div>
           </div>
           <p class="new-route__error" id="new-route-error" role="alert" hidden></p>
+          <p class="new-route__certificate" id="new-route-certificate" hidden>A new project's certificate is issued when its first route appears — the first request can take about ten seconds.</p>
           <div class="new-route__actions">
             <button type="submit" class="btn btn-primary">Create route</button>
             <button type="button" class="btn btn-ghost" id="new-route-cancel">Cancel</button>

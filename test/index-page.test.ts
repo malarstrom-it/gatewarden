@@ -99,7 +99,7 @@ test('the routes are grouped by project and named after their certificate', asyn
     store.upsert({ project: 'alpha', branch: 'feature/x', devPort: 5173, zone: 'home.malarstrom.com' });
     store.upsert({ project: 'beta', branch: 'main', devPort: 4000, zone: 'home.malarstrom.com' });
     const html = await (await fetch(`${url}/`)).text();
-    assert.equal((html.match(/<section class="card overflow-hidden">/g) ?? []).length, 2);
+    assert.equal((html.match(/<section class="card overflow-hidden" data-project-slug=/g) ?? []).length, 2);
     assert.match(html, /<code>\*\.alpha\.home\.malarstrom\.com<\/code>/);
     assert.match(html, /<code>\*\.beta\.home\.malarstrom\.com<\/code>/);
     assert.match(html, /2 routes/);

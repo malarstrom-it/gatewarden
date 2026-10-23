@@ -118,11 +118,31 @@
     return kind === 'outcome' ? 'fade' : 'stay';
   }
 
+  /**
+   * Should the certificate line be shown?
+   *
+   * The page knows the projects that have routes right now; a project that
+   * has one already had its wildcard certificate issued. A project the page
+   * has never seen may be new, and the certificate is issued when its first
+   * route appears — the first request can then take about ten seconds.
+   */
+  function certificateHint(typed, knownProjects) {
+    var name = String(typed || '').trim().toLowerCase();
+    if (!name) return false;
+    var known = knownProjects || [];
+    for (var i = 0; i < known.length; i += 1) {
+      var candidate = String(known[i] || '').trim().toLowerCase();
+      if (candidate && candidate === name) return false;
+    }
+    return true;
+  }
+
   root.TraefikPage = {
     sameIds: sameIds,
     createRefreshPlan: createRefreshPlan,
     stateAnnouncement: stateAnnouncement,
     bandLifetime: bandLifetime,
+    certificateHint: certificateHint,
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
@@ -650,7 +670,34 @@ if (typeof document !== 'undefined') {
     var newRouteForm = document.getElementById('new-route-form');
     var newRouteCancel = document.getElementById('new-route-cancel');
     var newRouteError = document.getElementById('new-route-error');
+    var newRouteCertificate = document.getElementById('new-route-certificate');
     var NEW_ROUTE_FIELDS = ['project', 'branch', 'port'];
+
+    /**
+     * The projects the page can see: they have had a wildcard certificate
+     * issued already.
+     */
+    function knownProjects() {
+      var names = [];
+      var groups = document.querySelectorAll('[data-project-slug]');
+      for (var i = 0; i < groups.length; i += 1) {
+        names.push(groups[i].getAttribute('data-project-slug'));
+        var raw = groups[i].getAttribute('data-project-name');
+        if (raw) names.push(raw);
+      }
+      return names;
+    }
+
+    /**
+     * Show the certificate line only when it can be true: the project the
+     * client is typing is one the page has not seen before.
+     */
+    function updateCertificateHint() {
+      if (!newRouteCertificate) return;
+      var input = newRouteField('project');
+      var typed = input ? input.value : '';
+      newRouteCertificate.hidden = !api.certificateHint(typed, knownProjects());
+    }
 
     function newRouteField(name) {
       return newRouteForm ? newRouteForm.querySelector('#new-route-' + name) : null;
@@ -718,6 +765,7 @@ if (typeof document !== 'undefined') {
       if (open) {
         var first = newRoutePanel.querySelector('input');
         if (first) first.focus();
+        updateCertificateHint();
       } else if (moveFocus) {
         newRouteToggle.focus();
       }
@@ -840,6 +888,8 @@ if (typeof document !== 'undefined') {
     }
     if (newRouteForm) {
       newRouteForm.addEventListener('submit', submitNewRoute);
+      var projectInput = newRouteField('project');
+      if (projectInput) projectInput.addEventListener('input', updateCertificateHint);
     }
 
     poll();

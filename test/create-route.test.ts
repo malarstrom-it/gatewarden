@@ -142,7 +142,7 @@ test('a route without a project or a branch is refused', async () => {
   });
 });
 
-test('the page has a label for every field of the new-route form', async () => {
+test('the panel has a label for every field of the new-route form', async () => {
   await withRegistry({}, async ({ url }) => {
     const html = await (await fetch(`${url}/`)).text();
     for (const field of ['project', 'branch', 'port']) {
@@ -154,5 +154,35 @@ test('the page has a label for every field of the new-route form', async () => {
     assert.match(html, /aria-controls="new-route"/);
     // The port field asks for a numeric keyboard.
     assert.match(html, /id="new-route-port"[\s\S]*?inputmode="numeric"/);
+  });
+});
+
+test('the panel says once why a new project may not answer yet', async () => {
+  await withRegistry({}, async ({ url }) => {
+    const html = await (await fetch(`${url}/`)).text();
+    const sentence = /id="new-route-certificate"[^>]*>([\s\S]*?)<\/p>/.exec(html)?.[1] ?? '';
+    assert.match(sentence, /certificate is issued when its first route appears/);
+    assert.match(sentence, /about ten seconds/);
+    // It is a fact in the panel, not a warning to dismiss: it starts hidden
+    // and the page decides when it is true.
+    assert.match(html, /id="new-route-certificate"[^>]*hidden/);
+  });
+});
+
+test('the route row and its badge are untouched by the new-route panel', async () => {
+  await withRegistry({}, async ({ url, store }) => {
+    store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
+    const html = await (await fetch(`${url}/`)).text();
+
+    // The badge is still a badge that says Up or Down, and the row still
+    // carries the state the gateway probed.
+    assert.match(html, /class="route-state badge">Down</);
+    assert.match(html, /class="route-body[^"]*" data-registration-id="alpha\/main" data-state="down"/);
+    // And the row still has its own band, copy and remove controls.
+    assert.match(html, /class="[^"]*\bcopy\b[^"]*"/);
+    assert.match(html, /class="[^"]*\bremove\b[^"]*"/);
+    // No second state was invented for a certificate that is still pending.
+    assert.ok(!html.includes('certificate pending'));
+    assert.ok(!html.includes('Pending'));
   });
 });

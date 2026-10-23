@@ -36,6 +36,7 @@ interface PageApi {
   createRefreshPlan(): RefreshPlan;
   stateAnnouncement(branch: string, state: 'up' | 'down'): string;
   bandLifetime(kind: 'outcome' | 'question' | 'failure'): 'fade' | 'stay';
+  certificateHint(typed: string, knownProjects: string[]): boolean;
 }
 
 /** Load the shipped script and take the rules out of it. */
@@ -125,4 +126,22 @@ test('an outcome fades, a question and a failure stay', () => {
   assert.equal(bandLifetime('outcome'), 'fade');
   assert.equal(bandLifetime('question'), 'stay');
   assert.equal(bandLifetime('failure'), 'stay');
+});
+
+test('the certificate line is shown only for a project the page has not seen', () => {
+  const { certificateHint } = loadPageApi();
+  const known = ['traefik-api', 'orkr', 'Alpha App'];
+
+  // A project that already has routes has had its certificate issued.
+  assert.equal(certificateHint('traefik-api', known), false);
+  assert.equal(certificateHint('  traefik-api  ', known), false);
+  assert.equal(certificateHint('ORKR', known), false);
+  assert.equal(certificateHint('Alpha App', known), false);
+
+  // A project the page has never seen may be new.
+  assert.equal(certificateHint('brand-new', known), true);
+
+  // Nothing typed yet: nothing to say.
+  assert.equal(certificateHint('', known), false);
+  assert.equal(certificateHint('   ', known), false);
 });
