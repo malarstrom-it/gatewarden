@@ -128,9 +128,9 @@
   }
 
   .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150 select-none;
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150 select-none;
     @apply focus-visible:ring-ring focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:outline-none;
-    @apply disabled:pointer-events-none disabled:opacity-50;
+    @apply disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent;
   }
 
   .btn-ghost {

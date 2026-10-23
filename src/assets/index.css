@@ -631,6 +631,7 @@
   }
   .btn {
     display: inline-flex;
+    cursor: pointer;
     align-items: center;
     justify-content: center;
     gap: calc(var(--spacing) * 2);
@@ -667,10 +668,17 @@
       outline-style: none;
     }
     &:disabled {
-      pointer-events: none;
+      cursor: not-allowed;
     }
     &:disabled {
       opacity: 50%;
+    }
+    &:disabled {
+      &:hover {
+        @media (hover: hover) {
+          background-color: transparent;
+        }
+      }
     }
   }
   .btn-ghost {
