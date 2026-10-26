@@ -21,6 +21,13 @@
 
 @source '../../src';
 
+/* The project's prose is not markup. Tailwind reads every text file it
+ * scans, so an English word in a memory file becomes a utility in the
+ * stylesheet and the committed build goes stale. Keep the memory out of
+ * the scan. */
+@source not '../../memory';
+@source not '../../MEMORY.md';
+
 /* The one family of the page, self-hosted. Latin and Latin Extended. */
 @font-face {
   font-family: 'Hanken Grotesk';
