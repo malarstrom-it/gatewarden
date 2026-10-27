@@ -1,0 +1,947 @@
+# Agent Dev Gateway — package specification
+
+Status: **draft for review**. Nothing in this document is implemented yet.
+
+Scope: this repository becomes the source of the npm package
+`@malarstrom/agent-dev-gateway`, published under the `malarstrom` organisation.
+
+This document is the contract the implementation is held to. When the code and
+this document disagree, one of them is a bug. Every slice in §12 cites the
+sections it must satisfy.
+
+Written in English to match `PRODUCT.md`, `README.md` and the rest of
+`specs/tech-architecture/`.
+
+---
+
+## 0. Decisions
+
+Each decision records what was chosen, why, and what was rejected.
+
+### D1 — The package is `@malarstrom/agent-dev-gateway`
+
+The binary is `dev-gateway`. The scope is the `malarstrom` organisation on npm.
+
+*Rejected*: `dev-gateway` (taken on npm, version 0.3.0), `traefik-dev-gateway`
+(free, but names one proxy in a package that is not about one proxy),
+`agent-dev-gateway` unscoped (free, but an unscoped name is a permanent
+squatting risk — a scope is owned).
+
+The repository stays `traefik-api` for now. The repository name and the
+package name are independent; renaming the repository is a separate decision.
+
+### D2 — The package ships compiled JavaScript
+
+Node cannot execute TypeScript that lives under `node_modules`:
+
+```
+Error [ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING]: Stripping types is
+currently unsupported for files under node_modules
+```
+
+The repository today runs its TypeScript directly (`node bin/traefik-dev.js`
+imports `../src/cli.ts`), which works in the repository and breaks the moment
+the package is installed. The package therefore builds to `dist/` with `tsc`
+and publishes `dist/`.
+
+This is also the npm convention: published packages contain JavaScript.
+
+*Rejected*: shipping TypeScript and relying on the consumer's runtime to
+strip types (does not work), shipping TypeScript and relying on a loader
+(jiti) (works only for pi, not for the MCP server or the CLI).
+
+### D3 — The core is proxy-agnostic; Traefik is one adapter
+
+The core knows about routes, ports, host names and reachability. It does not
+know what a router, a service or a middleware is. Traefik's document format
+lives in one adapter behind the `ProxyAdapter` interface (§4.2).
+
+*Rejected*: keeping Traefik inside the core (the reason the package would
+only ever serve Traefik users), a plugin system (unnecessary until a second
+adapter exists).
+
+### D4 — MCP is the primary agent surface
+
+The MCP server is the interface every serious agent harness speaks. The pi
+extension, the CLI and the skill are adapters over the same core.
+
+*Rejected*: the pi extension as the primary surface (works only in pi), the
+CLI as the primary surface (every harness that can run a command can run it,
+but the agent gets no typed tool contract and must parse text).
+
+### D5 — The MCP server speaks the stdio JSON-RPC protocol directly
+
+`@modelcontextprotocol/sdk` is kept as a **dev** dependency, used as a
+conformance oracle in the test suite, and is not a runtime dependency.
+
+*Why*: the project value "zero runtime dependencies" is real and is worth
+protecting. The SDK pulls in `zod`, `ajv`, `express`, `hono` and `jose` —
+roughly 15 MB and a large dependency tree for three tools. The MCP stdio
+transport is newline-delimited JSON-RPC, which is small.
+
+*Risk*: protocol drift. *Mitigation*: §11.4 — a conformance test drives our
+server with the official SDK's client. If the conformance test turns out to
+be expensive to maintain, the fallback is to make the SDK a runtime
+dependency; that is a one-line change in `package.json` plus deleting the
+hand-written transport.
+
+### D6 — Files follow the XDG Base Directory specification
+
+Resolved with `env-paths`, which is the npm ecosystem's convention.
+
+| Purpose | Linux | macOS | Windows |
+| --- | --- | --- | --- |
+| configuration | `~/.config/dev-gateway/config.json` | `~/Library/Preferences/dev-gateway/` | `%APPDATA%\dev-gateway\Config\` |
+| state (routes, pid) | `~/.local/state/dev-gateway/` | `~/Library/Application Support/dev-gateway/` | `%LOCALAPPDATA%\dev-gateway\State\` |
+| log | `~/.local/state/dev-gateway/daemon.log` | `~/Library/Logs/dev-gateway/` | `%LOCALAPPDATA%\dev-gateway\Log\` |
+
+`env-paths` supplies configuration, data, cache and log directly. The state
+directory is one extra resolution, because XDG's `state` has no macOS or
+Windows equivalent in `env-paths`.
+
+*Rejected*: `~/.dev-gateway/` (the older convention, not XDG), one directory
+for everything (config and mutable runtime state have different lifecycles).
+
+### D7 — The daemon starts lazily; `postinstall` may start it but may never fail the install
+
+Three layers, in the order a user meets them:
+
+1. **Lazy start** (always on, default). Every entry point ensures the daemon
+   is running. Zero install-time side effects. This already works today.
+2. **`postinstall`** starts the daemon, guarded: it exits 0 unconditionally,
+   it skips when `npm_config_ignore_scripts` is set, it skips in CI, and it
+   does not start a per-user daemon from a root-owned global install.
+3. **`dev-gateway install-service`** writes a systemd user unit (Linux), a
+   launchd agent (macOS) or a scheduled task (Windows). This is the supported
+   way to survive a reboot.
+
+*Rejected*: `postinstall` without guards (it breaks `npm ci` in CI, and it
+starts a root daemon from `sudo npm i -g`), no `postinstall` at all (the
+service is then only up when an agent happens to run, which is not what was
+asked for).
+
+### D8 — The web interface is removed
+
+The route list becomes a CLI, MCP and TUI view. The registry keeps two
+endpoints: the dynamic configuration document and the health probe.
+
+*Why*: the index page is roughly 1250 lines of code plus a Tailwind
+toolchain, and it is a browser UI for a person who is not in the container.
+The information it carried is available to the agent, to the user's shell
+and to the user's terminal.
+
+*Rejected*: keeping it (the request was explicit), replacing it with a
+served single-page app (the same cost, and it is still a browser UI).
+
+### D9 — The registry serves exactly two endpoints
+
+`GET /<dynamic-config-path>` and `GET /healthz`. The route create and delete
+endpoints existed only for the web page and go away with it (§10).
+
+*Consequence*: the extension and the CLI write the state file directly. That
+removes the version-skew risk between an installed package and a running
+daemon, and removes the CSRF guard from the write path entirely.
+
+### D10 — The route state is written atomically and guarded by a lock file
+
+The store writes to a temporary file and renames it (this already works).
+A lock file around read-modify-write prevents a lost update when two agent
+sessions register at the same time.
+
+*Rejected*: locking only (a crashed process leaves a stale lock), only
+atomic writes (atomic writes prevent corruption but not lost updates).
+
+### D11 — The test environment is fully isolated from the user's live system
+
+The test environment has its own ports, its own domain, its own Traefik, its
+own state directory and its own certificates. The user's live gateway and the
+user's live Traefik are never involved in a test run (§11).
+
+### D12 — The daemon is never hosted inside an agent session
+
+The proxy polls the configuration endpoint whether or not an agent is running.
+A daemon that lives inside an agent process dies with that process, and every
+published route then returns 502.
+
+*Consequence*: the daemon is always a separate, detached process. The
+agent-facing integrations are clients of it, never hosts of it.
+
+---
+
+## 1. Problem statement
+
+### 1.1 Who has this problem
+
+A developer runs an AI coding agent. The agent runs in a container, a
+virtual machine, or a remote workspace. The agent starts a development
+server. The developer wants to open it in a browser on their own machine.
+
+The container's ports are not reachable from the developer's machine. So the
+developer puts a reverse proxy in front — Traefik, Caddy, nginx, a tunnel —
+usually in a sibling container on a shared Docker network, usually terminating
+TLS with a certificate from a DNS challenge.
+
+The developer then has to teach the proxy about each development server, by
+hand, every time. That is the problem this package solves.
+
+### 1.2 What the package does
+
+It publishes a development server that runs on the agent's machine to a
+host name the developer can open, and it tells the agent the address.
+
+### 1.3 What the package does not do
+
+- It does not terminate TLS. The proxy does.
+- It does not run a development server.
+- It does not replace the proxy. It configures it, and it verifies that the
+  configuration works.
+- It does not assume any particular agent harness. See §4.3.
+
+---
+
+## 2. Distribution
+
+### 2.1 The npm package
+
+```bash
+npm install -g @malarstrom/agent-dev-gateway
+```
+
+Published contents:
+
+| Path | Purpose |
+| --- | --- |
+| `dist/` | compiled JavaScript (D2) |
+| `bin/dev-gateway.js` | the CLI |
+| `bin/dev-gateway-mcp.js` | the MCP server (stdio) |
+| `bin/dev-gateway-daemon.js` | the daemon entry point |
+| `skills/dev-gateway/` | the Agent Skill (§8.1) |
+| `docs/` | `AGENTS.md`, the Traefik wiring guide, the setup reference |
+| `README.md`, `LICENSE` | |
+
+`package.json` shape:
+
+```json
+{
+  "name": "@malarstrom/agent-dev-gateway",
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "dev-gateway": "bin/dev-gateway.js",
+    "dev-gateway-mcp": "bin/dev-gateway-mcp.js"
+  },
+  "exports": {
+    ".": "./dist/core/index.js"
+  },
+  "files": ["dist", "bin", "skills", "docs", "README.md", "LICENSE"],
+  "engines": { "node": ">=20.11" },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "node --test test/*.test.ts",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "dependencies": {
+    "env-paths": "^3.0.0",
+    "proper-lockfile": "^4.1.2"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  },
+  "pi": {
+    "extensions": ["dist/integrations/pi/extension.js"],
+    "skills": ["./skills"]
+  },
+  "keywords": ["pi-package", "mcp", "traefik", "dev-server", "agent"]
+}
+```
+
+Notes:
+
+- `engines.node` is `>=20.11`, wider than today's `>=22.6`, because the
+  compiled output no longer depends on Node's type stripping.
+- `dependencies` holds `env-paths` and `proper-lockfile` only. The MCP SDK is
+  a dev dependency (D5).
+- `files` is an allow-list, not an `.npmignore`.
+- The `pi` manifest points at compiled output, so pi does not need a
+  TypeScript loader for the package.
+
+### 2.2 The pi package
+
+pi installs npm, git and local-path packages through `pi install`. The same
+package therefore serves both audiences:
+
+```bash
+pi install npm:@malarstrom/agent-dev-gateway
+pi install git:github.com/malarstrom/agent-dev-gateway@v1
+pi install ./                                   # from a checkout
+```
+
+### 2.3 Repository layout
+
+```text
+traefik-api/                          # the repository (name unchanged, D1)
+├── package.json
+├── tsconfig.json                     # type-check only, noEmit
+├── tsconfig.build.json               # emit to dist/
+├── bin/                              # thin launchers, no logic
+│   ├── dev-gateway.js
+│   ├── dev-gateway-mcp.js
+│   └── dev-gateway-daemon.js
+├── src/
+│   ├── core/                         # proxy-agnostic (D3)
+│   │   ├── paths.ts                  # XDG resolution + overrides (D6)
+│   │   ├── config.ts
+│   │   ├── types.ts
+│   │   ├── state.ts                  # route store (D10)
+│   │   ├── probe.ts                  # reachability probing
+│   │   ├── relay.ts
+│   │   ├── registry.ts               # serves the dynamic configuration
+│   │   ├── daemon.ts                 # supervisor
+│   │   ├── worker.ts
+│   │   ├── daemonControl.ts          # health probe, pidfile, lazy start
+│   │   ├── log.ts
+│   │   └── util/{net,slug,yaml}.ts
+│   ├── adapters/                     # one per proxy (D3)
+│   │   ├── types.ts                  # ProxyAdapter interface
+│   │   └── traefik.ts                # Traefik document rendering
+│   ├── integrations/                 # one per harness (D4)
+│   │   ├── mcp/server.ts             # MCP server, stdio JSON-RPC (D5)
+│   │   └── pi/extension.ts           # pi extension
+│   └── cli/
+│       ├── index.ts
+│       ├── setup.ts                  # the setup wizard (§9)
+│       └── service.ts                # systemd / launchd / schtasks (D7)
+├── skills/dev-gateway/SKILL.md
+├── docs/
+│   ├── AGENTS.md
+│   ├── traefik.md
+│   └── setup.md
+├── tools/
+│   └── testenv/                      # the isolated test environment (§11)
+└── test/
+```
+
+### 2.4 Naming inside the package
+
+The published package is `@malarstrom/agent-dev-gateway`; the *directories*
+inside the home directory are named `dev-gateway` (not `agent-dev-gateway`),
+because the scope is an npm publishing detail and the directory is a user
+detail. `env-paths('dev-gateway', { suffix: '' })`.
+
+---
+
+## 3. Paths, state and configuration
+
+### 3.1 Resolution
+
+`src/core/paths.ts` resolves four directories:
+
+```ts
+export interface GatewayPaths {
+  configFile: string;   // <config>/config.json
+  stateDir: string;     // routes.json, daemon.pid
+  logFile: string;      // daemon.log
+  cacheDir: string;
+}
+```
+
+Resolution order:
+
+1. `DEV_GATEWAY_HOME` — everything in one directory. The escape hatch for
+   tests, for people who want one folder, and for CI.
+2. `DEV_GATEWAY_CONFIG` — the configuration file only.
+3. `DEV_GATEWAY_STATE_DIR` — the state directory only.
+4. `env-paths('dev-gateway', { suffix: '' })` — the XDG defaults (D6).
+
+### 3.2 Configuration
+
+The configuration file keeps today's keys, minus the ones the web interface
+needed, plus the ones the package needs:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `proxy` | `"traefik"` | which proxy adapter to use (D3) |
+| `registryPort` | `45002` | port the configuration endpoint binds |
+| `relayPort` | `45001` | port the relay binds |
+| `advertisedHost` | detected | host name the proxy reaches this machine under |
+| `advertisedIp` | detected | fallback for `advertisedHost` |
+| `zone` | prompted | DNS zone host names are built from |
+| `entryPoints` | `["websecure"]` | proxy entry points the routers attach to |
+| `certResolver` | prompted | proxy ACME resolver name; empty means no TLS block |
+| `tlsMode` | `"wildcard"` | `wildcard` = one certificate per project, `fqdn` = per route |
+| `middlewareProvider` | `"file"` | proxy provider that owns the shared middlewares |
+| `securityHeaders` | `false` | apply the shared security-headers middleware |
+| `compressMiddleware` | `false` | apply the shared compress middleware |
+| `allowedCidrs` | `["127.0.0.1/32", "::1/128"]` | sources allowed to use the dispatch header |
+| `secret` | `""` | optional shared secret |
+| `stateDir` | resolved | runtime state directory |
+| `documentFormat` | `"yaml"` | `yaml` or `json` for the configuration document |
+| `logMaxBytes` / `logKeep` | `5242880` / `3` | log rotation |
+| `autostart` | `true` | may `postinstall` start the daemon (D7) |
+
+`indexHost` is removed (D8). The defaults are not the user's values: the
+setup wizard derives them and writes them (§9).
+
+### 3.3 Migration from the previous layout
+
+The current installation keeps everything in `~/.traefik-dev/`:
+`config.json`, `registrations.json`, `daemon.pid`, `daemon.log`.
+
+On first run, if the new configuration file does not exist and the old one
+does, the old file is read and the old route file is imported. The old
+directory is left in place and is never deleted automatically.
+
+`dev-gateway migrate` performs the same import explicitly and reports what
+it moved.
+
+---
+
+## 4. Architecture
+
+### 4.1 The core
+
+```text
+                    ┌──────────────────────────────────────────┐
+                    │              dev-gateway core             │
+                    │                                          │
+   CLI ───────────►│  state.ts ◄──── relay.ts ◄──── worker.ts │◄── daemon.ts
+   MCP server ────►│     ▲                                  │      (supervisor)
+   pi extension ──►│     │                                  │
+                    │  registry.ts ──► dynamic configuration │
+                    └──────────────────────────────────────────┘
+                                   ▲
+                                   │ HTTP poll
+                            ┌──────┴──────┐
+                            │    proxy    │
+                            └─────────────┘
+```
+
+- **registry** serves the dynamic configuration document. Two endpoints (D9).
+- **relay** resolves the dispatch header to `127.0.0.1:<port>` and proxies,
+  tunnelling WebSocket upgrades.
+- **worker** is one supervised child process per listener, so a crash in one
+  does not take the other down.
+- **daemon** supervises the workers, writes the pidfile, rotates the log.
+
+### 4.2 The proxy adapter
+
+```ts
+export interface ProxyAdapter {
+  id: string;
+  /** Identify the proxy: find its API, read its version. */
+  discover(options: DiscoverOptions): Promise<ProxyInfo | undefined>;
+  /** Render the dynamic configuration for the current routes. */
+  render(routes: Route[], config: Config): string;
+  /** The static configuration the user must add to the proxy. */
+  wiringSnippet(config: Config): string;
+  /** Does the proxy currently know about this route? */
+  verify?(route: Route, config: Config): Promise<boolean>;
+}
+
+export interface ProxyInfo {
+  id: string;
+  version?: string;
+  /** Values derived from the proxy's own current configuration. */
+  derived: {
+    zone?: string;
+    entryPoints?: string[];
+    certResolver?: string;
+    middlewareProvider?: string;
+  };
+}
+```
+
+`discover()` is what makes the setup wizard automatic (§9.2): for Traefik it
+reads `/api/version` and `/api/http/routers`, and the router list yields the
+zone, the entry points, the certificate resolver and the middleware provider
+without the user typing them.
+
+### 4.3 The integration adapters
+
+| Adapter | Surface | Mechanism |
+| --- | --- | --- |
+| MCP server | every harness that speaks MCP | `bin/dev-gateway-mcp.js`, stdio |
+| pi extension | pi | `pi.registerTool`, `pi.registerCommand`, `pi.ui` |
+| CLI | humans, scripts, any harness that can run a command | `dev-gateway` |
+| Agent Skill | every harness that reads `SKILL.md` | `skills/dev-gateway/SKILL.md` |
+| `AGENTS.md` | every harness that reads context files | `docs/AGENTS.md` |
+
+All five are clients of the same core. None of them hosts the daemon (D12).
+
+---
+
+## 5. Daemon lifecycle
+
+### 5.1 Layer one — lazy start
+
+Every entry point calls `ensureDaemon()`. It probes `/healthz`, and if the
+daemon is not answering it starts one detached and waits for it. The daemon
+outlives the process that started it, because it is spawned detached and
+unreferenced.
+
+This is the default and requires no configuration.
+
+### 5.2 Layer two — `postinstall`
+
+```js
+// scripts/postinstall.mjs
+if (process.env.npm_config_ignore_scripts === 'true') process.exit(0);
+if (process.env.CI) process.exit(0);
+if (process.getuid?.() === 0) {
+  // A global install run as root: do not start a per-user daemon.
+  process.exit(0);
+}
+try {
+  ensureDirectories();
+  writeDefaultConfigIfMissing();
+  if (config.autostart) await ensureDaemon();
+} catch {
+  // Never fail the install.
+}
+process.exit(0);
+```
+
+Properties: exits 0 unconditionally; idempotent (pidfile plus `/healthz`);
+silent apart from one line in the log; disabled by `DEV_GATEWAY_AUTOSTART=0`
+or `"autostart": false`.
+
+### 5.3 Layer three — `install-service`
+
+`dev-gateway install-service` writes and enables:
+
+| Platform | Unit |
+| --- | --- |
+| Linux | `~/.config/systemd/user/dev-gateway.service` |
+| macOS | `~/Library/LaunchAgents/dev.mal.arstrom.dev-gateway.plist` |
+| Windows | a scheduled task running `dev-gateway-daemon.js` |
+
+The unit runs the daemon directly, not the CLI. It is the only layer that
+survives a reboot, and the setup wizard recommends it.
+
+---
+
+## 6. The MCP server — the primary agent surface
+
+### 6.1 Transport and configuration
+
+```json
+{
+  "mcpServers": {
+    "dev-gateway": {
+      "command": "dev-gateway-mcp",
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    }
+  }
+}
+```
+
+The `mcpServers` format is the one pi documents as matching other MCP
+clients, so the same entry works in Claude Code, Cursor, VS Code, Windsurf,
+Zed, Continue, Goose and OpenCode.
+
+The server never starts the daemon at startup; it starts it on the first tool
+call (§5.1). Running `npx @malarstrom/agent-dev-gateway` is therefore safe.
+
+### 6.2 Tool contracts
+
+| Tool | Input | Output |
+| --- | --- | --- |
+| `publish_dev_server` | `{ port: number, project?: string, branch?: string, label?: string }` | `{ url, fqdn, project, branch, port, state }` |
+| `remove_dev_server` | `{ project: string, branch: string }` | `{ removed: boolean, fqdn?: string }` |
+| `list_dev_servers` | `{}` | `{ routes: [{ project, branch, port, fqdn, url, state }] }` |
+| `dev_gateway_status` | `{}` | `{ daemon, proxy, config, reachable }` |
+
+`state` is `up` or `down`, from a reachability probe of the local port.
+`publish_dev_server` updates an existing route in place, because an agent
+that restarts a development server on another port expects the same address
+to follow it.
+
+### 6.3 Project and branch inference
+
+`project` and `branch` are optional. When they are absent:
+
+- **project** is the basename of the server's working directory, slugified.
+- **branch** is `git rev-parse --abbrev-ref HEAD` in that directory, slugified,
+  falling back to `main` when the directory is not a repository.
+
+The agent does not have to reason about names. It may still pass them
+explicitly when it wants to.
+
+---
+
+## 7. The pi extension
+
+The pi extension is one adapter over the core. It gives pi users things MCP
+alone does not: a native tool contract with `outputSchema`, a route table
+rendered in the terminal, and a status line.
+
+| Capability | Detail |
+| --- | --- |
+| `publish_dev_server` | native tool, `outputSchema` declared, `structuredContent` returned |
+| `remove_dev_server` | native tool |
+| `list_dev_servers` | native tool |
+| `/routes` | command; renders the route table with local and public state |
+| status line | `ctx.ui.setStatus("dev-gateway", "3 routes live")` |
+| `session_start` | ensures the daemon is running (§5.1) |
+
+The extension is published compiled (`dist/integrations/pi/extension.js`), so
+pi loads it without a TypeScript loader.
+
+---
+
+## 8. The skill and the agent instructions
+
+### 8.1 The Agent Skill
+
+`skills/dev-gateway/SKILL.md` follows the Agent Skills specification. It is
+read by pi, Claude Code, Codex and OpenCode.
+
+```markdown
+---
+name: dev-gateway
+description: Publish a development server running on this machine so the user
+  can open it in a browser on their network. Use when a dev server is started
+  (Vite, Next, Nuxt, python -m http.server, any local port) and the user needs
+  a URL to open it.
+---
+```
+
+The body names the MCP tool first and the CLI as the fallback, so it is
+useful in a harness without MCP support.
+
+### 8.2 `docs/AGENTS.md`
+
+A short, portable block:
+
+> When you start a development server, publish it: call the
+> `publish_dev_server` tool, or run `dev-gateway register --port <port>`.
+> Give the user the returned URL verbatim. Do not compose the host name
+> yourself.
+
+---
+
+## 9. The setup wizard
+
+`dev-gateway setup`. Six steps, five of them automatic.
+
+### 9.1 Step one — read the environment
+
+Container or not, platform, reachable addresses, the working directory, the
+state directory, whether a daemon is already running.
+
+### 9.2 Step two — discover the proxy
+
+`ProxyAdapter.discover()` (§4.2). For Traefik: `GET /api/version` and
+`GET /api/http/routers`. From the router list the wizard derives the zone
+(the common host-name suffix), the entry points, the certificate resolver
+and the middleware provider.
+
+When no proxy API answers, the wizard asks the user for these values. Nothing
+is hard-coded.
+
+### 9.3 Step three — is it already wired?
+
+Whether the proxy already has a provider pointing at this machine. For
+Traefik: is there a router whose provider is the HTTP provider and whose
+service points at this host and port.
+
+If it is already wired, the wizard skips to step five and verifies.
+
+### 9.4 Step four — emit the wiring
+
+The wizard prints the exact static configuration to add, with the values
+filled in for this machine, and writes it to
+`<state>/wiring/<proxy>.yml` so it can be copied.
+
+The wizard cannot apply it itself. The proxy's configuration lives on another
+machine, and the gateway process runs without the privileges to write it.
+The wizard says so plainly rather than pretending.
+
+### 9.5 Step five — verify end to end
+
+1. Start a throwaway server on a free port.
+2. Register it.
+3. Wait for one poll interval.
+4. Fetch the public URL and require a successful response.
+5. Remove the route and stop the throwaway server.
+
+The wizard reports each step as it goes, and reports what it could not
+verify.
+
+### 9.6 Step six — write the configuration and start
+
+The derived values are written to the configuration file, the daemon is
+started, and the wizard recommends `dev-gateway install-service` for
+surviving a reboot.
+
+---
+
+## 10. The web interface is removed
+
+### 10.1 What goes
+
+| Removed | Where |
+| --- | --- |
+| the index page renderer | `src/index-page.ts` |
+| the page's assets, including the fonts | `src/assets/` |
+| the Tailwind toolchain | `package.json`, `npm run build:css`, `test/build-css.test.ts` |
+| the index host name | `config.indexHost` |
+| the index router in the generated document | `src/document.ts` |
+| the page's HTTP endpoints | `src/registry.ts` |
+| the create and delete endpoints | `src/registry.ts` |
+
+### 10.2 What replaces it
+
+| The page showed | Now |
+| --- | --- |
+| the route list with up/down state | `dev-gateway list`, `list_dev_servers`, `/routes` |
+| the host name to open | the `url` field of `publish_dev_server` |
+| the remove button | `dev-gateway unregister`, `remove_dev_server` |
+| the create form | `dev-gateway register`, `publish_dev_server` |
+
+### 10.3 Consequences for the confirmed constraints in `PRODUCT.md`
+
+`PRODUCT.md` lists confirmed constraints that this work changes. They are
+superseded here, deliberately and explicitly:
+
+| `PRODUCT.md` constraint | New status |
+| --- | --- |
+| "Zero runtime dependencies" | **narrowed**: `env-paths` and `proper-lockfile` become runtime dependencies; the MCP SDK does not (D5) |
+| "The Traefik dynamic configuration document served at `/traefik` must not change" | **changed**: the index router is removed (§10.1). Every other object keeps its name and shape |
+| "The Remove flow, the `X-Gateway-UI: 1` guard, the `data-registration-id` attribute … stay as they are" | **changed**: the guard and the attribute belonged to the page and go with it |
+| "Creating a route by hand goes through `POST /api/registrations` … a project and branch that already has a route is a conflict (409), never a silent update" | **changed**: the endpoint is gone; the agent-facing path updates in place (§6.2), while the CLI keeps its own semantics |
+| "No secret is configured for the registry … Do not raise this again." | **kept**: the secret stays off by default. The registry no longer has a write endpoint, so the guard has nothing to guard |
+| "The index page must keep: …" | **removed**: the page is gone (D8) |
+| "The tests stay green, and other projects' live routes must keep working" | **kept** |
+
+`PRODUCT.md` must be updated to match, in the same slice that removes the
+web interface (S3).
+
+---
+
+## 11. The test environment
+
+### 11.1 Isolation requirements
+
+The user's live gateway runs on ports 45001 and 45002 and serves
+`home.malarstrom.com`. The user's live Traefik terminates TLS for a wildcard
+certificate. **No test may touch either.**
+
+| | live | test |
+| --- | --- | --- |
+| registry port | 45002 | 46002 |
+| relay port | 45001 | 46001 |
+| domain | `home.malarstrom.com` | `gwtest.local` |
+| state directory | `~/.local/state/dev-gateway/` | `/tmp/dev-gateway-test/` |
+| proxy | the user's Traefik | a Traefik started by the test |
+| certificates | the user's ACME certificates | a generated self-signed CA |
+
+The isolation is enforced by `DEV_GATEWAY_HOME` and by the test's own proxy
+configuration, not by convention.
+
+### 11.2 The test proxy
+
+The container has no Docker and no Docker socket, so the test proxy cannot be
+a container. GitHub releases are reachable, so the test downloads the Traefik
+binary — the same version as the user's (3.7.16) — into `tools/testenv/`
+and runs it with a generated static configuration:
+
+```yaml
+entryPoints:
+  testweb:
+    address: ":8443"
+providers:
+  http:
+    endpoint: "http://127.0.0.1:46002/traefik"
+    pollInterval: 2s
+certificatesResolvers:
+  testca:
+    acme:
+      tlsChallenge: true
+      storage: /tmp/dev-gateway-test/acme.json
+```
+
+The test domain resolves to `127.0.0.1` via `/etc/hosts` when the test runs
+as root, and otherwise through a Traefik entry point addressed by
+`127.0.0.1` with the host name sent as `Host`.
+
+### 11.3 The test layers
+
+| Layer | Scope | Needs the network |
+| --- | --- | --- |
+| L1 unit | slug rules, path resolution, configuration merging, document rendering | no |
+| L2 integration | registry and relay over HTTP, in process | no |
+| L3 packaging | `npm pack`, install into a temporary directory, run the binary | no |
+| L4 conformance | the official MCP SDK client against our hand-written MCP server | no |
+| L5 end to end | the real Traefik, the real registry, the real relay, a throwaway server, the public URL | loopback only |
+
+L5 is the one that proves the product works. L1 to L4 are fast and run on
+every change.
+
+### 11.4 The MCP conformance test
+
+`test/mcp-conformance.test.ts` starts our MCP server as a child process and
+drives it with the official SDK's client: initialize, list tools, call a
+tool, read the result. The SDK is a dev dependency, so this proves
+conformance without shipping it.
+
+---
+
+## 12. The slices
+
+Each slice leaves the repository green and can be reviewed on its own. Every
+slice names the sections it must satisfy.
+
+### S0 — The build step
+
+Adds `tsconfig.build.json`, the `dist/` output, the `build` and
+`prepublishOnly` scripts, and moves the `bin/` launchers onto `dist/`.
+
+*Satisfies*: D2.
+*Acceptance*: `npm run build && npm test` is green; `npm pack` produces a
+tarball whose `bin/dev-gateway.js` runs and prints its version; the existing
+103 tests still pass unchanged.
+
+### S1 — Paths and configuration
+
+`src/core/paths.ts`, the new configuration file layout, the environment
+overrides, and the migration from `~/.traefik-dev/`.
+
+*Satisfies*: D6, §3.
+*Acceptance*: path resolution is unit-tested for Linux, macOS and Windows;
+`DEV_GATEWAY_HOME` puts everything in one directory; an existing
+`~/.traefik-dev/config.json` is picked up; `dev-gateway migrate` reports what
+it moved.
+
+### S2 — The core split and the Traefik adapter
+
+Moves the core into `src/core/`, moves the Traefik document rendering into
+`src/adapters/traefik.ts`, and introduces the `ProxyAdapter` interface.
+
+*Satisfies*: D3, §4.
+*Acceptance*: the rendered document is byte-identical to today's for the
+same routes (golden test); the existing tests are ported, not rewritten; the
+core has no import of any adapter.
+
+### S3 — The web interface goes
+
+Deletes the index page, its assets and the Tailwind toolchain; removes the
+index host name, the index router and the write endpoints; updates
+`PRODUCT.md` with the supersessions from §10.3.
+
+*Satisfies*: D8, D9, §10.
+*Acceptance*: the registry answers only the configuration path and
+`/healthz`; the rendered document is identical to today's minus the index
+router; `PRODUCT.md` no longer claims the index page exists; the Tailwind
+dependencies are gone from `package.json`.
+
+### S4 — The CLI
+
+The new binary names, the new commands (`setup`, `start`, `stop`, `doctor`,
+`install-service`, `migrate`) and the JSON output.
+
+*Satisfies*: §5, §9.
+*Acceptance*: `dev-gateway list --json` is machine-readable; every command
+has a test; the old command names still work as aliases.
+
+### S5 — The MCP server
+
+`src/integrations/mcp/server.ts` and `bin/dev-gateway-mcp.js`, speaking
+stdio JSON-RPC directly, plus the conformance test.
+
+*Satisfies*: D4, D5, §6.
+*Acceptance*: the conformance test passes against the official SDK client;
+the four tools are listed and callable; the server starts no daemon until a
+tool is called; the runtime dependency list is still free of the MCP SDK.
+
+### S6 — The pi extension
+
+`src/integrations/pi/extension.ts`, the native tools, the `/routes` command
+and the status line.
+
+*Satisfies*: §7.
+*Acceptance*: `pi -e ./dist/integrations/pi/extension.js` loads the
+extension; the three tools appear; `/routes` renders the table; the status
+line shows the live route count.
+
+### S7 — The skill, the agent instructions and the documentation
+
+`skills/dev-gateway/SKILL.md`, `docs/AGENTS.md`, the package `README.md` and
+the proxy wiring guide.
+
+*Satisfies*: §8.
+*Acceptance*: the skill front matter validates against the Agent Skills
+specification; the README's quick start works from a clean install.
+
+### S8 — The setup wizard
+
+`src/cli/setup.ts`: the six steps of §9.
+
+*Satisfies*: §9.
+*Acceptance*: against the test proxy the wizard detects the zone, the entry
+points and the resolver without being told them; it emits a wiring snippet
+that the test proxy accepts; the end-to-end verification passes.
+
+### S9 — The test environment
+
+`tools/testenv/`: the Traefik download, the generated configuration, the
+certs, the start and teardown, and the end-to-end test.
+
+*Satisfies*: D11, §11.
+*Acceptance*: one command brings up the whole isolated environment, runs the
+end-to-end test and tears it down; the user's live gateway and proxy are
+untouched, proven by asserting that their ports are not bound by the test.
+
+### S10 — Packaging and release
+
+The published `package.json`, the `pi` manifest, the licence, the
+`npm pack` verification and the publish dry run.
+
+*Satisfies*: §2.
+*Acceptance*: `npm pack` contents are exactly the allow-list; installing the
+tarball into a temporary directory gives a working `dev-gateway` binary, a
+working MCP server and a pi extension pi can load.
+
+---
+
+## 13. Release
+
+The first release is `0.1.0` on the `malarstrom` npm organisation, published
+from `feat/npm-package` after the slices are merged.
+
+The live system is not touched by this work. The running gateway is a
+separate copy under `/opt/`, and the user's proxy already has the HTTP
+provider wired. Migrating the live system to the package is a separate,
+deliberate step: install the package, run `dev-gateway setup`, verify, and
+only then remove the old copy.
+
+---
+
+## 14. Risks and open questions
+
+| # | Question | Status |
+| --- | --- | --- |
+| R1 | Is the hand-written MCP transport worth it, or should the SDK be a runtime dependency? | Open. S5 decides by measurement, and the fallback is one line in `package.json` |
+| R2 | Does `rewriteRelativeImportExtensions` emit correct relative specifiers for every import shape in the tree? | Open. S0 proves it with a pack-and-run check |
+| R3 | What is the second proxy adapter, and does the `ProxyAdapter` interface actually generalise? | Open. Caddy is the candidate; the interface is not proven until a second implementation exists |
+| R4 | Should `dev-gateway` be able to publish to a tunnel (Cloudflare, Tailscale) instead of a proxy? | Open. Out of scope for now (§15) |
+| R5 | The npm organisation `malarstrom` must exist before the first publish | Open. Confirm the npm account and the 2FA setup |
+
+---
+
+## 15. Out of scope
+
+- The web interface (D8).
+- Proxy implementations other than Traefik. The interface exists; the second
+  implementation does not.
+- Terminating TLS. The proxy does.
+- Running development servers.
+- Tunnel providers (Cloudflare Tunnel, Tailscale Funnel, ngrok).
+- Windows as a first-class platform. The paths and the service installer are
+  written for it, but the testing happens on Linux.
+- A hosted dashboard of the routes. The route list is a CLI, an MCP tool and
+  a terminal view.
