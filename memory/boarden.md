@@ -10,7 +10,8 @@ boardens backlogg för repot ligger.
 - `memory/traefik-namespace.md` — de bekräftade faktorna (DNS-namnrymden, FQDN-mallen,
   routingmodellen, containerfakta, TLS-reglerna) plus en kronologisk logg över indexsidan och
   de beslut som följde efteråt.
-- `memory/context-policy.md` — pekare till den globala kontextpolicyn.
+- `memory/context-policy.md` — pekare till den globala kontextpolicyn (uppgiften fortsätter,
+  överlämningen skrivs i slutnoten).
 - `memory/context-usage.mjs` — mätverktyget för kontextbeläggning (40 % / 50 %).
 - `memory/boarden.md` — den här filen.
 

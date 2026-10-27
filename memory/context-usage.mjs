@@ -10,11 +10,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const filter = process.argv[2] || 'bricktory-landing';
-// Två nivåer - se /home/node/projects/pi-setup/README.md "Kontextpolicy (2026-10-24)".
-// PLAN = 40 %: planera åtgärd (mindre sessioner, sammanfatta tidigt, ctx_execute).
-// THRESHOLD = 50 %: riktmärke - rapportera beläggningen och agera.
-// Över 50 % är inte förbjudet, men ska aldrig bli en överraskning: åtgärden ska vara
-// planerad redan vid 40 %.
+// Två nivåer - se /home/node/projects/pi-setup/README.md "Kontextpolicy (2026-10-24)"
+// och /home/node/projects/context-ledger-plugin/policy.json (sanningskällan).
+// PLAN = 40 %: agenten fortsätter den pågående uppgiften och förbereder överlämningen.
+// THRESHOLD = 50 %: riktmärke - samma regel, beläggningen redovisas i överlämningen.
+// Över 50 % är inte förbjudet, men ska aldrig bli en överraskning: överlämningen hålls
+// aktuell redan från 40 %.
 const PLAN = 40;
 const THRESHOLD = 50;
 
@@ -102,11 +103,11 @@ if (!worst) {
   console.log('inga sessioner hittade for', filter);
 } else if (worst.pct >= THRESHOLD) {
   console.log(
-    `RIKTMARKE OVERSTIGET: ${worst.pct}% (${worst.label}). Rapportera belaggningen och agera - dela upp arbetet i mindre sessioner.`,
+    `RIKTMARKE OVERSTIGET: ${worst.pct}% (${worst.label}). Fortsatt den pagaende uppgiften - avbryt den inte. Sammanfatta tidigt och skriv ut stora utskrifter med ctx_execute. Nar sessionen avslutas skriver du overlamningen i slutnoten - vad som ar gjort, vad som kvarstar, vilka filer och branch, nasta konkreta steg - och redovisar belaggningen i overlamningen (anvandning mot fonstret och procenten).`,
   );
 } else if (worst.pct >= PLAN) {
   console.log(
-    `PLANERA AATGARD: ${worst.pct}% (${worst.label}). Dela upp arbetet i mindre sessioner, sammanfatta tidigt, skriv ut stora utskrifter med ctx_execute, och skriv ut planen i naesta svar.`,
+    `FORBERED OVERLAMNING: ${worst.pct}% (${worst.label}). Fortsatt den pagaende uppgiften - avbryt den inte. Sammanfatta tidigt och skriv ut stora utskrifter med ctx_execute. Hall overlamningen aktuell: nar sessionen avslutas skriver du overlamningen i slutnoten - vad som ar gjort, vad som kvarstar, vilka filer och branch, nasta konkreta steg - och redovisar belaggningen i overlamningen (anvandning mot fonstret och procenten).`,
   );
 } else {
   console.log(`OK: hoggsta belaggning ${worst.pct}% (${worst.label}) - mät bara, ingen rapportering.`);
