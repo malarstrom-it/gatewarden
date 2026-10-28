@@ -1,0 +1,62 @@
+# Publish the agent dev gateway to an npm registry.
+#
+# The trigger is a tag: `v1.2.3` publishes version 1.2.3. The tag and the
+# version in package.json must agree, or the run stops.
+#
+# Two secrets, both set in the repository on Gitea
+# (Settings -> Actions -> Secrets):
+#
+#   NPM_TOKEN      the token that publishes. Use an npm *automation* token
+#                  (`npm token create --automation`): it publishes without
+#                  the two-factor prompt, which no CI run can answer.
+#   NPM_REGISTRY   optional. Without it the package goes to
+#                  https://registry.npmjs.org. Set it to a staging
+#                  registry to publish a rehearsal first.
+#
+# The token never leaves the runner: it is read from the secret and passed
+# to npm as NODE_AUTH_TOKEN, which npm writes into the runner's .npmrc.
+#
+# npm provenance is not available here: npm only signs with GitHub Actions
+# and GitLab CI, not with Gitea Actions.
+
+name: publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: ${{ secrets.NPM_REGISTRY || 'https://registry.npmjs.org' }}
+
+      - run: npm ci
+
+      - name: the tag and the package version must agree
+        run: |
+          set -euo pipefail
+          tag_version="${GITHUB_REF#refs/tags/v}"
+          package_version="$(node -p "require('./package.json').version")"
+          if [ "$tag_version" != "$package_version" ]; then
+            echo "the tag says $tag_version, package.json says $package_version" >&2
+            exit 1
+          fi
+          echo "publishing $package_version"
+
+      - name: typecheck
+        run: npm run typecheck
+
+      # `npm publish` runs prepublishOnly, which is `npm run build && npm test`.
+      # The build and the tests are therefore the gate of the publish.
+      - name: publish
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
