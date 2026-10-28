@@ -701,6 +701,62 @@ test('the end-to-end verification passes against a proxy that serves the route',
   assert.equal(routes.registrations.length, 0, 'the throwaway route was not removed');
 });
 
+test('the verification waits for a proxy that picks the route up late', async (t) => {
+  const certificate = makeCertificate('*.dev-gateway-setup.localhost');
+  if (!certificate) {
+    t.skip('openssl is not there to make a certificate with');
+    return;
+  }
+
+  const cli = await makeCliFixture({
+    config: { zone: 'localhost', advertisedHost: '127.0.0.1', advertisedIp: '127.0.0.1' },
+    env: { NODE_EXTRA_CA_CERTS: certificate.certFile },
+  });
+  t.after(async () => {
+    await cli.stopDaemon();
+    cli.cleanup();
+    fs.rmSync(certificate.dir, { recursive: true, force: true });
+  });
+
+  const registryPort = (JSON.parse(fs.readFileSync(cli.configPath, 'utf8')) as { registryPort: number }).registryPort;
+
+  // The proxy polls the document every three seconds, and the wizard is
+  // told that the proxy polls every second: the route is not in what
+  // the proxy knows when the wizard fetches the public URL for the first
+  // time. A proxy that polls slower than the wizard was told is not a
+  // broken setup: the verification waits for the poll.
+  const proxy = new FakeTraefik({
+    tls: { key: certificate.key, cert: certificate.cert },
+    documentEndpoint: `http://127.0.0.1:${registryPort}/traefik`,
+    pollIntervalMs: 3000,
+  });
+  await proxy.start();
+  t.after(async () => {
+    await proxy.stop();
+  });
+
+  const report = await cli.runJson<SetupReport>([
+    'setup',
+    '--api-base-url',
+    `http://127.0.0.1:${proxy.apiPort}`,
+    '--poll-interval',
+    '1000',
+    '--json',
+  ]);
+
+  assert.equal(
+    report.verification.status,
+    'verified',
+    `the verification gave up before the proxy picked the route up: ${report.verification.steps
+      .map((step) => step.detail)
+      .join(' | ')}`,
+  );
+  assert.ok(
+    proxy.served.some((entry) => entry.startsWith('check.dev-gateway-setup.localhost')),
+    'the proxy did not serve the public URL',
+  );
+});
+
 test('the verification says why the public URL did not answer', async (t) => {
   const certificate = makeCertificate('*.dev-gateway-setup.localhost');
   if (!certificate) {
@@ -1096,13 +1152,21 @@ test('a proxy that does not serve the route yet is not a failed setup', async (t
     await proxy.stop();
   });
 
-  const result = await cli.runFail(['setup', '--api-base-url', `http://127.0.0.1:${proxy.apiPort}`]);
+  const result = await cli.runFail([
+    'setup',
+    '--api-base-url',
+    `http://127.0.0.1:${proxy.apiPort}`,
+    '--poll-interval',
+    '500',
+  ]);
   assert.equal(result.code, 0, `the exit code was ${result.code}: ${result.stdout}${result.stderr}`);
 
   const report = await cli.runJson<SetupReport>([
     'setup',
     '--api-base-url',
     `http://127.0.0.1:${proxy.apiPort}`,
+    '--poll-interval',
+    '500',
     '--json',
   ]);
   assert.equal(report.verification.status, 'skipped');

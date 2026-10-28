@@ -24,6 +24,8 @@ import os from 'node:os';
 import path from 'node:path';
 import test, { after, before, describe } from 'node:test';
 import { fileURLToPath } from 'node:url';
+
+import { copyDependencyClosure } from './helpers/install.ts';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
@@ -202,6 +204,23 @@ test('the quick start names the commands it needs', () => {
   assert.match(section, /dev-gateway register/, 'the quick start does not publish a dev server');
 });
 
+/**
+ * The environment of a nested npm.
+ *
+ * The configuration of the npm that runs the test would otherwise leak
+ * into the npm the test runs: `npm publish --dry-run` sets
+ * `npm_config_dry_run`, and a nested npm that inherits it packs nothing.
+ */
+function npmEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.startsWith('npm_config_')) continue;
+    if (key.startsWith('npm_lifecycle_') || key === 'npm_command' || key === 'npm_execpath') continue;
+    if (value !== undefined) env[key] = value;
+  }
+  return { ...env, ...extra };
+}
+
 /** The register command of the quick start, as it is written there. */
 function quickStartRegister(): string {
   const match = /^dev-gateway register .*$/m.exec(quickStart());
@@ -224,11 +243,12 @@ describe('the quick start from a clean install', () => {
 
     workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-docs-'));
 
-    // 1. Pack the package. `prepack` builds it, so the tarball carries the
+    // 1. Pack the package. `prepare` builds it, so the tarball carries the
     //    compiled output the package ships.
     const packed = await execFileAsync('npm', ['pack', '--pack-destination', workdir], {
       cwd: REPO_ROOT,
       timeout: 300_000,
+      env: npmEnv(),
     });
     const name = packed.stdout.trim().split('\n').pop() as string;
     tarball = path.join(workdir, name);
@@ -245,10 +265,11 @@ describe('the quick start from a clean install', () => {
       timeout: 120_000,
     });
 
-    // The one runtime dependency, copied from the checkout: the install
-    // stays offline and hermetic.
-    const dependency = path.join(modules, 'env-paths');
-    fs.cpSync(path.join(REPO_ROOT, 'node_modules', 'env-paths'), dependency, { recursive: true });
+    // The runtime dependencies, copied from the checkout: the install
+    // stays offline and hermetic. The whole closure is copied, not only
+    // the direct dependencies — `proper-lockfile` brings its own.
+    copyDependencyClosure('env-paths', modules, REPO_ROOT);
+    copyDependencyClosure('proper-lockfile', modules, REPO_ROOT);
 
     fs.mkdirSync(path.join(install, 'bin'), { recursive: true });
     fs.symlinkSync(
@@ -296,7 +317,7 @@ describe('the quick start from a clean install', () => {
   test('the tarball carries the published contents', () => {
     const listing = fs.readdirSync(path.join(install, 'node_modules', manifest.name));
 
-    for (const entry of ['dist', 'bin', 'scripts', 'skills', 'docs', 'README.md']) {
+    for (const entry of ['dist', 'bin', 'scripts', 'skills', 'docs', 'README.md', 'LICENSE']) {
       assert.ok(listing.includes(entry), `the tarball does not carry ${entry}`);
     }
   });

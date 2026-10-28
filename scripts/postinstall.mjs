@@ -45,8 +45,10 @@ if (process.getuid?.() === 0) stop();
 // directory must not start a daemon on the developer's machine, and must
 // not write anything into the developer's home. The published package is
 // not private — npm refuses to publish a private package — so this guard
-// is the difference between the two.
-if (isPrivatePackage()) stop();
+// is the difference between the two. A checkout is recognised by what it
+// holds: the sources and the build configuration. An installation holds
+// the compiled output and nothing else.
+if (isCheckout()) stop();
 
 // The install does not import the old layout (`~/.traefik-dev/`). The
 // migration is the job of `dev-gateway migrate`, and a silent import
@@ -55,14 +57,12 @@ if (isPrivatePackage()) stop();
 const initCwd = process.env.INIT_CWD ? path.resolve(process.env.INIT_CWD) : null;
 if (initCwd && initCwd === PACKAGE_ROOT) stop();
 
-/** Is the package the one of the repository, and not the published one? */
-function isPrivatePackage() {
-  try {
-    const manifest = JSON.parse(fs.readFileSync(path.join(PACKAGE_ROOT, 'package.json'), 'utf8'));
-    return manifest.private === true;
-  } catch {
-    return false;
-  }
+/** Is this the repository, and not an installed package? */
+function isCheckout() {
+  return (
+    fs.existsSync(path.join(PACKAGE_ROOT, 'src')) &&
+    fs.existsSync(path.join(PACKAGE_ROOT, 'tsconfig.build.json'))
+  );
 }
 
 /** Import a module of the package.

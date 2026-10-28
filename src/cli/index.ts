@@ -36,6 +36,7 @@ import {
 import { legacyDir, type GatewayPaths } from '../core/paths.ts';
 import { migrateLegacyLayout } from '../core/migrate.ts';
 import { RegistrationStore } from '../core/state.ts';
+import { withRouteLock } from '../core/lock.ts';
 import { ensureDaemon, daemonStatus, isGatewayDaemon, isProcessAlive, pidFilePath, stopDaemon } from '../core/daemonControl.ts';
 import { isPortListening } from '../core/util/net.ts';
 import { slugify } from '../core/util/slug.ts';
@@ -208,7 +209,12 @@ async function commandRegister(flags: Record<string, string | boolean>): Promise
   }
 
   const store = new RegistrationStore(config.stateDir);
-  const registration = store.upsert({ project, branch, devPort, label, zone: config.zone });
+  // The write is a read-modify-write, and two agents may register at the
+  // same time (D10): the lock keeps the second one from dropping the
+  // route of the first.
+  const registration = await withRouteLock(config.stateDir, () =>
+    store.upsert({ project, branch, devPort, label, zone: config.zone }),
+  );
   const up = await isPortListening(devPort);
 
   if (wantsJson(flags)) {
@@ -236,7 +242,7 @@ async function commandUnregister(flags: Record<string, string | boolean>): Promi
   await ensureDaemon(config, { configPath });
   const store = new RegistrationStore(config.stateDir);
   const existing = store.findByProjectBranch(project, branch);
-  const removed = store.remove(project, branch);
+  const removed = await withRouteLock(config.stateDir, () => store.remove(project, branch));
   if (!removed) {
     process.stderr.write(`not registered: ${slugify(branch)}.${slugify(project)}.\n`);
     return 1;

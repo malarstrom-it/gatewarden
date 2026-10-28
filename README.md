@@ -36,8 +36,22 @@ contract, and the adapter is picked by the `proxy` key of the configuration.
 npm install -g @malarstrom/agent-dev-gateway
 ```
 
-Node 20.11 or later. The package ships compiled JavaScript; the only runtime
-dependency is `env-paths`, the XDG path resolution.
+Node 20.11 or later. The package ships compiled JavaScript; the runtime
+dependencies are `env-paths`, the XDG path resolution, and `proper-lockfile`,
+the lock around the route store.
+
+The same package is a pi package. pi installs it like any other:
+
+```bash
+pi install npm:@malarstrom/agent-dev-gateway
+```
+
+It installs from a git repository too. The compiled output is not in the
+repository, so the package builds itself when it is installed from one:
+
+```bash
+npm install git+github.com/malarstrom/agent-dev-gateway
+```
 
 From a tarball — a checkout, or a build of your own — the same thing:
 
@@ -172,7 +186,8 @@ remove the route when the server is gone.
 Global options: `--config <path>`, `--state-dir <path>`, `--json`. They are
 global: they work before the command and after it.
 
-`traefik-dev` and `traefik-devd` are the same programs under their old names.
+The old names of the commands still work: `register`, `unregister`, `list`,
+`status` and `config` are the same commands under the same names.
 
 Every command that reports something can report it as JSON: `--json` writes one
 object to the standard output and nothing else. `dev-gateway list --json` writes
@@ -243,7 +258,8 @@ The files follow the XDG Base Directory specification:
 | cache | `~/.cache/dev-gateway/` | `~/Library/Caches/dev-gateway/` | `%LOCALAPPDATA%\dev-gateway\Cache\` |
 
 The state directory holds `routes.json` (the routes, the single source of
-truth, written atomically), `daemon.pid` and `daemon.log`.
+truth, written atomically and guarded by a lock file), `daemon.pid` and
+`daemon.log`.
 
 Three environment variables move the files:
 
@@ -300,6 +316,7 @@ npm install
 npm run build      # tsc -p tsconfig.build.json
 npm test           # node --test test/*.test.ts
 npm run typecheck  # tsc --noEmit
+npm run publish:dry-run   # what the publish would upload, without uploading it
 ```
 
 The build writes `dist/`: the compiled JavaScript, the type declarations and

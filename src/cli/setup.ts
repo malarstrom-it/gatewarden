@@ -29,6 +29,7 @@ import { requireAdapter } from '../adapters/index.ts';
 import { DEFAULT_CONFIG, writeConfigFile } from '../core/config.ts';
 import { daemonStatus, ensureDaemon, stopDaemon } from '../core/daemonControl.ts';
 import { RegistrationStore } from '../core/state.ts';
+import { withRouteLock } from '../core/lock.ts';
 import { buildFqdn } from '../core/util/slug.ts';
 import type { GatewayPaths } from '../core/paths.ts';
 import type { Config } from '../core/types.ts';
@@ -703,12 +704,29 @@ async function verifyEndToEnd(opts: VerifyOptions): Promise<SetupReport['verific
     });
     record({ name: 'throwaway server', ok: true, detail: `127.0.0.1:${port}` });
 
-    store.upsert({ project, branch, devPort: port, zone: opts.config.zone });
+    await withRouteLock(opts.config.stateDir, () =>
+      store.upsert({ project, branch, devPort: port, zone: opts.config.zone }),
+    );
     record({ name: 'route registered', ok: true, detail: fqdn });
 
     await sleep(opts.pollIntervalMs);
 
-    const fetched = await fetchPublicUrl(fqdn, publicUrlPorts(opts));
+    // The proxy serves a route only after it has polled the document
+    // that carries it. One fetch after a fixed wait is a race with that
+    // poll, and a race does not belong in a verification: the URL is
+    // fetched until it answers, or until the deadline says that it will
+    // not.
+    //
+    // The wait does not end early when the proxy is wired. Being wired
+    // says that the proxy polls this machine at all — not that it has
+    // polled the route yet, and not that it serves it on the next
+    // request. The verdict is made when the wait is over.
+    const deadline = Date.now() + Math.min(Math.max(opts.pollIntervalMs * 2 + 2000, 3000), 20000);
+    let fetched = await fetchPublicUrl(fqdn, publicUrlPorts(opts));
+    while (!fetched.ok && fetched.notFound && Date.now() < deadline) {
+      await sleep(250);
+      fetched = await fetchPublicUrl(fqdn, publicUrlPorts(opts));
+    }
     record({ name: 'public URL', ok: fetched.ok, detail: fetched.detail });
 
     if (fetched.ok) return { status: 'verified', steps };
@@ -734,16 +752,18 @@ async function verifyEndToEnd(opts: VerifyOptions): Promise<SetupReport['verific
     record({ name: 'throwaway server', ok: false, detail: (error as Error).message });
     return { status: 'failed', reason: (error as Error).message, steps };
   } finally {
-    store.remove(project, branch);
+    await withRouteLock(opts.config.stateDir, () => store.remove(project, branch));
     if (previous) {
       // The route of the user is back where it was.
-      store.upsert({
-        project: previous.project,
-        branch: previous.branch,
-        devPort: previous.devPort,
-        label: previous.label,
-        zone: opts.config.zone,
-      });
+      await withRouteLock(opts.config.stateDir, () =>
+        store.upsert({
+          project: previous.project,
+          branch: previous.branch,
+          devPort: previous.devPort,
+          label: previous.label,
+          zone: opts.config.zone,
+        }),
+      );
     }
     await new Promise<void>((resolve) => server.close(() => resolve()));
     record({ name: 'cleaned up', ok: true, detail: 'the route was removed and the server stopped' });

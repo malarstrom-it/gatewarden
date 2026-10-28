@@ -149,11 +149,31 @@ test('the script does nothing when the autostart is turned off', async () => {
 test('the script does nothing in a checkout', async () => {
   const home = makeHome();
   try {
-    // The package of the repository: its manifest is private, and a
-    // checkout is not an installation.
-    await runScript(SCRIPT, environment(home.home, { INIT_CWD: REPO_ROOT }));
+    // The package of the repository: a checkout holds the sources and the
+    // build configuration, and a checkout is not an installation. The
+    // `INIT_CWD` points somewhere else on purpose, so that the guard
+    // that stops the script is the one that looks at the package itself.
+    await runScript(SCRIPT, environment(home.home, { INIT_CWD: home.home }));
     assert.equal(fs.existsSync(path.join(home.home, '.config')), false, 'the script wrote something');
   } finally {
+    fs.rmSync(home.home, { recursive: true, force: true });
+  }
+});
+
+test('the script does nothing when the package is a checkout', async () => {
+  const home = makeHome();
+  const installed = makeInstalledPackage();
+  try {
+    // The sources and the build configuration are what make a directory a
+    // checkout: the published package holds neither.
+    fs.writeFileSync(path.join(installed.dir, 'tsconfig.build.json'), '{}');
+
+    const result = await runScript(installed.script, environment(home.home));
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(fs.existsSync(path.join(home.home, '.config')), false, 'the script wrote something');
+  } finally {
+    installed.cleanup();
     fs.rmSync(home.home, { recursive: true, force: true });
   }
 });

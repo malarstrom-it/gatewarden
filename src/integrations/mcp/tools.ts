@@ -16,6 +16,7 @@ import { discoverProxyStatus } from '../../adapters/index.ts';
 import { loadConfigWithReport } from '../../core/config.ts';
 import { gatewayStatus, routeJson } from '../../core/status.ts';
 import { RegistrationStore } from '../../core/state.ts';
+import { withRouteLock } from '../../core/lock.ts';
 import { isPortListening } from '../../core/util/net.ts';
 import type { GatewayPaths } from '../../core/paths.ts';
 import type { Config } from '../../core/types.ts';
@@ -234,13 +235,18 @@ const publishDevServer: ToolDefinition = {
     const label = optionalString(args['label']);
 
     const store = new RegistrationStore(context.config.stateDir);
-    const registration = store.upsert({
-      project,
-      branch,
-      devPort: port,
-      label,
-      zone: context.config.zone,
-    });
+    // The write is a read-modify-write, and two agent sessions may publish
+    // at the same time (D10): the lock keeps one of them from dropping
+    // the route of the other.
+    const registration = await withRouteLock(context.config.stateDir, () =>
+      store.upsert({
+        project,
+        branch,
+        devPort: port,
+        label,
+        zone: context.config.zone,
+      }),
+    );
 
     const up = await isPortListening(port);
     return routeJson(registration, up ? 'up' : 'down');
@@ -278,7 +284,7 @@ const removeDevServer: ToolDefinition = {
 
     const store = new RegistrationStore(context.config.stateDir);
     const existing = store.findByProjectBranch(project, branch);
-    const removed = store.remove(project, branch);
+    const removed = await withRouteLock(context.config.stateDir, () => store.remove(project, branch));
     return { removed, fqdn: existing?.fqdn };
   },
 };

@@ -36,6 +36,8 @@ export class RegistrationStore {
   readonly file: string;
   private cached: Registration[] | null = null;
   private cachedMtimeMs = -1;
+  private cachedSize = -1;
+  private cachedIno = -1;
 
   readonly stateDir: string;
 
@@ -72,17 +74,35 @@ export class RegistrationStore {
     if (!stat) {
       this.cached = [];
       this.cachedMtimeMs = -1;
+      this.cachedSize = -1;
+      this.cachedIno = -1;
       return this.cached;
     }
-    if (this.cached && stat.mtimeMs === this.cachedMtimeMs) return this.cached;
+    // The cache is keyed on what the file *is*, not only on when it was
+    // written: the clock of the kernel is coarse, so two writes that
+    // follow each other within a tick get the same timestamp. The store
+    // writes to a temporary file and renames it, so every write is a new
+    // inode — the inode tells the two writes apart.
+    if (
+      this.cached &&
+      stat.mtimeMs === this.cachedMtimeMs &&
+      stat.size === this.cachedSize &&
+      stat.ino === this.cachedIno
+    ) {
+      return this.cached;
+    }
     try {
       const raw = JSON.parse(fs.readFileSync(source, 'utf8')) as StateFile;
       const registrations = Array.isArray(raw.registrations) ? raw.registrations : [];
       this.cached = registrations;
       this.cachedMtimeMs = stat.mtimeMs;
+      this.cachedSize = stat.size;
+      this.cachedIno = stat.ino;
     } catch {
       this.cached = [];
       this.cachedMtimeMs = stat.mtimeMs;
+      this.cachedSize = stat.size;
+      this.cachedIno = stat.ino;
     }
     return this.cached ?? [];
   }
@@ -171,6 +191,10 @@ export class RegistrationStore {
     fs.writeFileSync(tmp, JSON.stringify(payload, null, 2) + '\n');
     fs.renameSync(tmp, this.file);
     this.cached = registrations;
+    // The file that is on the disk now is another one than the one that
+    // was read: the cache does not describe it any more.
     this.cachedMtimeMs = -1;
+    this.cachedSize = -1;
+    this.cachedIno = -1;
   }
 }
