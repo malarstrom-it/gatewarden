@@ -104,12 +104,36 @@ test('the compiled daemon serves and forks the compiled worker', async (t) => {
         advertisedIp: '127.0.0.1',
         advertisedHost: '127.0.0.1',
         zone: 'gwtest.local',
-        indexHost: 'index.gwtest.local',
         entryPoints: ['websecure'],
         certResolver: 'testca',
         secret: '',
         stateDir: dir,
         documentFormat: 'yaml',
+      },
+      null,
+      2,
+    ),
+  );
+
+  // One route, so that the document the daemon serves holds a router.
+  fs.writeFileSync(
+    path.join(dir, 'routes.json'),
+    JSON.stringify(
+      {
+        version: 1,
+        registrations: [
+          {
+            id: 'alpha/main',
+            project: 'alpha',
+            branch: 'main',
+            projectSlug: 'alpha',
+            branchSlug: 'main',
+            fqdn: 'main.alpha.gwtest.local',
+            devPort: 3000,
+            createdAt: '2024-01-01T00:00:00.000Z',
+            updatedAt: '2024-01-01T00:00:00.000Z',
+          },
+        ],
       },
       null,
       2,
@@ -144,4 +168,6 @@ test('the compiled daemon serves and forks the compiled worker', async (t) => {
 
   const document = await (await fetch(`http://127.0.0.1:${registryPort}/traefik`)).text();
   assert.match(document, /routers:/);
+  assert.match(document, /Host\(`main\.alpha\.gwtest\.local`\)/);
+  assert.ok(!document.includes('dev-index'), 'the document must not hold an index router');
 });

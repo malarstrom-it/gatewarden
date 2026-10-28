@@ -1,311 +1,38 @@
-/** The registry: serves the dynamic configuration document and the index page. */
+/** The registry: serves the dynamic configuration document and the health probe. */
 
-import fs from 'node:fs';
 import http from 'node:http';
-import type { Config, Registration } from './types.ts';
+import type { Config } from './types.ts';
 import type { ProxyAdapter } from './proxy.ts';
 import { RegistrationStore } from './state.ts';
 import { REGISTRY_SECRET_HEADER } from './protocol.ts';
-import { slugify } from './util/slug.ts';
-import { RouteProbe } from './probe.ts';
 import { log } from './log.ts';
-import { renderIndex, renderRoutes, type RouteView, type RouteState } from './index-page.ts';
 
 const SCOPE = 'registry';
 
 /**
- * Header the index page sends with a manual removal.
- *
- * It is the CSRF guard: a custom header is never sent by a plain form
- * submission or by a "simple" cross-origin request, so sending it forces a
- * CORS preflight. The registry sends no CORS headers, so a cross-site page
- * can never trigger a deletion; only the index page itself (same origin) can.
- */
-export const UI_HEADER = 'X-Gateway-UI';
-/** Value the index page sends in {@link UI_HEADER}. */
-export const UI_HEADER_VALUE = '1';
-
-/**
- * Static assets of the index page.
- *
- * They live in the repository next to the core and are served by the
- * registry itself, so the page never asks a CDN for anything: the gateway
- * runs on a private network and a font request to a third party would leak
- * every visit.
- */
-const ASSETS = new Map<string, { file: URL; type: string }>([
-  ['/index.css', { file: new URL('../assets/index.css', import.meta.url), type: 'text/css; charset=utf-8' }],
-  ['/index.js', { file: new URL('../assets/index.js', import.meta.url), type: 'text/javascript; charset=utf-8' }],
-]);
-
-const FONT_DIR = new URL('../assets/fonts/', import.meta.url);
-const FONT_TYPE = 'font/woff2';
-
-const assetCache = new Map<string, { mtimeMs: number; body: Buffer }>();
-
-/**
- * Read an asset from disk.
- *
- * The body is cached, but only for as long as the file on disk is unchanged:
- * the stylesheet and the script are edited in place during development and a
- * stale copy would be worse than a second read.
- */
-function readAsset(url: URL): Buffer | null {
-  try {
-    const stat = fs.statSync(url);
-    const cached = assetCache.get(url.href);
-    if (cached && cached.mtimeMs === stat.mtimeMs) return cached.body;
-    const body = fs.readFileSync(url);
-    assetCache.set(url.href, { mtimeMs: stat.mtimeMs, body });
-    return body;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * The largest request body the registry reads: a route is three short
- * fields, so anything bigger is not a route.
- */
-const MAX_BODY_BYTES = 8192;
-
-/** Read a request body, refusing to read more than {@link MAX_BODY_BYTES}. */
-function readBody(req: http.IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let size = 0;
-    const chunks: Buffer[] = [];
-    req.on('data', (chunk: Buffer) => {
-      size += chunk.length;
-      if (size > MAX_BODY_BYTES) {
-        reject(new Error('body too large'));
-        req.destroy();
-        return;
-      }
-      chunks.push(chunk);
-    });
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-    req.on('error', reject);
-  });
-}
-
-/**
- * Handle `POST /api/registrations`: create a route by hand from the index
- * page.
- *
- * The guard is the same one the removal uses: the `X-Gateway-UI` header must
- * be present. A custom header is never sent by a plain form submission nor
- * by a "simple" cross-origin request, so sending it forces a CORS preflight,
- * and the registry sends no CORS headers — only the index page itself, which
- * is same origin, can create a route.
- *
- * Unlike the CLI's `register`, this never updates a route in place. A
- * project and branch that already has a route is a conflict (409): a route
- * the client can see is never silently changed behind their back.
- */
-async function handleCreate(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  store: RegistrationStore,
-  config: Config,
-): Promise<void> {
-  if (req.headers[UI_HEADER.toLowerCase()] !== UI_HEADER_VALUE) {
-    res.writeHead(403, { 'content-type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify({ error: `forbidden: missing ${UI_HEADER} header`, field: 'form' }));
-    return;
-  }
-
-  if (config.secret) {
-    const provided = req.headers[REGISTRY_SECRET_HEADER.toLowerCase()];
-    if (provided !== config.secret) {
-      res.writeHead(403, { 'content-type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({ error: 'forbidden: registry secret missing or wrong', field: 'form' }));
-      return;
-    }
-  }
-
-  const fail = (status: number, error: string, field: string): void => {
-    res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify({ error, field }));
-  };
-
-  let raw: string;
-  try {
-    raw = await readBody(req);
-  } catch {
-    fail(400, 'The route was too big to read. A route is three short fields.', 'form');
-    return;
-  }
-
-  let payload: unknown;
-  try {
-    payload = JSON.parse(raw);
-  } catch {
-    fail(400, 'The route could not be read. Try again.', 'form');
-    return;
-  }
-  if (!payload || typeof payload !== 'object') {
-    fail(400, 'The route could not be read. Try again.', 'form');
-    return;
-  }
-
-  const input = payload as Record<string, unknown>;
-  const project = typeof input['project'] === 'string' ? input['project'].trim() : '';
-  const branch = typeof input['branch'] === 'string' ? input['branch'].trim() : '';
-  const label = typeof input['label'] === 'string' && input['label'].trim() ? input['label'].trim() : undefined;
-
-  // The same slug rule the CLI uses — one rule, not two.
-  const projectSlug = slugify(project);
-  const branchSlug = slugify(branch);
-  if (!projectSlug) {
-    fail(400, 'Give the route a project name: the name of the project it belongs to.', 'project');
-    return;
-  }
-  if (!branchSlug) {
-    fail(400, 'Give the route a branch name.', 'branch');
-    return;
-  }
-
-  const devPort = Number(input['port']);
-  if (!Number.isInteger(devPort) || devPort < 1 || devPort > 65535) {
-    fail(400, 'The port must be a number between 1 and 65535.', 'port');
-    return;
-  }
-  if (devPort === config.registryPort || devPort === config.relayPort) {
-    fail(400, 'That port is the gateway’s own. Give the port your dev server listens on.', 'port');
-    return;
-  }
-
-  const id = `${projectSlug}/${branchSlug}`;
-  const existing = store.find(id);
-  if (existing) {
-    fail(
-      409,
-      `${existing.fqdn} already points at 127.0.0.1:${existing.devPort}. Remove it first, or use another branch.`,
-      'branch',
-    );
-    return;
-  }
-
-  const registration = store.upsert({ project, branch, devPort, label, zone: config.zone });
-  const source = req.socket.remoteAddress ?? 'unknown';
-  log('info', SCOPE, 'registration created', `project=${projectSlug} branch=${branchSlug} port=${devPort} source=${source}`);
-
-  res.writeHead(201, { 'content-type': 'application/json; charset=utf-8' });
-  res.end(JSON.stringify(registration));
-}
-
-/**
- * Handle `DELETE /api/registrations/<project-slug>/<branch-slug>`.
- *
- * Two guards, in this order:
- *
- *  1. the `X-Gateway-UI` header must be present. A custom header is never
- *     sent by a plain form submission nor by a "simple" cross-origin
- *     request, so sending it forces a CORS preflight. The registry sends no
- *     CORS headers, so a page on another origin can never trigger a
- *     deletion -- only the index page itself, which is same origin.
- *  2. when a secret is configured, `X-Registry-Secret` must match it, the
- *     same convention the http provider uses for the document endpoint.
- *
- * The registration is identified by the id the store keys on
- * (`<project-slug>/<branch-slug>`), the same value the relay dispatches on.
- */
-async function handleDelete(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  url: URL,
-  store: RegistrationStore,
-  config: Config,
-): Promise<void> {
-  const match = /^\/api\/registrations\/([^/]+)\/([^/]+)\/?$/.exec(url.pathname);
-  if (!match) {
-    res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
-    res.end('not found\n');
-    return;
-  }
-
-  if (req.headers[UI_HEADER.toLowerCase()] !== UI_HEADER_VALUE) {
-    res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' });
-    res.end(`forbidden: missing ${UI_HEADER} header\n`);
-    return;
-  }
-
-  if (config.secret) {
-    const provided = req.headers[REGISTRY_SECRET_HEADER.toLowerCase()];
-    if (provided !== config.secret) {
-      res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' });
-      res.end('forbidden: registry secret missing or wrong\n');
-      return;
-    }
-  }
-
-  const projectSlug = slugify(decodeURIComponent(match[1]));
-  const branchSlug = slugify(decodeURIComponent(match[2]));
-  const id = `${projectSlug}/${branchSlug}`;
-
-  const registration = store.find(id);
-  if (!registration) {
-    res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
-    res.end('not found\n');
-    return;
-  }
-
-  const removed = store.removeById(id);
-  if (!removed) {
-    res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
-    res.end('not found\n');
-    return;
-  }
-
-  const source = req.socket.remoteAddress ?? 'unknown';
-  log('info', SCOPE, 'registration removed', `project=${projectSlug} branch=${branchSlug} source=${source}`);
-
-  res.writeHead(204);
-  res.end();
-}
-
-/**
  * Create the registry HTTP server.
  *
- * The dynamic configuration document is rendered by the proxy adapter, and
- * served under the adapter's id (`/traefik` for Traefik): the core does not
- * know what a document looks like.
+ * The registry serves exactly two endpoints (D9, §10.1):
  *
- * Routes: `GET /<proxy>` (dynamic configuration), `GET /` (index),
- * `GET /api/registrations` (JSON),
- * `POST /api/registrations` (create a route by hand),
- * `DELETE /api/registrations/<project>/<branch>` (manual removal),
- * `GET /healthz`.
+ *   - `GET /<proxy>` — the dynamic configuration document, rendered by the
+ *     adapter and served under the adapter's id (`/traefik` for Traefik);
+ *   - `GET /healthz` — the health probe.
+ *
+ * Everything else is a 404. The web interface and its endpoints are gone
+ * (D8): the index page, the assets, the JSON route list and the create and
+ * delete endpoints went with it. The extension, the CLI and the MCP server
+ * write the route state file directly, so the registry has no write path
+ * left to guard.
  */
 export function createRegistryServer(store: RegistrationStore, config: Config, adapter: ProxyAdapter): http.Server {
   const documentPath = `/${adapter.id}`;
-  const probe = new RouteProbe();
-
-  /** Probe every registration and pair it with the state the probe found. */
-  async function probeRoutes(registrations: Registration[]): Promise<RouteView[]> {
-    const states = await Promise.all(
-      registrations.map(async (registration): Promise<RouteState> => ((await probe.isUp(registration)) ? 'up' : 'down')),
-    );
-    return registrations.map((registration, index) => ({ registration, state: states[index] }));
-  }
 
   const server = http.createServer((req, res) => {
     void (async () => {
       const url = new URL(req.url ?? '/', 'http://localhost');
-      const registrations = store.list();
-
-      if (req.method === 'DELETE') {
-        await handleDelete(req, res, url, store, config);
-        return;
-      }
-
-      if (req.method === 'POST' && url.pathname === '/api/registrations') {
-        await handleCreate(req, res, store, config);
-        return;
-      }
 
       if (req.method !== 'GET' && req.method !== 'HEAD') {
-        res.writeHead(405, { 'content-type': 'text/plain; charset=utf-8', allow: 'GET, HEAD, DELETE, POST' });
+        res.writeHead(405, { 'content-type': 'text/plain; charset=utf-8', allow: 'GET, HEAD' });
         res.end('method not allowed\n');
         return;
       }
@@ -325,71 +52,8 @@ export function createRegistryServer(store: RegistrationStore, config: Config, a
             return;
           }
         }
-        const body = adapter.render(registrations, config);
+        const body = adapter.render(store.list(), config);
         res.writeHead(200, { 'content-type': 'application/yaml; charset=utf-8' });
-        res.end(body);
-        return;
-      }
-
-      if (url.pathname === '/api/registrations') {
-        const routes = await probeRoutes(registrations);
-        const body =
-          JSON.stringify(
-            {
-              registrations: routes.map((route) => ({ ...route.registration, state: route.state })),
-              checkedAt: new Date().toISOString(),
-            },
-            null,
-            2,
-          ) + '\n';
-        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
-        res.end(body);
-        return;
-      }
-
-      if (url.pathname === '/api/routes') {
-        const routes = await probeRoutes(registrations);
-        const body = renderRoutes(routes, config);
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-        res.end(body);
-        return;
-      }
-
-      if (ASSETS.has(url.pathname)) {
-        const asset = ASSETS.get(url.pathname)!;
-        const body = readAsset(asset.file);
-        if (!body) {
-          res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
-          res.end('not found\n');
-          return;
-        }
-        res.writeHead(200, { 'content-type': asset.type, 'cache-control': 'no-cache' });
-        res.end(req.method === 'HEAD' ? undefined : body);
-        return;
-      }
-
-      if (url.pathname.startsWith('/fonts/')) {
-        const name = url.pathname.slice('/fonts/'.length);
-        if (!/^[a-z0-9-]+\.woff2$/.test(name)) {
-          res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
-          res.end('not found\n');
-          return;
-        }
-        const body = readAsset(new URL(name, FONT_DIR));
-        if (!body) {
-          res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
-          res.end('not found\n');
-          return;
-        }
-        res.writeHead(200, { 'content-type': FONT_TYPE, 'cache-control': 'max-age=604800' });
-        res.end(req.method === 'HEAD' ? undefined : body);
-        return;
-      }
-
-      if (url.pathname === '/' || url.pathname === '/index.html') {
-        const routes = await probeRoutes(registrations);
-        const body = renderIndex(routes, config);
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
         res.end(body);
         return;
       }

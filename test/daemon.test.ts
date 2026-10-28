@@ -68,7 +68,6 @@ async function setup(): Promise<{ dir: string; configPath: string; config: Confi
     advertisedIp: '127.0.0.1',
     advertisedHost: '127.0.0.1',
     zone: 'home.malarstrom.com',
-    indexHost: 'index.home.malarstrom.com',
     entryPoints: ['websecure'],
     certResolver: 'cloudflare',
     tlsMode: 'wildcard',

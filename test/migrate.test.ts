@@ -42,7 +42,6 @@ function makeLegacy(): Legacy {
         advertisedIp: '10.1.2.3',
         advertisedHost: 'devbox',
         zone: 'legacy.example',
-        indexHost: 'index.legacy.example',
         entryPoints: ['websecure'],
         certResolver: 'cloudflare',
         tlsMode: 'wildcard',

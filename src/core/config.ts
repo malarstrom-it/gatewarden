@@ -24,7 +24,6 @@ export const DEFAULT_CONFIG: Config = {
   advertisedIp: '',
   advertisedHost: 'devbox',
   zone: 'home.malarstrom.com',
-  indexHost: 'index.home.malarstrom.com',
   entryPoints: ['websecure'],
   certResolver: 'cloudflare',
   tlsMode: 'wildcard',
@@ -43,13 +42,12 @@ export const DEFAULT_CONFIG: Config = {
 /** Every key a user may set, with a one line explanation (used by `traefik-dev config`). */
 export const CONFIG_KEYS: Record<string, string> = {
   proxy: 'Which proxy adapter writes the dynamic configuration ("traefik").',
-  registryPort: 'Port the registry listener binds on 0.0.0.0 (dynamic configuration document + index).',
+  registryPort: 'Port the registry listener binds on 0.0.0.0 (the dynamic configuration document).',
   relayPort: 'Port the relay listener binds on 0.0.0.0 (dispatches to 127.0.0.1:<devPort>).',
   advertisedIp: 'IP this container advertises to Traefik for the service URLs (default: first non-loopback IPv4).',
   advertisedHost:
     'Host name the Traefik container reaches this container under (Docker network "private"). Default: "devbox", the compose service name. Use the container IP if the name is not resolvable.',
   zone: 'DNS zone the FQDNs are built from.',
-  indexHost: 'Host name of the index router (the "what is running" page).',
   entryPoints: 'Traefik entryPoint names the generated routers attach to.',
   certResolver: 'Name of the Traefik ACME certificate resolver (the user\'s is "cloudflare"; empty = no tls block).',
   tlsMode: 'Certificate granularity: "wildcard" = one certificate per project, "fqdn" = one certificate per branch.',

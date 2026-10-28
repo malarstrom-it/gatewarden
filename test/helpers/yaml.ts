@@ -37,6 +37,10 @@ export function parseYaml(source: string): YamlValue {
     lines.push({ indent: raw.length - raw.trimStart().length, text: raw.trim() });
   }
 
+  // The emitter writes an empty document as "{}": a document with nothing in
+  // it has no section at all.
+  if (lines.length === 1 && lines[0].text === '{}') return {};
+
   function parseBlock(index: number, indent: number): [YamlValue, number] {
     if (index >= lines.length) return [null, index];
 

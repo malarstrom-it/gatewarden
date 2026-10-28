@@ -10,7 +10,7 @@ Give a dev server that runs **inside this container** a public URL on the user's
     https://<branch>.<project>.home.malarstrom.com
 
 The user's Traefik terminates TLS with a valid per-project wildcard certificate. The user sees every
-registration at `https://index.home.malarstrom.com/`.
+registration with `traefik-dev list`.
 
 ## Register a dev server
 
@@ -34,12 +34,11 @@ URL the command prints; do not compose it by hand.
 node ~/projects/traefik-api/bin/traefik-dev.js unregister --project <project> --branch <branch>
 ```
 
-Do this when the dev server is stopped, so the index does not keep dead links.
+Do this when the dev server is stopped, so the route list does not keep dead links.
 
-**You must still unregister yourself.** The user can also remove a stale route by hand from the
-index page (`https://index.home.malarstrom.com/`, the **Remove** button on a row), which is a
-fallback for the case where an agent forgot. Do not rely on it: unregister when you stop the dev
-server, and use the CLI.
+**You must still unregister yourself.** The user can also remove a stale route by hand with the
+same command, which is a fallback for the case where an agent forgot. Do not rely on it:
+unregister when you stop the dev server, and use the CLI.
 
 ## Inspect
 
@@ -48,7 +47,7 @@ node ~/projects/traefik-api/bin/traefik-dev.js list      # every registration, i
 node ~/projects/traefik-api/bin/traefik-dev.js status    # daemon pid, ports, configuration
 ```
 
-The overview page for the user: `https://index.home.malarstrom.com/`.
+The overview for the user: `traefik-dev list`.
 
 ## Notes
 

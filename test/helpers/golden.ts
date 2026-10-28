@@ -31,7 +31,6 @@ const BASE_CONFIG: Config = {
   advertisedIp: '10.0.0.5',
   advertisedHost: 'devbox',
   zone: 'home.malarstrom.com',
-  indexHost: 'index.home.malarstrom.com',
   entryPoints: ['websecure'],
   certResolver: 'cloudflare',
   tlsMode: 'wildcard',

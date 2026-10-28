@@ -1,3 +1,12 @@
+/**
+ * The registry (D9, §10.1).
+ *
+ * The registry serves exactly two endpoints: the dynamic configuration
+ * document and the health probe. The web interface is gone (D8), and with
+ * it the JSON route list, the assets and the create and delete endpoints:
+ * the extension, the CLI and the MCP server write the state file directly.
+ */
+
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
@@ -8,7 +17,6 @@ import { RegistrationStore } from '../src/core/state.ts';
 import { createRegistryServer } from '../src/core/registry.ts';
 import { traefikAdapter } from '../src/adapters/traefik.ts';
 import { REGISTRY_SECRET_HEADER } from '../src/core/protocol.ts';
-import { UI_HEADER } from '../src/core/registry.ts';
 import { close, listen, makeConfig } from './helpers/fixtures.ts';
 
 function tempStore(): RegistrationStore {
@@ -38,31 +46,6 @@ test('the registry answers the health probe', async () => {
   });
 });
 
-test('the registry serves the registrations as JSON', async () => {
-  await withRegistry({}, async ({ url, store }) => {
-    store.upsert({ project: 'alpha', branch: 'feature/login', devPort: 5173, zone: 'home.malarstrom.com' });
-    const response = await fetch(`${url}/api/registrations`);
-    const body = (await response.json()) as { registrations: Array<{ fqdn: string; devPort: number }> };
-    assert.equal(body.registrations.length, 1);
-    assert.equal(body.registrations[0].fqdn, 'feature-login.alpha.home.malarstrom.com');
-    assert.equal(body.registrations[0].devPort, 5173);
-  });
-});
-
-test('the index page lists every registration with a clickable link', async () => {
-  await withRegistry({}, async ({ url, store }) => {
-    store.upsert({ project: 'alpha', branch: 'feature/login', devPort: 5173, zone: 'home.malarstrom.com' });
-    const response = await fetch(`${url}/`);
-    assert.equal(response.status, 200);
-    assert.match(response.headers.get('content-type') ?? '', /text\/html/);
-    const html = await response.text();
-    assert.match(html, /https:\/\/feature-login\.alpha\.home\.malarstrom\.com/);
-    assert.match(html, /alpha/);
-    assert.match(html, /feature-login/);
-    assert.match(html, /5173/);
-  });
-});
-
 test('the dynamic configuration document is served on /traefik', async () => {
   await withRegistry({}, async ({ url, store }) => {
     store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
@@ -85,26 +68,53 @@ test('the dynamic configuration document is protected by the registry secret', a
   });
 });
 
+test('the registry answers only the configuration path and the health probe', async () => {
+  await withRegistry({}, async ({ url }) => {
+    const gone = [
+      '/',
+      '/index.html',
+      '/index.css',
+      '/index.js',
+      '/fonts/hanken-grotesk-latin.woff2',
+      '/api/registrations',
+      '/api/routes',
+      '/favicon.ico',
+      '/nope',
+    ];
+    for (const pathname of gone) {
+      const response = await fetch(`${url}${pathname}`);
+      assert.equal(response.status, 404, `${pathname} must not be answered any more`);
+    }
+  });
+});
+
+test('the registry refuses methods other than GET and HEAD', async () => {
+  await withRegistry({}, async ({ url, store }) => {
+    store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
+
+    const posted = await fetch(`${url}/api/registrations`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'X-Gateway-UI': '1' },
+      body: JSON.stringify({ project: 'beta', branch: 'main', port: 4000 }),
+    });
+    assert.equal(posted.status, 405);
+    assert.equal(posted.headers.get('allow'), 'GET, HEAD');
+
+    const deleted = await fetch(`${url}/api/registrations/alpha/main`, {
+      method: 'DELETE',
+      headers: { 'X-Gateway-UI': '1' },
+    });
+    assert.equal(deleted.status, 405);
+
+    // The store is untouched: the registry has no write path any more.
+    assert.equal(store.list().length, 1);
+  });
+});
+
 test('unknown paths are answered with 404', async () => {
   await withRegistry({}, async ({ url }) => {
     const response = await fetch(`${url}/nope`);
     assert.equal(response.status, 404);
-  });
-});
-
-test('the index page survives registrations with html in their label', async () => {
-  await withRegistry({}, async ({ url, store }) => {
-    store.upsert({
-      project: 'alpha',
-      branch: 'main',
-      devPort: 3000,
-      label: '<script>alert(1)</script>',
-      zone: 'home.malarstrom.com',
-    });
-    const response = await fetch(`${url}/`);
-    const html = await response.text();
-    assert.ok(!html.includes('<script>alert(1)</script>'));
-    assert.match(html, /&lt;script&gt;/);
   });
 });
 
@@ -115,13 +125,6 @@ test('the registry only binds what is asked for', async () => {
   const address = server.address() as { address: string; port: number };
   assert.equal(address.address, '0.0.0.0');
   await close(server);
-});
-
-test('the registry refuses methods other than GET', async () => {
-  await withRegistry({}, async ({ url }) => {
-    const response = await fetch(`${url}/`, { method: 'POST' });
-    assert.equal(response.status, 405);
-  });
 });
 
 test('the registry answers http/1.1 requests from a raw client', async () => {
@@ -135,79 +138,5 @@ test('the registry answers http/1.1 requests from a raw client', async () => {
       request.on('error', reject);
     });
     assert.equal(body.trim(), 'ok');
-  });
-});
-
-test('a manual removal deletes the registration and leaves the others alone', async () => {
-  await withRegistry({}, async ({ url, store }) => {
-    store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
-    store.upsert({ project: 'beta', branch: 'feature/x', devPort: 5173, zone: 'home.malarstrom.com' });
-
-    const response = await fetch(`${url}/api/registrations/alpha/main`, {
-      method: 'DELETE',
-      headers: { [UI_HEADER]: '1' },
-    });
-    assert.equal(response.status, 204);
-
-    const remaining = store.list();
-    assert.equal(remaining.length, 1);
-    assert.equal(remaining[0].id, 'beta/feature-x');
-
-    const document = await (await fetch(`${url}/traefik`)).text();
-    assert.ok(!document.includes('main.alpha.home.malarstrom.com'));
-    assert.ok(document.includes('feature-x.beta.home.malarstrom.com'));
-  });
-});
-
-test('removing an unknown registration is answered with 404', async () => {
-  await withRegistry({}, async ({ url, store }) => {
-    store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
-    const response = await fetch(`${url}/api/registrations/alpha/nope`, {
-      method: 'DELETE',
-      headers: { [UI_HEADER]: '1' },
-    });
-    assert.equal(response.status, 404);
-    assert.equal(store.list().length, 1);
-  });
-});
-
-test('a removal without the UI header is refused and the registration survives', async () => {
-  await withRegistry({}, async ({ url, store }) => {
-    store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
-    const response = await fetch(`${url}/api/registrations/alpha/main`, { method: 'DELETE' });
-    assert.equal(response.status, 403);
-    assert.equal(store.list().length, 1);
-  });
-});
-
-test('a removal needs the registry secret when one is configured', async () => {
-  await withRegistry({ secret: 'topsecret' }, async ({ url, store }) => {
-    store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
-
-    const withoutSecret = await fetch(`${url}/api/registrations/alpha/main`, {
-      method: 'DELETE',
-      headers: { [UI_HEADER]: '1' },
-    });
-    assert.equal(withoutSecret.status, 403);
-    assert.equal(store.list().length, 1);
-
-    const withSecret = await fetch(`${url}/api/registrations/alpha/main`, {
-      method: 'DELETE',
-      headers: { [UI_HEADER]: '1', [REGISTRY_SECRET_HEADER]: 'topsecret' },
-    });
-    assert.equal(withSecret.status, 204);
-    assert.equal(store.list().length, 0);
-  });
-});
-
-test('the index page has one remove control per registration', async () => {
-  await withRegistry({}, async ({ url, store }) => {
-    store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
-    store.upsert({ project: 'beta', branch: 'feature/x', devPort: 5173, zone: 'home.malarstrom.com' });
-    const html = await (await fetch(`${url}/`)).text();
-    const controls = html.match(/class="[^"]*\bremove\b[^"]*"/g) ?? [];
-    assert.equal(controls.length, 2);
-    assert.match(html, /data-registration-id="alpha\/main"/);
-    assert.match(html, /data-registration-id="beta\/feature-x"/);
   });
 });

@@ -50,8 +50,6 @@ export interface Config {
   advertisedHost: string;
   /** DNS zone the FQDNs are built from. */
   zone: string;
-  /** Host name of the index router. */
-  indexHost: string;
   /** Traefik entryPoint names the routers attach to. */
   entryPoints: string[];
   /** Name of the Traefik ACME certificate resolver (empty = no tls block). */

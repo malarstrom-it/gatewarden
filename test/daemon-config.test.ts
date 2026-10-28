@@ -47,7 +47,6 @@ function makeHome(registryPort: number, relayPort: number): string {
         advertisedIp: '127.0.0.1',
         advertisedHost: '127.0.0.1',
         zone: 'gwtest.local',
-        indexHost: 'index.gwtest.local',
         entryPoints: ['websecure'],
         certResolver: 'testca',
         tlsMode: 'wildcard',

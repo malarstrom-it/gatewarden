@@ -35,9 +35,6 @@ export function middlewareName(registration: Route): string {
   return `${MIDDLEWARE_PREFIX}${registration.projectSlug}-${registration.branchSlug}-${hash}`;
 }
 
-/** Object name of the index router/service. */
-export const INDEX_OBJECT_NAME = `${NAME_PREFIX}index`;
-
 /** Exact-Host rule for a registration. */
 export function hostRule(fqdn: string): string {
   return `Host(\`${fqdn}\`)`;
@@ -49,7 +46,13 @@ export function projectWildcard(registration: Route, zone: string): string {
 }
 
 export interface DynamicConfig {
-  http: {
+  /**
+   * The HTTP section.
+   *
+   * It is absent from a document that holds nothing at all: a section
+   * without entries is omitted, never rendered as an empty map.
+   */
+  http?: {
     routers: Record<string, unknown>;
     services: Record<string, unknown>;
     middlewares: Record<string, unknown>;
@@ -155,19 +158,6 @@ export function buildDynamicConfig(registrations: Route[], config: Config): Dyna
     if (config.secret) customRequestHeaders[RELAY_SECRET_HEADER] = config.secret;
     middlewares[dispatchMiddleware] = { headers: { customRequestHeaders } };
   }
-
-  // The index router points at the registry itself so the user can open the
-  // "what is running" page through Traefik.
-  const indexRouter: Record<string, unknown> = {
-    rule: hostRule(config.indexHost),
-    entryPoints: config.entryPoints,
-    service: INDEX_OBJECT_NAME,
-  };
-  if (config.certResolver) indexRouter['tls'] = { certResolver: config.certResolver };
-  routers[INDEX_OBJECT_NAME] = indexRouter;
-  services[INDEX_OBJECT_NAME] = {
-    loadBalancer: { servers: [{ url: `http://${host}:${config.registryPort}` }] },
-  };
 
   return pruneEmptyMaps({ http: { routers, services, middlewares } }) as DynamicConfig;
 }

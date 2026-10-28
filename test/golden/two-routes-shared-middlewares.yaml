@@ -22,13 +22,6 @@ http:
         - "default-security-headers@file"
       tls:
         certResolver: "cloudflare"
-    dev-index:
-      rule: "Host(`index.home.malarstrom.com`)"
-      entryPoints:
-        - "websecure"
-      service: "dev-index"
-      tls:
-        certResolver: "cloudflare"
   services:
     dev-alpha-feature-login-6e282c:
       loadBalancer:
@@ -38,10 +31,6 @@ http:
       loadBalancer:
         servers:
           - url: "http://devbox:45001"
-    dev-index:
-      loadBalancer:
-        servers:
-          - url: "http://devbox:45002"
   middlewares:
     devhdr-alpha-feature-login-6e282c:
       headers:

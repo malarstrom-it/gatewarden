@@ -9,6 +9,10 @@
  * The golden files were captured from the implementation as it was before
  * the split. They are the contract; the fixtures that produce them are
  * frozen in `test/helpers/golden.ts`.
+ *
+ * S3 changed the contract in exactly one place: the index router is gone
+ * (D8, §10.1). The golden files hold the same document without that router,
+ * and the test below proves that the rest of the document did not move.
  */
 
 import assert from 'node:assert/strict';
@@ -43,4 +47,12 @@ test('every golden case has a golden file', () => {
   }).sort();
 
   assert.deepEqual(files, expected);
+});
+
+test('no golden document holds an index router any more (D8)', () => {
+  for (const goldenCase of GOLDEN_CASES) {
+    const document = traefikAdapter.render(goldenCase.routes, goldenCase.config);
+    assert.ok(!document.includes('dev-index'), `the ${goldenCase.name} document still holds the index router`);
+    assert.ok(!document.includes('index.home.malarstrom.com'), `the ${goldenCase.name} document still holds the index host`);
+  }
 });

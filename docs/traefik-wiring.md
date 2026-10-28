@@ -59,8 +59,8 @@ Consequences used by the implementation:
 * the `docker` provider runs on the Docker network **`private`**, which is the network this container
   is attached to (`172.16.2.13/24`, gateway `172.16.2.1`);
 * the dashboard is already published at `https://traefik.home.malarstrom.com` through the user's own
-  router (`service: api@internal`). The gateway's index uses `index.home.malarstrom.com`, so the
-  two do not collide;
+  router (`service: api@internal`). The gateway's own routes live under
+  `<branch>.<project>.home.malarstrom.com`, so the two do not collide;
 * the user's own objects (`truenas`, `traefik`, `homebridge`, `default-security-headers`, `compress`)
   keep their plain names. **Every object the gateway serves is prefixed** (`dev-…`, `devhdr-…`) so it
   can never collide with them.
@@ -166,9 +166,9 @@ The gateway asks for **one wildcard certificate per project**
 every branch of that project. Set `"tlsMode": "fqdn"` in the gateway configuration to ask for one
 certificate per FQDN instead.
 
-The index router (`index.home.malarstrom.com`) uses `tls: {certResolver: cloudflare}` without
-domains, so the resolver derives the name from the `Host()` matcher — that is one extra certificate
-for the index host.
+Every router the gateway serves asks for the same resolver, so one certificate per project covers
+every branch of that project. Set `"tlsMode": "fqdn"` in the gateway configuration to ask for one
+certificate per FQDN instead.
 
 ## 4. What happens after the restart
 
@@ -197,15 +197,10 @@ curl -sS https://traefik.home.malarstrom.com/api/http/services | grep dev-probe
 node ~/projects/traefik-api/bin/traefik-dev.js unregister --project probe --branch main
 ```
 
-The index router (`index.home.malarstrom.com`) forwards every path of that host to the registry, so
-the index page can also call `DELETE /api/registrations/<project>/<branch>` on the same origin —
-that is the **Remove** button on the index page. It needs the `X-Gateway-UI: 1` header (a CSRF
-guard) and, when a secret is configured, `X-Registry-Secret`.
-
-What the registry serves for the index is static and self contained: one HTML document, one
-stylesheet, one script and the self-hosted font files, all from the repository. The stylesheet is
-Tailwind, compiled ahead of time and committed; the daemon compiles nothing at runtime, and the
-page asks no third party for anything.
+The registry answers two paths and nothing else: the dynamic configuration document (`/traefik`,
+which this provider polls) and the health probe (`/healthz`). There is no write endpoint and no
+page: the routes are written to the state file by the CLI and by the agents, and the route list is
+read with `traefik-dev list`.
 
 ## 6. Rollback
 

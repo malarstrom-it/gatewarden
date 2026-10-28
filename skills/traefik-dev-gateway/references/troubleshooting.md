@@ -53,15 +53,17 @@ The listeners bind dual stack (`::`) and the relay's trust list covers the conta
 
 ## A stale route the agent forgot to unregister
 
-The user can remove a registration by hand from the index page
-(`https://index.home.malarstrom.com/`): every row has a **Remove** button, the user confirms, and
-the route is gone on Traefik's next poll (≈5 s). It is a manual fallback — an agent must still
+The user can remove a registration by hand from the shell:
+
+```bash
+node ~/projects/traefik-api/bin/traefik-dev.js unregister --project <project> --branch <branch>
+```
+
+The route is gone on Traefik's next poll (≈5 s). It is a manual fallback — an agent must still
 unregister with the CLI when it stops a dev server.
 
-The endpoint behind the button is `DELETE /api/registrations/<project-slug>/<branch-slug>` with the
-header `X-Gateway-UI: 1`. That header is a CSRF guard: it forces a CORS preflight for any
-cross-site caller and the registry sends no CORS headers, so only the index page itself can trigger
-a removal. When a `secret` is configured, `X-Registry-Secret` is required as well.
+There is no HTTP endpoint for the removal: the registry serves the configuration document and the
+health probe, and nothing else (D9).
 
 ## The relay answers 403
 

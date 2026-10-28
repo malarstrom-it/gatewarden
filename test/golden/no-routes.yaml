@@ -1,14 +1,1 @@
-http:
-  routers:
-    dev-index:
-      rule: "Host(`index.home.malarstrom.com`)"
-      entryPoints:
-        - "websecure"
-      service: "dev-index"
-      tls:
-        certResolver: "cloudflare"
-  services:
-    dev-index:
-      loadBalancer:
-        servers:
-          - url: "http://devbox:45002"
+{}

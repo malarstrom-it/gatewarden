@@ -18,12 +18,11 @@
   ],
   "scripts": {
     "clean": "node scripts/clean-dist.mjs",
-    "build": "npm run clean && tsc -p tsconfig.build.json && node scripts/copy-assets.mjs",
+    "build": "npm run clean && tsc -p tsconfig.build.json",
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "prepack": "npm run build",
     "prepublishOnly": "npm run build && npm test",
-    "build:css": "tailwindcss -i src/assets/index.src.css -o src/assets/index.css",
     "start": "node src/daemon.ts"
   },
   "engines": {
@@ -33,9 +32,7 @@
     "env-paths": "^3.0.0"
   },
   "devDependencies": {
-    "@tailwindcss/cli": "4.3.3",
     "@types/node": "^22.10.0",
-    "tailwindcss": "4.3.3",
     "typescript": "^5.7.0"
   }
 }
