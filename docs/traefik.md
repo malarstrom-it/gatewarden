@@ -176,10 +176,22 @@ and restart the proxy. The gateway keeps running; it only stops being polled.
 The routes themselves are removed with `dev-gateway unregister`, one by one, or
 by emptying the route store.
 
-## 8. This installation
+## 8. An example configuration
 
-The values of the installation this package was written for. They are read from
-the running proxy, not assumed.
+What follows is an **example**: the shape of the static configuration of a
+Traefik, and what follows from it. Not one value in it belongs to anybody.
+
+* the domain is `example.com`, from RFC 2606 — the domains that are reserved
+  for examples;
+* the addresses are from the ranges RFC 5737 reserves for documentation
+  (`192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24`) and from
+  `2001:db8::/32`, the IPv6 documentation range;
+* the names of your own services and the addresses of your own machines are
+  yours, and they are the ones you put in your own files.
+
+Read the shape, take the values from your own proxy. The setup wizard does the
+same: it reads the running proxy, asks for what it cannot derive, and writes
+the values into your own configuration file.
 
 The proxy's static configuration:
 
@@ -198,70 +210,91 @@ entryPoints:
           scheme: https
   websecure:
     address: ":443"
-  gitea-ssh:
+  ssh:
     address: ":2222"
-  herdr-ssh:
-    address: ":2223"
 providers:
   docker:
-    network: private
+    network: gateway-net
     endpoint: "unix:///var/run/docker.sock"
     exposedByDefault: false
   file:
     filename: /etc/traefik/config/config.yml
     watch: true
 certificatesResolvers:
-  cloudflare:
+  example:
     acme:
-      email: "mikael@malarstrom.se"
+      email: "admin@example.com"
       storage: /etc/traefik/acme/acme.json
       dnsChallenge:
-        provider: cloudflare
+        provider: <your dns provider>
         resolvers: ["1.1.1.1:53", "1.0.0.1:53"]
 ping: {}
 metrics:
   prometheus: {}
 ```
 
+The `email` is the address the certificate authority writes to — the account
+of your own proxy, in your own proxy's configuration. The resolver is named
+`example` here; yours has the name your routers use.
+
 What follows from it:
 
-* the certificate resolver is named **`cloudflare`** (the gateway does not
+* the certificate resolver is named **`example`** (the gateway does not
   carry the name: the setup wizard derives it from the proxy, or asks for
   it);
 * the routers are attached to **`websecure` only** — `web` already redirects to
   `websecure`, so the client always ends up on HTTPS;
-* the `docker` provider runs on the Docker network **`private`**, which is the
-  network the gateway container is attached to (`172.16.2.13/24`, gateway
-  `172.16.2.1`);
-* the dashboard is published at `https://traefik.home.malarstrom.com` through
-  the user's own router (`service: api@internal`). The gateway's own routes
-  live under `<branch>.<project>.home.malarstrom.com`, so the two do not
+* the `docker` provider runs on the Docker network **`gateway-net`**, which is
+  the network the gateway container is attached to (`192.0.2.13/24`, gateway
+  `192.0.2.1`);
+* the dashboard is published at `https://traefik.example.com` through the
+  user's own router (`service: api@internal`). The gateway's own routes
+  live under `<branch>.<project>.example.com`, so the two do not
   collide;
-* the user's own objects (`truenas`, `traefik`, `homebridge`,
+* the user's own objects (`storage`, `media`, `traefik`,
   `default-security-headers`, `compress`) keep their plain names. **Every
   object the gateway serves is prefixed** (`dev-…`, `devhdr-…`) so it can never
   collide with them.
 
 The names of the gateway container, resolved with Docker's embedded DNS
-(resolver `127.0.0.11`, network `private`):
+(resolver `127.0.0.11`, network `gateway-net`):
 
 | Name | Resolves to |
 | --- | --- |
-| `devbox` | `172.16.2.13` (and `fdd0:0:0:2::d`) |
-| `devbox.private` | `172.16.2.13` |
-| `e1e518cfcc56` (the Docker-generated hostname) | `172.16.2.13` |
-| `traefik` | `172.16.2.6` (fqdn `ix-traefik-traefik-1.private`) |
+| `gateway` | `192.0.2.13` (and `2001:db8::d`) |
+| `gateway.gateway-net` | `192.0.2.13` |
+| `9f8e7d6c5b4a` (the Docker-generated hostname) | `192.0.2.13` |
+| `proxy` | `192.0.2.6` (fqdn `proxy.gateway-net`) |
 
-`devbox` is the compose service name, so it survives a container re-creation (a
-new IP) — the Docker-generated hostname does not. Both the IPv4 and the IPv6
-address of `devbox` are reachable from the Traefik container.
+`gateway` is the compose service name, so it survives a container re-creation
+(a new IP) — the Docker-generated hostname does not. Both the IPv4 and the IPv6
+address of `gateway` are reachable from the proxy container.
 
 The gateway's own ports are not published on the host, so they are not
 reachable from the LAN; only the proxy reaches them.
 
 The listeners are dual stack (`::` when the container has IPv6), and the relay
 accepts the dispatch header from the CIDRs of the installation's own trust
-list — `172.16.2.0/24`, the loopback and the container's own IPv6 prefix
-(`fdd0:0:0:2::/64`, derived at runtime) — so a connection over either stack
+list — `192.0.2.0/24`, the loopback and the container's own IPv6 prefix
+(`2001:db8::/64`, derived at runtime) — so a connection over either stack
 is accepted. The built-in default of the trust list is the loopback alone: the
 rest belongs to the installation, and the setup wizard asks for it.
+
+## 9. What goes into your own files
+
+| Your file | What goes in it |
+| --- | --- |
+| the proxy's static configuration | the `http` provider: the endpoint the proxy polls (the registry's port, under the address the proxy reaches you under) |
+| `~/.config/dev-gateway/config.json` | `zone`, `entryPoints`, `certResolver`, `middlewareProvider`, `advertisedHost` and `allowedCidrs` — the values of *your* installation |
+| the proxy's own environment | the credentials of the certificate resolver (the gateway never reads them) |
+
+Every one of those values comes from your proxy or from you: the zone from
+the host names of your routers, the entry points from the routers themselves,
+the resolver and the provider of the shared middlewares from the `tls` and
+`middleware` blocks, the address from the name your proxy knows you by, and
+the trust list from the networks your proxy reaches you from.
+
+`dev-gateway setup` reads them, asks for the ones it cannot derive, and
+writes them into your own configuration file. A package for anybody cannot
+start with somebody else's zone: the built-in defaults are empty, and the
+wizard fills them in.
