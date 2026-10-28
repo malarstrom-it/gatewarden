@@ -292,6 +292,26 @@ docker exec <container> sh -lc 'nohup node /home/node/projects/traefik-api/bin/t
 
 Lazy start makes this optional: the first `traefik-dev register` after a restart is enough.
 
+## Building
+
+```bash
+npm run build # tsc -p tsconfig.build.json, then the assets are copied next to the compiled code
+```
+
+The build writes `dist/`: the compiled JavaScript, the type declarations and the source maps. The
+source keeps its `.ts` import specifiers — Node does not resolve `./config.js` to `./config.ts` —
+and `tsc` rewrites them to `.js` in the output (`rewriteRelativeImportExtensions`).
+
+The launchers in `bin/` are thin. In a checkout they run the TypeScript source, so the working tree
+is always what runs. In an installed package — under `node_modules`, where Node cannot strip types —
+they run the compiled `dist/`.
+
+Two paths are runtime strings that the compiler cannot rewrite: the daemon names the worker next to
+it, and the daemon control names the daemon next to it. Both are resolved against the module that
+asks for them, with the extension of the world they run in, so they work in `src/` and in `dist/`.
+
+`prepublishOnly` runs the build and the tests before the package is published.
+
 ## Tests
 
 ```bash

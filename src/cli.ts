@@ -10,6 +10,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { loadConfig, resolveConfigPath, writeConfigFile, listenHost, CONFIG_KEYS } from './config.ts';
 import { RegistrationStore } from './state.ts';
@@ -48,6 +49,22 @@ function flagString(flags: Record<string, string | boolean>, name: string): stri
   return undefined;
 }
 
+/**
+ * The version of the package.
+ *
+ * It is read from the package manifest next to the module: one level up from
+ * `src/` in a checkout, one level up from `dist/` in the published package.
+ */
+export function packageVersion(): string {
+  try {
+    const require = createRequire(import.meta.url);
+    const manifest = require('../package.json') as { version?: string };
+    return manifest.version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
 function usage(): string {
   return `traefik-dev — expose a dev server running in this container through Traefik
 
@@ -57,11 +74,13 @@ Usage:
   traefik-dev list
   traefik-dev status
   traefik-dev config [--write]
+  traefik-dev version
 
 Global options:
   --config <path>      configuration file (default: <state-dir>/config.json)
   --state-dir <path>   state directory (default: ~/.traefik-dev)
   --json               machine readable output (list, status)
+  --version            print the version and exit
 `;
 }
 
@@ -237,6 +256,10 @@ function commandConfig(flags: Record<string, string | boolean>): number {
 
 export async function main(argv: string[]): Promise<number> {
   const { command, flags } = parseArgs(argv);
+  if (flags['version'] === true || command === 'version') {
+    process.stdout.write(`${packageVersion()}\n`);
+    return 0;
+  }
   switch (command) {
     case 'register':
       return commandRegister(flags);

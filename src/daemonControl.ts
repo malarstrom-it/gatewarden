@@ -9,10 +9,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import type { Config } from './types.ts';
+import { siblingModulePath } from './util/module.ts';
 
-const DAEMON_PATH = fileURLToPath(new URL('./daemon.ts', import.meta.url));
+/**
+ * The daemon, next to this module.
+ *
+ * The path is a runtime string, so the compiler does not rewrite it: it is
+ * resolved against the module that asks for it, with the extension that
+ * matches the world the code runs in (`.ts` in a checkout, `.js` in the
+ * compiled package).
+ */
+const DAEMON_PATH = siblingModulePath(import.meta.url, 'daemon');
 
 export interface DaemonStatus {
   pid: number | null;

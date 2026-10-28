@@ -1,7 +1,14 @@
 #!/usr/bin/env node
 // traefik-dev — CLI for registering a dev server with the Traefik dev gateway.
-import { fileURLToPath } from 'node:url';
-import { run } from '../src/cli.ts';
+//
+// The old name of `dev-gateway`; it stays as an alias.
+import { resolveEntry } from './entry.mjs';
 
-void fileURLToPath;
+const entry = resolveEntry(import.meta.url, '../src/cli.ts', '../dist/cli.js');
+if (!entry) {
+  process.stderr.write('traefik-dev: no build found — run "npm run build"\n');
+  process.exit(1);
+}
+
+const { run } = await import(entry.href);
 await run();

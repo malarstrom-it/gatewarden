@@ -12,12 +12,20 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fork, type ChildProcess } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import { loadConfig } from './config.ts';
 import { log, setLogLevel } from './log.ts';
+import { siblingModulePath } from './util/module.ts';
 
 const SCOPE = 'daemon';
-const WORKER_PATH = fileURLToPath(new URL('./worker.ts', import.meta.url));
+/**
+ * The worker, next to this module.
+ *
+ * The path is a runtime string, so the compiler does not rewrite it: it is
+ * resolved against the module that asks for it, with the extension that
+ * matches the world the daemon runs in (`.ts` in a checkout, `.js` in the
+ * compiled package).
+ */
+const WORKER_PATH = siblingModulePath(import.meta.url, 'worker');
 
 /** Rotate the log file when it grew past the configured size. */
 export function rotateLog(logFile: string, maxBytes: number, keep: number): void {
