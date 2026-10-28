@@ -25,7 +25,6 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import {
   configFileContent,
@@ -40,9 +39,11 @@ import { RegistrationStore } from '../core/state.ts';
 import { ensureDaemon, daemonStatus, pidFilePath } from '../core/daemonControl.ts';
 import { isPortListening } from '../core/util/net.ts';
 import { slugify } from '../core/util/slug.ts';
-import { moduleDirectory } from '../core/util/module.ts';
-import { requireAdapter } from '../adapters/index.ts';
-import type { Config, Registration } from '../core/types.ts';
+import { moduleDirectory, packageVersion } from '../core/util/module.ts';
+import { discoverProxyStatus, requireAdapter } from '../adapters/index.ts';
+import { gatewayStatus, routeJson } from '../core/status.ts';
+import type { RouteJson } from '../core/status.ts';
+import type { Config } from '../core/types.ts';
 import { runSetup } from './setup.ts';
 import { installService, manualEnableCommand, serviceUnitFor, type ServiceUnit } from './service.ts';
 
@@ -114,19 +115,10 @@ function emitJson(value: unknown): void {
 /**
  * The version of the package.
  *
- * It is read from the package manifest next to the module: two levels up
- * from `src/cli/` in a checkout, two levels up from `dist/cli/` in the
- * published package.
+ * It is read from the package manifest next to the module, so that the
+ * CLI and the MCP server report the same version.
  */
-export function packageVersion(): string {
-  try {
-    const require = createRequire(import.meta.url);
-    const manifest = require('../../package.json') as { version?: string };
-    return manifest.version ?? '0.0.0';
-  } catch {
-    return '0.0.0';
-  }
-}
+export { packageVersion };
 
 function usage(): string {
   return `dev-gateway — expose a dev server running on this machine through the proxy
@@ -177,27 +169,14 @@ function resolveConfig(
   return { config: loaded.config, configPath: loaded.configPath, paths: loaded.paths };
 }
 
-/** One route, in the shape the MCP tools use (§6.2). */
-export interface RouteJson {
-  project: string;
-  branch: string;
-  port: number;
-  fqdn: string;
-  url: string;
-  state: 'up' | 'down';
-}
-
-/** The JSON shape of one route. */
-export function routeJson(registration: Registration, state: 'up' | 'down'): RouteJson {
-  return {
-    project: registration.project,
-    branch: registration.branch,
-    port: registration.devPort,
-    fqdn: registration.fqdn,
-    url: `https://${registration.fqdn}`,
-    state,
-  };
-}
+/**
+ * One route, in the shape the MCP tools use (§6.2).
+ *
+ * The shape lives in the core, so that the CLI, the MCP server and the pi
+ * extension show the same route.
+ */
+export type { RouteJson } from '../core/status.ts';
+export { routeJson };
 
 async function commandRegister(flags: Record<string, string | boolean>): Promise<number> {
   const project = flagString(flags, 'project');
@@ -317,32 +296,16 @@ export async function statusOf(
   configPath: string,
   paths: GatewayPaths,
 ): Promise<Record<string, unknown>> {
-  const status = await daemonStatus(config);
+  const proxy = await discoverProxyStatus(config.proxy);
+  const status = await gatewayStatus(config, configPath, paths, proxy);
   const store = new RegistrationStore(config.stateDir);
   const registrations = store.list();
 
-  let proxy: Record<string, unknown> = { id: config.proxy, reachable: false };
-  try {
-    const adapter = requireAdapter(config.proxy);
-    const discovered = await adapter.discover({ timeoutMs: 1000 });
-    proxy = {
-      id: adapter.id,
-      reachable: discovered !== undefined,
-      version: discovered?.version,
-    };
-  } catch {
-    // An unknown proxy id is reported by the doctor, not here.
-  }
-
   return {
+    // The four things the MCP tool `dev_gateway_status` returns (§6.2).
+    ...status,
     // The keys the old CLI wrote, at the top level: a script written
     // against `dev-gateway status --json` keeps reading them.
-    daemon: {
-      pid: status.pid,
-      healthy: status.healthy,
-      running: status.healthy,
-      pidFile: status.pidFile,
-    },
     configPath,
     stateDir: config.stateDir,
     logFile: paths.logFile,
@@ -355,25 +318,6 @@ export async function statusOf(
     certResolver: config.certResolver,
     secretConfigured: Boolean(config.secret),
     registrations: registrations.length,
-    // The shape of the MCP tool `dev_gateway_status` (§6.2), beside the
-    // old one.
-    reachable: status.healthy,
-    proxy,
-    config: {
-      path: configPath,
-      exists: fs.existsSync(configPath),
-      stateDir: config.stateDir,
-      logFile: paths.logFile,
-      cacheDir: paths.cacheDir,
-      registryPort: config.registryPort,
-      relayPort: config.relayPort,
-      advertisedHost: config.advertisedHost,
-      advertisedIp: config.advertisedIp,
-      zone: config.zone,
-      entryPoints: config.entryPoints,
-      certResolver: config.certResolver,
-      secretConfigured: Boolean(config.secret),
-    },
     routes: registrations.length,
   };
 }

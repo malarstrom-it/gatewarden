@@ -111,6 +111,42 @@ every field of the store.
 Environment: `DEV_GATEWAY_HOME` (everything in one directory), `DEV_GATEWAY_CONFIG` (the
 configuration file), `DEV_GATEWAY_STATE_DIR` (the state directory).
 
+## The MCP server
+
+The MCP server is the primary agent surface (D4). It speaks the Model Context Protocol over the
+standard input and the standard output — the protocol is spoken directly, and the official SDK is
+not a runtime dependency (D5); it is only the oracle of the conformance test.
+
+```json
+{
+  "mcpServers": {
+    "dev-gateway": {
+      "command": "dev-gateway-mcp",
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    }
+  }
+}
+```
+
+The `mcpServers` format is the one pi documents as matching the other MCP clients, so the same
+entry works in Claude Code, Cursor, VS Code, Windsurf, Zed, Continue, Goose and OpenCode.
+
+Four tools:
+
+| Tool | Input | Output |
+| --- | --- | --- |
+| `publish_dev_server` | `{ port, project?, branch?, label? }` | `{ url, fqdn, project, branch, port, state }` |
+| `remove_dev_server` | `{ project, branch }` | `{ removed, fqdn? }` |
+| `list_dev_servers` | `{}` | `{ routes: [{ project, branch, port, fqdn, url, state }] }` |
+| `dev_gateway_status` | `{}` | `{ daemon, proxy, config, reachable }` |
+
+The project and the branch may be left out: the project is then the name of the working directory
+and the branch is the branch of the working directory, both slugified.
+
+The server starts no daemon when it starts. The first tool call starts it (the lazy start), so
+running the server changes nothing until an agent asks it to.
+
 ## The route list
 
 What is running is a list, not a page. The web interface is gone (D8, §10.1): it was a browser

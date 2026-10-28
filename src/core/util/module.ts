@@ -15,6 +15,7 @@
  */
 
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 /**
@@ -57,4 +58,21 @@ export function relativeModulePath(moduleUrl: string, relativeName: string): str
 /** The file path of the directory that holds the calling module. */
 export function moduleDirectory(moduleUrl: string): string {
   return path.dirname(fileURLToPath(moduleUrl));
+}
+
+/**
+ * The version of the package.
+ *
+ * The manifest sits three levels above this module in a checkout
+ * (`src/core/util/`) and in the compiled package (`dist/core/util/`), so
+ * the same relative path finds it in both worlds.
+ */
+export function packageVersion(): string {
+  try {
+    const require = createRequire(import.meta.url);
+    const manifest = require('../../../package.json') as { version?: string };
+    return manifest.version ?? '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
 }
