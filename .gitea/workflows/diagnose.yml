@@ -1,5 +1,5 @@
-# A temporary instrument: one job per test, so a failing run names the
-# test that failed. Gitea reports one commit status per job.
+# A temporary instrument: when a test fails, keep its output in a branch
+# that can be fetched. Gitea 1.22 has no API for the log of a job.
 name: diagnose
 
 on:
@@ -15,19 +15,25 @@ jobs:
       fail-fast: false
       matrix:
         name:
-          - start starts the daemon and waits for it
-          - start says that the daemon is already running
           - stop stops the daemon
-          - stop says that the daemon was not running
-          - stop stops a daemon that was started through the old launcher
-          - doctor reports what it finds
-          - doctor fails when the daemon is not running
-          - install-service writes the unit of the platform and enables it
-          - install-service reports the command to enable the unit by hand
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - run: npm ci
-      - run: node --test --test-name-pattern "${{ matrix.name }}" test/cli-lifecycle.test.ts
+      - name: run the test
+        id: test
+        run: |
+          set -o pipefail
+          node --test --test-name-pattern "${{ matrix.name }}" test/cli-lifecycle.test.ts 2>&1 | tee test-output.txt
+      - name: keep the output of the failing test in a branch
+        if: steps.test.outcome == 'failure'
+        run: |
+          git config user.name "ci"
+          git config user.email "ci@localhost"
+          git add test-output.txt
+          git commit -q -m "the output of the failing test" || true
+          git push --force origin HEAD:refs/heads/ci-failures
