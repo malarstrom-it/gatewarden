@@ -4,10 +4,11 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { RegistrationStore } from '../src/state.ts';
-import { createRegistryServer } from '../src/registry.ts';
-import { REGISTRY_SECRET_HEADER } from '../src/document.ts';
-import { UI_HEADER } from '../src/registry.ts';
+import { RegistrationStore } from '../src/core/state.ts';
+import { createRegistryServer } from '../src/core/registry.ts';
+import { traefikAdapter } from '../src/adapters/traefik.ts';
+import { REGISTRY_SECRET_HEADER } from '../src/core/protocol.ts';
+import { UI_HEADER } from '../src/core/registry.ts';
 import { close, listen, makeConfig } from './helpers/fixtures.ts';
 
 function tempStore(): RegistrationStore {
@@ -20,7 +21,7 @@ async function withRegistry<T>(
   run: (ctx: { url: string; store: RegistrationStore }) => Promise<T>,
 ): Promise<T> {
   const store = tempStore();
-  const server = createRegistryServer(store, makeConfig(overrides));
+  const server = createRegistryServer(store, makeConfig(overrides), traefikAdapter);
   const port = await listen(server);
   try {
     return await run({ url: `http://127.0.0.1:${port}`, store });
@@ -109,7 +110,7 @@ test('the index page survives registrations with html in their label', async () 
 
 test('the registry only binds what is asked for', async () => {
   const store = tempStore();
-  const server = createRegistryServer(store, makeConfig({}));
+  const server = createRegistryServer(store, makeConfig({}), traefikAdapter);
   await new Promise<void>((resolve) => server.listen(0, '0.0.0.0', () => resolve()));
   const address = server.address() as { address: string; port: number };
   assert.equal(address.address, '0.0.0.0');

@@ -4,10 +4,10 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { loadConfig } from '../src/config.ts';
-import { ensureDaemon, isHealthy, daemonStatus } from '../src/daemonControl.ts';
-import { RegistrationStore } from '../src/state.ts';
-import type { Config } from '../src/types.ts';
+import { loadConfig } from '../src/core/config.ts';
+import { ensureDaemon, isHealthy, daemonStatus } from '../src/core/daemonControl.ts';
+import { RegistrationStore } from '../src/core/state.ts';
+import type { Config } from '../src/core/types.ts';
 
 /** Ask the OS for a free TCP port. */
 export function freePort(): Promise<number> {

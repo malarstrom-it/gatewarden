@@ -53,10 +53,12 @@ test('the build writes the compiled modules to dist/', () => {
   const modules = [
     'cli.js',
     'daemon.js',
-    'daemonControl.js',
-    'registry.js',
     'worker.js',
-    'util/module.js',
+    'core/daemon.js',
+    'core/daemonControl.js',
+    'core/registry.js',
+    'core/util/module.js',
+    'adapters/traefik.js',
   ];
   for (const name of modules) {
     assert.ok(fs.existsSync(path.join(DIST, name)), `dist/${name} is missing — the build wrote nothing usable`);
@@ -66,7 +68,7 @@ test('the build writes the compiled modules to dist/', () => {
 test('the compiled imports point at JavaScript', () => {
   const compiled = fs.readFileSync(path.join(DIST, 'cli.js'), 'utf8');
   assert.doesNotMatch(compiled, /from "\.\/[^"]*\.ts"/, 'a .ts import specifier survived the build');
-  assert.match(compiled, /from "\.\/config\.js"/);
+  assert.match(compiled, /from "\.\/core\/config\.js"/);
 });
 
 test('the compiled CLI runs and prints the version', async () => {
@@ -78,7 +80,7 @@ test('the compiled CLI runs and prints the version', async () => {
 });
 
 test('the compiled sibling resolution points at the compiled modules', async () => {
-  const helper = await import(pathToFileURL(path.join(DIST, 'util', 'module.js')).href);
+  const helper = await import(pathToFileURL(path.join(DIST, 'core', 'util', 'module.js')).href);
 
   const worker = helper.siblingModulePath(pathToFileURL(path.join(DIST, 'daemon.js')).href, 'worker');
 

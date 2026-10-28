@@ -35,6 +35,25 @@ atomically. A section without entries is **omitted** from the document (never re
 Traefik's decoder rejects an empty map. The FQDN is `<branch>.<project>.home.malarstrom.com`; the branch label is a DNS-safe
 slug (GitLab `CI_COMMIT_REF_SLUG` convention).
 
+## How the code is laid out
+
+```text
+src/
+├── core/         # proxy-agnostic: routes, ports, host names, reachability
+├── adapters/     # one per proxy: Traefik's document format lives here
+├── cli.ts        # the command line, a client of the core
+├── daemon.ts     # the daemon entry point
+└── worker.ts     # the worker entry point
+```
+
+The core knows about routes, ports, host names and whether a dev server
+answers. It does not know what a router, a service or a middleware is: a
+proxy is reached through the `ProxyAdapter` contract in `src/core/proxy.ts`,
+and the Traefik implementation of it lives in `src/adapters/traefik.ts`. The
+core never imports an adapter — the entry points pick one and hand it to the
+core. The document the registry serves is rendered by the adapter, under the
+adapter's id (`/traefik`).
+
 ## What an agent needs to run
 
 ```bash
@@ -120,7 +139,7 @@ Content-Type: application/json
 | `409` | that project and branch already has a route; the body names the route that is there |
 
 The rules are the CLI's rules, in one place: the project and branch are
-slugged by `slugify()` (`src/util/slug.ts`), the port must be an integer
+slugged by `slugify()` (`src/core/util/slug.ts`), the port must be an integer
 between 1 and 65535, and it must not be a port the gateway itself listens
 on. The registry writes the **same state file the CLI writes**, through the
 store's own `upsert`, so a route made in the page is a route the CLI lists
@@ -152,7 +171,7 @@ registry serves. The build uses the **local** binary from `node_modules/.bin`, s
 reaches the network and never picks up a different Tailwind version than the committed artifact
 was built with.
 
-**When the markup in `src/index-page.ts` gains or loses a utility class, the stylesheet has to be
+**When the markup in `src/core/index-page.ts` gains or loses a utility class, the stylesheet has to be
 compiled again** — a missing class is silently unstyled until `npm run build:css` has run. The
 test `test/build-css.test.ts` compiles the source into a temporary file and compares it with the
 committed stylesheet, so a stale artifact fails the suite instead of the page.
@@ -263,7 +282,7 @@ The state directory holds:
 
 | File | Content |
 | --- | --- |
-| `registrations.json` | the registrations (the single source of truth, written atomically) |
+| `routes.json` | the routes (the single source of truth, written atomically) |
 | `daemon.pid` | pid of the running daemon |
 | `daemon.log` | daemon log (rotated at 5 MB, 3 files kept) |
 

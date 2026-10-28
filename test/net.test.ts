@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test, { after } from 'node:test';
-import { addressInCidr, isAddressAllowed, ipv6ToBigInt, normaliseAddress } from '../src/util/net.ts';
-import { detectIpv6Prefixes, listenHost, loadConfig } from '../src/config.ts';
+import { addressInCidr, isAddressAllowed, ipv6ToBigInt, normaliseAddress } from '../src/core/util/net.ts';
+import { detectIpv6Prefixes, listenHost, loadConfig } from '../src/core/config.ts';
 
 /**
  * A home directory of its own, so that a configuration load never reaches

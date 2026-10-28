@@ -179,7 +179,7 @@ state dir), `review-states.py`, `craft-floor-check.py` (reads the craft floor of
 `interaction-check.py`. Screenshots: `artifacts/screenshots/{before,after,live,empty}/`.
 
 Gotchas recorded: the registry serves the HTML from the loaded module but CSS/JS from disk (mtime
-cache) — a change in `src/index-page.ts` needs a daemon restart, a change in `src/assets/*` does not.
+cache) — a change in `src/core/index-page.ts` needs a daemon restart, a change in `src/assets/*` does not.
 `traefik-dev status` does not start the daemon; only `register` does.
 
 ## The final visual world: Daylight (2026-10-23)
@@ -199,7 +199,7 @@ build:css` regenerates it*. The toolchain is **pinned exactly** (`tailwindcss` a
 committed `src/assets/index.css` is stale — the silent-unstyled trap is now caught by CI.
 
 Gotcha: the registry serves the HTML from the loaded module but CSS/JS from disk (mtime cache) — a
-change in `src/index-page.ts` needs a daemon restart, a change in `src/assets/*` does not.
+change in `src/core/index-page.ts` needs a daemon restart, a change in `src/assets/*` does not.
 
 ## Critique findings fixed (2026-10-23, commit `24c5c62`)
 

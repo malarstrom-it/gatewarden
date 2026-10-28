@@ -5,6 +5,12 @@ import path from 'node:path';
 import { buildFqdn, slugify } from './util/slug.ts';
 import type { Registration } from './types.ts';
 
+/** The name of the route store in the state directory (§3.1). */
+export const ROUTES_FILE = 'routes.json';
+
+/** The name the route store had before it was renamed. */
+export const LEGACY_ROUTES_FILE = 'registrations.json';
+
 interface StateFile {
   version: number;
   registrations: Registration[];
@@ -26,6 +32,7 @@ export interface UpsertInput {
  * the CLI writes it, the daemon reads it.
  */
 export class RegistrationStore {
+  /** The file the routes are written to. */
   readonly file: string;
   private cached: Registration[] | null = null;
   private cachedMtimeMs = -1;
@@ -34,14 +41,31 @@ export class RegistrationStore {
 
   constructor(stateDir: string) {
     this.stateDir = stateDir;
-    this.file = path.join(stateDir, 'registrations.json');
+    this.file = path.join(stateDir, ROUTES_FILE);
+  }
+
+  /**
+   * The file the routes are read from.
+   *
+   * The route store was renamed to `routes.json` (§3.1). A state directory
+   * that still holds the old name is read from it, so that the routes of an
+   * installation that ran before the rename are not lost. The first write
+   * creates the new file, and from then on the new file is the one that is
+   * read.
+   */
+  private sourceFile(): string {
+    if (fs.existsSync(this.file)) return this.file;
+    const legacy = path.join(this.stateDir, LEGACY_ROUTES_FILE);
+    if (fs.existsSync(legacy)) return legacy;
+    return this.file;
   }
 
   /** All registrations, in insertion order. */
   list(): Registration[] {
+    const source = this.sourceFile();
     let stat: fs.Stats | null = null;
     try {
-      stat = fs.statSync(this.file);
+      stat = fs.statSync(source);
     } catch {
       stat = null;
     }
@@ -52,7 +76,7 @@ export class RegistrationStore {
     }
     if (this.cached && stat.mtimeMs === this.cachedMtimeMs) return this.cached;
     try {
-      const raw = JSON.parse(fs.readFileSync(this.file, 'utf8')) as StateFile;
+      const raw = JSON.parse(fs.readFileSync(source, 'utf8')) as StateFile;
       const registrations = Array.isArray(raw.registrations) ? raw.registrations : [];
       this.cached = registrations;
       this.cachedMtimeMs = stat.mtimeMs;

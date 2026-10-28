@@ -1,12 +1,13 @@
-/** The registry: serves the Traefik dynamic configuration document and the index page. */
+/** The registry: serves the dynamic configuration document and the index page. */
 
 import fs from 'node:fs';
 import http from 'node:http';
 import type { Config, Registration } from './types.ts';
+import type { ProxyAdapter } from './proxy.ts';
 import { RegistrationStore } from './state.ts';
-import { REGISTRY_SECRET_HEADER, renderDocument } from './document.ts';
+import { REGISTRY_SECRET_HEADER } from './protocol.ts';
 import { slugify } from './util/slug.ts';
-import { isPortListening } from './util/net.ts';
+import { RouteProbe } from './probe.ts';
 import { log } from './log.ts';
 import { renderIndex, renderRoutes, type RouteView, type RouteState } from './index-page.ts';
 
@@ -27,16 +28,17 @@ export const UI_HEADER_VALUE = '1';
 /**
  * Static assets of the index page.
  *
- * They live in the repository next to the code and are served by the registry
- * itself, so the page never asks a CDN for anything: the gateway runs on a
- * private network and a font request to a third party would leak every visit.
+ * They live in the repository next to the core and are served by the
+ * registry itself, so the page never asks a CDN for anything: the gateway
+ * runs on a private network and a font request to a third party would leak
+ * every visit.
  */
 const ASSETS = new Map<string, { file: URL; type: string }>([
-  ['/index.css', { file: new URL('./assets/index.css', import.meta.url), type: 'text/css; charset=utf-8' }],
-  ['/index.js', { file: new URL('./assets/index.js', import.meta.url), type: 'text/javascript; charset=utf-8' }],
+  ['/index.css', { file: new URL('../assets/index.css', import.meta.url), type: 'text/css; charset=utf-8' }],
+  ['/index.js', { file: new URL('../assets/index.js', import.meta.url), type: 'text/javascript; charset=utf-8' }],
 ]);
 
-const FONT_DIR = new URL('./assets/fonts/', import.meta.url);
+const FONT_DIR = new URL('../assets/fonts/', import.meta.url);
 const FONT_TYPE = 'font/woff2';
 
 const assetCache = new Map<string, { mtimeMs: number; body: Buffer }>();
@@ -265,28 +267,24 @@ async function handleDelete(
 /**
  * Create the registry HTTP server.
  *
- * Routes: `GET /traefik` (dynamic configuration), `GET /` (index),
+ * The dynamic configuration document is rendered by the proxy adapter, and
+ * served under the adapter's id (`/traefik` for Traefik): the core does not
+ * know what a document looks like.
+ *
+ * Routes: `GET /<proxy>` (dynamic configuration), `GET /` (index),
  * `GET /api/registrations` (JSON),
  * `POST /api/registrations` (create a route by hand),
  * `DELETE /api/registrations/<project>/<branch>` (manual removal),
  * `GET /healthz`.
  */
-export function createRegistryServer(store: RegistrationStore, config: Config): http.Server {
-  const upCache = new Map<string, { value: boolean; at: number }>();
-
-  async function probe(registration: Registration): Promise<boolean> {
-    const cached = upCache.get(registration.id);
-    const now = Date.now();
-    if (cached && now - cached.at < 2000) return cached.value;
-    const value = await isPortListening(registration.devPort, '127.0.0.1', 400);
-    upCache.set(registration.id, { value, at: now });
-    return value;
-  }
+export function createRegistryServer(store: RegistrationStore, config: Config, adapter: ProxyAdapter): http.Server {
+  const documentPath = `/${adapter.id}`;
+  const probe = new RouteProbe();
 
   /** Probe every registration and pair it with the state the probe found. */
   async function probeRoutes(registrations: Registration[]): Promise<RouteView[]> {
     const states = await Promise.all(
-      registrations.map(async (registration): Promise<RouteState> => ((await probe(registration)) ? 'up' : 'down')),
+      registrations.map(async (registration): Promise<RouteState> => ((await probe.isUp(registration)) ? 'up' : 'down')),
     );
     return registrations.map((registration, index) => ({ registration, state: states[index] }));
   }
@@ -318,7 +316,7 @@ export function createRegistryServer(store: RegistrationStore, config: Config): 
         return;
       }
 
-      if (url.pathname === '/traefik') {
+      if (url.pathname === documentPath) {
         if (config.secret) {
           const provided = req.headers[REGISTRY_SECRET_HEADER.toLowerCase()];
           if (provided !== config.secret) {
@@ -327,7 +325,7 @@ export function createRegistryServer(store: RegistrationStore, config: Config): 
             return;
           }
         }
-        const body = renderDocument(registrations, config);
+        const body = adapter.render(registrations, config);
         res.writeHead(200, { 'content-type': 'application/yaml; charset=utf-8' });
         res.end(body);
         return;

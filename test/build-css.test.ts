@@ -2,7 +2,7 @@
  * The stylesheet must not be stale.
  *
  * The page is styled with Tailwind classes that live in the markup
- * (`src/index-page.ts`) and the compiled stylesheet (`src/assets/index.css`)
+ * (`src/core/index-page.ts`) and the compiled stylesheet (`src/assets/index.css`)
  * is committed. When the markup gains or loses a utility class and nobody
  * compiles the stylesheet again, the class is silently missing from the
  * page: it renders unstyled, and it looks like a CSS bug rather than a

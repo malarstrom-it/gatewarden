@@ -2,8 +2,8 @@
 
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { DEFAULT_CONFIG } from '../../src/config.ts';
-import type { Config } from '../../src/types.ts';
+import { DEFAULT_CONFIG } from '../../src/core/config.ts';
+import type { Config } from '../../src/core/types.ts';
 
 export function makeConfig(overrides: Partial<Config> = {}): Config {
   return {

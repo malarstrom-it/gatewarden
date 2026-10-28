@@ -3,9 +3,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { RegistrationStore } from '../src/state.ts';
-import { createRelayServer } from '../src/relay.ts';
-import { DISPATCH_HEADER } from '../src/document.ts';
+import { RegistrationStore } from '../src/core/state.ts';
+import { createRelayServer } from '../src/core/relay.ts';
+import { DISPATCH_HEADER } from '../src/core/protocol.ts';
 import { close, listen, makeConfig } from './helpers/fixtures.ts';
 import { startEchoServer, wsRoundTrip } from './helpers/ws.ts';
 

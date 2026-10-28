@@ -19,14 +19,14 @@ import {
   writeConfigFile,
   listenHost,
   CONFIG_KEYS,
-} from './config.ts';
+} from './core/config.ts';
 import { legacyDir, type GatewayPaths } from './core/paths.ts';
 import { migrateLegacyLayout, type MigrationReport } from './core/migrate.ts';
-import { RegistrationStore } from './state.ts';
-import { ensureDaemon, daemonStatus, pidFilePath } from './daemonControl.ts';
-import { isPortListening } from './util/net.ts';
-import { slugify } from './util/slug.ts';
-import type { Config } from './types.ts';
+import { RegistrationStore } from './core/state.ts';
+import { ensureDaemon, daemonStatus, pidFilePath } from './core/daemonControl.ts';
+import { isPortListening } from './core/util/net.ts';
+import { slugify } from './core/util/slug.ts';
+import type { Config } from './core/types.ts';
 
 interface ParsedArgs {
   command: string;

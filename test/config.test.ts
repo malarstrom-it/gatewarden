@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { DEFAULT_CONFIG, configFileContent, loadConfig, resolveConfigPath, writeConfigFile } from '../src/config.ts';
+import { DEFAULT_CONFIG, configFileContent, loadConfig, resolveConfigPath, writeConfigFile } from '../src/core/config.ts';
 import { resolvePaths } from '../src/core/paths.ts';
 
 function isolatedHome(): string {

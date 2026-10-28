@@ -14,8 +14,8 @@ import {
   type GatewayPaths,
   type PathEnv,
   type PathOptions,
-} from './core/paths.ts';
-import { migrateLegacyLayout, type MigrationReport } from './core/migrate.ts';
+} from './paths.ts';
+import { migrateLegacyLayout, type MigrationReport } from './migrate.ts';
 
 export const DEFAULT_CONFIG: Config = {
   proxy: 'traefik',

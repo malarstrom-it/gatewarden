@@ -11,8 +11,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { RegistrationStore } from '../src/state.ts';
-import { createRegistryServer, UI_HEADER } from '../src/registry.ts';
+import { RegistrationStore } from '../src/core/state.ts';
+import { createRegistryServer, UI_HEADER } from '../src/core/registry.ts';
+import { traefikAdapter } from '../src/adapters/traefik.ts';
 import { close, listen, makeConfig } from './helpers/fixtures.ts';
 
 function tempStore(): RegistrationStore {
@@ -25,7 +26,7 @@ async function withRegistry<T>(
   run: (ctx: { url: string; store: RegistrationStore }) => Promise<T>,
 ): Promise<T> {
   const store = tempStore();
-  const server = createRegistryServer(store, makeConfig(overrides));
+  const server = createRegistryServer(store, makeConfig(overrides), traefikAdapter);
   const port = await listen(server);
   try {
     return await run({ url: `http://127.0.0.1:${port}`, store });

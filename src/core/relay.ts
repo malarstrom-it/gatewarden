@@ -10,7 +10,7 @@ import http from 'node:http';
 import net from 'node:net';
 import type { Config } from './types.ts';
 import { RegistrationStore } from './state.ts';
-import { DISPATCH_HEADER, RELAY_SECRET_HEADER } from './document.ts';
+import { DISPATCH_HEADER, RELAY_SECRET_HEADER } from './protocol.ts';
 import { isAddressAllowed } from './util/net.ts';
 import { log } from './log.ts';
 

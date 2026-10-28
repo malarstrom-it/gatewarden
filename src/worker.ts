@@ -1,67 +1,29 @@
 /**
- * Worker entry point.
+ * The worker entry point.
  *
- * The daemon supervises one worker per listener (registry, relay) so a crash
- * in one listener cannot take the other down.
+ * The daemon forks one worker per listener. The worker is the process that
+ * picks the proxy adapter: the core hands the adapter to the worker, and
+ * the worker never learns which proxy it renders for (D3).
  *
  * Usage: node src/worker.ts <registry|relay> [--config <path>]
  */
 
-import { loadConfig, configPathFromArgv, listenHost } from './config.ts';
-import { RegistrationStore } from './state.ts';
-import { createRegistryServer } from './registry.ts';
-import { createRelayServer } from './relay.ts';
-import { log, setLogLevel } from './log.ts';
+import { loadConfig, configPathFromArgv } from './core/config.ts';import { requireAdapter } from './adapters/index.ts';
+import { runWorker, type WorkerRole } from './core/worker.ts';
 
-const SCOPE = 'worker';
-
-async function main(): Promise<void> {
-  const role = process.argv[2];
-  if (role !== 'registry' && role !== 'relay') {
-    process.stderr.write('usage: node src/worker.ts <registry|relay>\n');
-    process.exit(2);
-  }
-
-  // The daemon names the configuration file it resolved, so that the worker
-  // reads the same file as the daemon.
-  const configPath = configPathFromArgv(process.argv);
-  const config = loadConfig(configPath ? { configPath } : {});
-  setLogLevel(process.env['TRAEFIK_DEV_LOG_LEVEL'] === 'debug' ? 'debug' : 'info');
-  const store = new RegistrationStore(config.stateDir);
-
-  const server = role === 'registry' ? createRegistryServer(store, config) : createRelayServer(store, config);
-  const port = role === 'registry' ? config.registryPort : config.relayPort;
-  const host = listenHost();
-
-  server.on('error', (error: Error) => {
-    log('error', SCOPE, `${role} listener failed`, error.message);
-    process.exit(1);
-  });
-
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(port, host, () => {
-      server.removeListener('error', reject);
-      resolve();
-    });
-  });
-
-  log('info', SCOPE, `${role} listening on ${host}:${port}`);
-
-  const shutdown = () => {
-    log('info', SCOPE, `${role} shutting down`);
-    server.close(() => process.exit(0));
-    setTimeout(() => process.exit(0), 2000).unref();
-  };
-  process.on('SIGTERM', shutdown);
-  process.on('SIGINT', shutdown);
-
-  process.on('message', (message: unknown) => {
-    if (message === 'shutdown') shutdown();
-  });
+const role = process.argv[2];
+if (role !== 'registry' && role !== 'relay') {
+  process.stderr.write('usage: node src/worker.ts <registry|relay>\n');
+  process.exit(2);
 }
 
-main().catch((error: unknown) => {
-  log('error', SCOPE, 'worker failed', error instanceof Error ? error.message : String(error));
+// The daemon names the configuration file it resolved, so that the worker
+// reads the same file as the daemon.
+const configPath = configPathFromArgv(process.argv);
+const config = loadConfig(configPath ? { configPath } : {});
+const adapter = requireAdapter(config.proxy);
+
+runWorker(role as WorkerRole, adapter, config).catch((error: unknown) => {
+  process.stderr.write(`worker failed: ${error instanceof Error ? error.message : String(error)}\n`);
   process.exit(1);
 });

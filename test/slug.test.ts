@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { slugify, isValidLabel, buildFqdn } from '../src/util/slug.ts';
+import { slugify, isValidLabel, buildFqdn } from '../src/core/util/slug.ts';
 
 test('slugify lower-cases and keeps letters and digits', () => {
   assert.equal(slugify('Feature'), 'feature');

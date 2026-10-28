@@ -6,7 +6,7 @@ The failures that actually happen, with symptom → cause → fix.
 
 Traefik decodes the document with **paerser** and rejects an empty map. A section with no entries
 must be **omitted**, never rendered as `{}`. If this message appears, the document the gateway
-serves is broken — look at `src/document.ts` in the gateway repository
+serves is broken — look at `src/adapters/traefik.ts` in the gateway repository
 (`~/projects/traefik-api`). It happened once and cost a Traefik restart.
 
 ## The route does not appear on the dashboard

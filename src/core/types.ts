@@ -1,4 +1,4 @@
-/** Shared types for the Traefik dev gateway. */
+/** Shared types for the dev gateway. */
 
 export interface Registration {
   /** Stable dispatch id, also used as the `X-Dev-Target` header value. */
@@ -24,6 +24,14 @@ export interface Registration {
 }
 
 export type DocumentFormat = 'yaml' | 'json';
+
+/**
+ * A route is a registration: the core's word for a published dev server.
+ *
+ * The `ProxyAdapter` contract speaks of routes (§4.2); the store keeps
+ * registrations. They are the same thing.
+ */
+export type Route = Registration;
 
 export interface Config {
   /** Which proxy adapter writes the dynamic configuration (D3). */

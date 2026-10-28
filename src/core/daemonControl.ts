@@ -11,18 +11,20 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import type { Config } from './types.ts';
 import { resolveConfigPath } from './config.ts';
-import { logFileFor } from './core/paths.ts';
-import { siblingModulePath } from './util/module.ts';
+import { logFileFor } from './paths.ts';
+import { relativeModulePath } from './util/module.ts';
 
 /**
- * The daemon, next to this module.
+ * The daemon, next to the core.
  *
  * The path is a runtime string, so the compiler does not rewrite it: it is
  * resolved against the module that asks for it, with the extension that
  * matches the world the code runs in (`.ts` in a checkout, `.js` in the
- * compiled package).
+ * compiled package). The daemon's entry point sits one level up, next to
+ * the core, and not inside it: it is the process that wires the adapters
+ * (D3).
  */
-const DAEMON_PATH = siblingModulePath(import.meta.url, 'daemon');
+const DAEMON_PATH = relativeModulePath(import.meta.url, '../daemon');
 
 export interface DaemonStatus {
   pid: number | null;

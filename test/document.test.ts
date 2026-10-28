@@ -3,8 +3,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { RegistrationStore } from '../src/state.ts';
-import { buildDynamicConfig, objectName, middlewareName, renderDocument, findEmptyMapPaths, pruneEmptyMaps, DISPATCH_HEADER } from '../src/document.ts';
+import { RegistrationStore } from '../src/core/state.ts';
+import { buildDynamicConfig, objectName, middlewareName, renderDocument, findEmptyMapPaths, pruneEmptyMaps } from '../src/adapters/traefik.ts';
+import { DISPATCH_HEADER } from '../src/core/protocol.ts';
 import { parseYaml } from './helpers/yaml.ts';
 import { makeConfig } from './helpers/fixtures.ts';
 

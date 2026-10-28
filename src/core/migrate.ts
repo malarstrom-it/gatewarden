@@ -18,15 +18,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { GatewayPaths } from './paths.ts';
+import { LEGACY_ROUTES_FILE, ROUTES_FILE } from './state.ts';
 
 /** The configuration file of the old layout. */
 export const LEGACY_CONFIG_FILE = 'config.json';
 
-/** The route store of the old layout. */
-export const LEGACY_ROUTES_FILE = 'registrations.json';
-
-/** The route store of the new layout. */
-export const ROUTES_FILE = 'registrations.json';
+export { LEGACY_ROUTES_FILE, ROUTES_FILE };
 
 /** The files the old layout held. */
 export interface LegacyLayout {

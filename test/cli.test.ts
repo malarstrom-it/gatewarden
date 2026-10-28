@@ -7,9 +7,9 @@ import path from 'node:path';
 import test from 'node:test';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { loadConfig } from '../src/config.ts';
-import { isHealthy } from '../src/daemonControl.ts';
-import { RegistrationStore } from '../src/state.ts';
+import { loadConfig } from '../src/core/config.ts';
+import { isHealthy } from '../src/core/daemonControl.ts';
+import { RegistrationStore } from '../src/core/state.ts';
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');

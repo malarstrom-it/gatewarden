@@ -2,7 +2,7 @@
 /**
  * Copy the runtime assets next to the compiled code.
  *
- * `src/registry.ts` serves `src/assets/` relative to its own module, so the
+ * `src/core/registry.ts` serves `src/assets/` relative to its own module, so the
  * compiled registry in `dist/` needs the same files next to it. `tsc` only
  * emits TypeScript, so the assets are copied here.
  *

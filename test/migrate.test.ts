@@ -14,7 +14,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { loadConfig } from '../src/config.ts';
+import { loadConfig } from '../src/core/config.ts';
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -105,7 +105,7 @@ test('an existing ~/.traefik-dev/config.json is picked up on the first run', () 
     assert.equal(written.autostart, true);
 
     // The route store was imported into the new state directory.
-    const routes = path.join(legacy.home, '.local', 'state', 'dev-gateway', 'registrations.json');
+    const routes = path.join(legacy.home, '.local', 'state', 'dev-gateway', 'routes.json');
     assert.ok(fs.existsSync(routes), 'the route store was not imported');
     const store = JSON.parse(fs.readFileSync(routes, 'utf8'));
     assert.equal(store.registrations.length, 1);
@@ -182,7 +182,7 @@ test('DEV_GATEWAY_HOME keeps the migration inside one directory', () => {
 
     assert.equal(config.stateDir, home);
     assert.ok(fs.existsSync(path.join(home, 'config.json')));
-    assert.ok(fs.existsSync(path.join(home, 'registrations.json')));
+    assert.ok(fs.existsSync(path.join(home, 'routes.json')));
   } finally {
     fs.rmSync(legacy.home, { recursive: true, force: true });
   }
@@ -209,7 +209,7 @@ test('dev-gateway migrate reports what it moved', async () => {
 
     // What it reported, it did.
     const configFile = path.join(legacy.home, '.config', 'dev-gateway', 'config.json');
-    const routes = path.join(legacy.home, '.local', 'state', 'dev-gateway', 'registrations.json');
+    const routes = path.join(legacy.home, '.local', 'state', 'dev-gateway', 'routes.json');
     assert.ok(fs.existsSync(configFile));
     assert.ok(fs.existsSync(routes));
     assert.ok(fs.existsSync(legacy.configFile), 'the old directory must stay');
@@ -234,7 +234,7 @@ test('dev-gateway migrate --dry-run moves nothing', async () => {
 
     assert.match(stdout, /dry run: nothing was moved/);
     assert.ok(!fs.existsSync(path.join(legacy.home, '.config', 'dev-gateway', 'config.json')));
-    assert.ok(!fs.existsSync(path.join(legacy.home, '.local', 'state', 'dev-gateway', 'registrations.json')));
+    assert.ok(!fs.existsSync(path.join(legacy.home, '.local', 'state', 'dev-gateway', 'routes.json')));
   } finally {
     fs.rmSync(legacy.home, { recursive: true, force: true });
   }

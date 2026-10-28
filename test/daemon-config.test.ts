@@ -17,7 +17,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { logFileFor } from '../src/core/paths.ts';
-import { openLogFile } from '../src/daemonControl.ts';
+import { openLogFile } from '../src/core/daemonControl.ts';
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DAEMON = path.join(REPO_ROOT, 'bin', 'traefik-devd.js');
 

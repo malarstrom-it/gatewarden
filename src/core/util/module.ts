@@ -41,6 +41,19 @@ export function siblingModulePath(moduleUrl: string, name: string): string {
   return fileURLToPath(siblingModuleUrl(moduleUrl, name));
 }
 
+/**
+ * The file path of a module that sits at `relativeName`, relative to the
+ * directory of `moduleUrl`.
+ *
+ * `relativeName` is written without an extension: the extension that
+ * matches the world the code is running in is added (`.ts` in a checkout,
+ * `.js` in the compiled package).
+ */
+export function relativeModulePath(moduleUrl: string, relativeName: string): string {
+  const relative = relativeName.startsWith('.') ? relativeName : `./${relativeName}`;
+  return fileURLToPath(new URL(`${relative}${runningExtension(moduleUrl)}`, moduleUrl).href);
+}
+
 /** The file path of the directory that holds the calling module. */
 export function moduleDirectory(moduleUrl: string): string {
   return path.dirname(fileURLToPath(moduleUrl));

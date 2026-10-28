@@ -18,9 +18,10 @@
 
 import fs from 'node:fs';
 import net from 'node:net';
-import { createRegistryServer } from '../src/registry.ts';
-import { RegistrationStore } from '../src/state.ts';
-import { loadConfig } from '../src/config.ts';
+import { createRegistryServer } from '../src/core/registry.ts';
+import { RegistrationStore } from '../src/core/state.ts';
+import { loadConfig } from '../src/core/config.ts';
+import { traefikAdapter } from '../src/adapters/traefik.ts';
 
 const port = Number(process.argv[2] ?? 45099);
 const stateDir = process.argv[3] ?? '/tmp/traefik-preview';
@@ -68,7 +69,7 @@ for (const route of routes) {
   });
 }
 
-const server = createRegistryServer(store, config);
+const server = createRegistryServer(store, config, traefikAdapter);
 server.listen(port, '127.0.0.1', () => {
   console.log(`preview on http://127.0.0.1:${port}/ (${routes.length} routes, state ${stateDir})`);
 });

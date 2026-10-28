@@ -1,0 +1,34 @@
+http:
+  routers:
+    dev-alpha-feature-login-6e282c:
+      rule: "Host(`feature-login.alpha.home.malarstrom.com`)"
+      entryPoints:
+        - "websecure"
+      service: "dev-alpha-feature-login-6e282c"
+      middlewares:
+        - "devhdr-alpha-feature-login-6e282c"
+      tls:
+        certResolver: "cloudflare"
+        domains:
+          - main: "*.alpha.home.malarstrom.com"
+    dev-index:
+      rule: "Host(`index.home.malarstrom.com`)"
+      entryPoints:
+        - "websecure"
+      service: "dev-index"
+      tls:
+        certResolver: "cloudflare"
+  services:
+    dev-alpha-feature-login-6e282c:
+      loadBalancer:
+        servers:
+          - url: "http://devbox:45001"
+    dev-index:
+      loadBalancer:
+        servers:
+          - url: "http://devbox:45002"
+  middlewares:
+    devhdr-alpha-feature-login-6e282c:
+      headers:
+        customRequestHeaders:
+          X-Dev-Target: "alpha/feature-login"
