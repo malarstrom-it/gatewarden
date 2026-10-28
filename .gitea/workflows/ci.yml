@@ -7,6 +7,13 @@
 # per job, so a failing run says which step failed and not only that
 # something did.
 #
+# The tests are one job per test file. Two of the test files need the
+# compiled output of the repository: one builds it and reads it, the other
+# packs the package, and the pack builds it again. The build deletes
+# `dist/` before it writes it, so the two must not run at the same time.
+# One job per file gives every job its own copy of the repository, and it
+# makes a failing run name the file that failed.
+#
 # The package's own postinstall script starts the daemon. It checks the CI
 # environment and does nothing there, so no daemon runs on the runner.
 
@@ -31,16 +38,45 @@ jobs:
       - run: npm run typecheck
 
   test:
-    name: test
+    name: test (${{ matrix.file }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    fail-fast: false
+    strategy:
+      matrix:
+        file:
+          - adapters.test.ts
+          - build.test.ts
+          - cli-lifecycle.test.ts
+          - cli-setup.test.ts
+          - cli.test.ts
+          - config.test.ts
+          - core-isolation.test.ts
+          - daemon-config.test.ts
+          - daemon.test.ts
+          - docs.test.ts
+          - document.test.ts
+          - golden.test.ts
+          - mcp-conformance.test.ts
+          - mcp-server.test.ts
+          - migrate.test.ts
+          - net.test.ts
+          - paths.test.ts
+          - pi-extension.test.ts
+          - postinstall.test.ts
+          - registry.test.ts
+          - relay.test.ts
+          - service.test.ts
+          - slug.test.ts
+          - state.test.ts
+          - websocket.test.ts
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - run: npm ci
-      - run: npm test
+      - run: node --test "test/${{ matrix.file }}"
 
   build:
     name: build
