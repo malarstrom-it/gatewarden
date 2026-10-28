@@ -19,6 +19,7 @@ import assert from 'node:assert/strict';
 import { execFile, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
+import { builtinModules } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
 import test, { before } from 'node:test';
@@ -61,6 +62,7 @@ test('the build writes the compiled modules to dist/', () => {
     'core/registry.js',
     'core/util/module.js',
     'adapters/traefik.js',
+    'integrations/pi/extension.js',
   ];
   for (const name of modules) {
     assert.ok(fs.existsSync(path.join(DIST, name)), `dist/${name} is missing — the build wrote nothing usable`);
@@ -72,6 +74,68 @@ test('the compiled imports point at JavaScript', () => {
   assert.doesNotMatch(compiled, /from "\.\.?\/[^"]*\.ts"/, 'a .ts import specifier survived the build');
   assert.match(compiled, /from "\.\.\/core\/config\.js"/);
 });
+
+test('the compiled pi extension depends on nothing but the package', () => {
+  // pi is the host, not a dependency: the compiled extension may not
+  // import the harness, and it may not need a schema library either.
+  //
+  // The whole closure is walked, not only the extension: the extension
+  // imports the core, and the core is where a dependency would sneak
+  // in. Every specifier in the closure has to be a relative one (a
+  // module of the package), a node builtin, or one of the runtime
+  // dependencies the manifest declares.
+  const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')) as {
+    dependencies?: Record<string, string>;
+  };
+  const allowed = new Set(Object.keys(manifest.dependencies ?? {}));
+  const builtins = new Set(builtinModules);
+
+  const seen = new Set<string>();
+  const queue = [path.join(DIST, 'integrations', 'pi', 'extension.js')];
+  const foreign: string[] = [];
+
+  while (queue.length > 0) {
+    const file = queue.pop() as string;
+    if (seen.has(file)) continue;
+    seen.add(file);
+
+    assert.ok(fs.existsSync(file), `${path.relative(REPO_ROOT, file)} is imported but was not built`);
+    const source = fs.readFileSync(file, 'utf8');
+
+    for (const specifier of importSpecifiers(source)) {
+      if (specifier.startsWith('.')) {
+        queue.push(path.resolve(path.dirname(file), specifier));
+        continue;
+      }
+      const bare = specifier.startsWith('node:') ? specifier.slice('node:'.length) : specifier;
+      if (specifier.startsWith('node:') || builtins.has(bare)) continue;
+      if (allowed.has(specifier)) continue;
+      foreign.push(`${path.relative(REPO_ROOT, file)} imports ${specifier}`);
+    }
+  }
+
+  assert.ok(seen.size > 1, 'the closure of the extension is empty, which cannot be');
+  assert.deepEqual(foreign, [], 'the extension pulls in something the package does not declare');
+});
+
+/**
+ * Every import specifier of a compiled module.
+ *
+ * The compiler keeps the quoting of the source for a bare specifier
+ * (`import envPaths from 'env-paths';`) and writes the rewritten relative
+ * ones with double quotes. Both are matched, or a dependency would slip
+ * through the guard.
+ */
+function importSpecifiers(source: string): string[] {
+  const specifiers: string[] = [];
+  const patterns = [/\bfrom\s*['"]([^'"]+)['"]/g, /\bimport\s*['"]([^'"]+)['"]/g];
+  for (const pattern of patterns) {
+    for (const match of source.matchAll(pattern)) {
+      specifiers.push(match[1] as string);
+    }
+  }
+  return specifiers;
+}
 
 test('the compiled CLI runs and prints the version', async () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'));
