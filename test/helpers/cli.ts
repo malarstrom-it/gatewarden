@@ -47,6 +47,16 @@ export interface CliFixture {
   dir: string;
   /** The configuration file. */
   configPath: string;
+  /**
+   * The environment the fixture runs in.
+   *
+   * A process that the fixture starts belongs in this environment: a
+   * daemon that is started outside it looks for the state directory in
+   * the home of the user the tests run as, and writes its pidfile
+   * somewhere the fixture cannot find. The XDG variables of the machine
+   * the tests run on must not decide where the state lives.
+   */
+  env: NodeJS.ProcessEnv;
   /** Run the CLI and return what it wrote to the standard output. */
   run: (args: string[]) => Promise<string>;
   /** Run the CLI and parse its JSON output. */
@@ -106,12 +116,20 @@ export async function makeCliFixture(options: FixtureOptions = {}): Promise<CliF
   // The home directory is the throwaway one too: the old layout
   // (`~/.traefik-dev/`) is looked for there, and not in the home of the
   // user the tests run as.
+  //
+  // `DEV_GATEWAY_STATE_DIR` names the state directory outright, so the
+  // daemon a test starts keeps its state in the throwaway directory and
+  // not in the state directory of the machine the tests run on. It also
+  // keeps the tests independent of the XDG variables of that machine:
+  // `XDG_STATE_HOME` names the state directory of the default layout, and
+  // it outranks the configuration file.
   const env: NodeJS.ProcessEnv = {
     PATH: process.env['PATH'] ?? '',
     HOME: dir,
     XDG_CONFIG_HOME: path.join(dir, '.config'),
     XDG_STATE_HOME: path.join(dir, '.local', 'state'),
     XDG_CACHE_HOME: path.join(dir, '.cache'),
+    DEV_GATEWAY_STATE_DIR: dir,
     ...(options.env ?? {}),
   };
 
@@ -159,6 +177,7 @@ export async function makeCliFixture(options: FixtureOptions = {}): Promise<CliF
   return {
     dir,
     configPath,
+    env,
     run,
     runJson,
     runFail,

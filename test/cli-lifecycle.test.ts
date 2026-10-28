@@ -82,6 +82,7 @@ test('stop stops a daemon that was started through the old launcher', async (t) 
   // The daemon the way the live gateway runs it: through the launcher of
   // the old name, `bin/traefik-devd.js`.
   const daemon = spawn(process.execPath, [LEGACY_DAEMON, '--config', cli.configPath], {
+    env: cli.env,
     detached: true,
     stdio: 'ignore',
   });

@@ -1,14 +1,11 @@
 # CI for the agent dev gateway.
 #
-# The same commands the specification names, in the order it names them:
+# The steps are the ones the specification names: typecheck, tests, build,
+# and a package that a consumer can install and run.
 #
-#   typecheck   tsc --noEmit
-#   tests       node --test test/*.test.ts
-#   build       tsc -p tsconfig.build.json
-#   package     npm pack, then install the tarball and run the binary
-#
-# The last step is the one that matters for a package: a tarball that packs
-# but does not install, or installs but does not start, is not a package.
+# The steps are separate jobs on purpose. Gitea reports one commit status
+# per job, so a failing run says which step failed and not only that
+# something did.
 #
 # The package's own postinstall script starts the daemon. It checks the CI
 # environment and does nothing there, so no daemon runs on the runner.
@@ -21,39 +18,65 @@ on:
   pull_request:
 
 jobs:
-  verify:
+  typecheck:
+    name: typecheck
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - run: npm ci
+      - run: npm run typecheck
 
-      - name: typecheck
-        run: npm run typecheck
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm test
 
-      - name: tests
-        run: npm test
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm run build
+      - name: what the tarball holds
+        run: npm pack --dry-run
 
-      - name: build
-        run: npm run build
-
+  package:
+    name: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
       - name: the packed package installs and runs
         run: |
           set -euo pipefail
-          tarball="$(npm pack --pack-destination "$RUNNER_TEMP" | tail -1)"
-          mkdir -p "$RUNNER_TEMP/verify"
-          cd "$RUNNER_TEMP/verify"
+          work="$(mktemp -d)"
+          tarball="$(npm pack --pack-destination "$work" | tail -1)"
+          mkdir -p "$work/consumer"
+          cd "$work/consumer"
           npm init --yes > /dev/null
-          npm install "$RUNNER_TEMP/$tarball"
+          npm install "$work/$tarball"
           # The binary is called by its path, never through npx: npx falls
           # back to the registry when it does not find a name locally, and
           # there is a different package called dev-gateway on npm.
           ./node_modules/.bin/dev-gateway --version
           ./node_modules/.bin/dev-gateway --help
-
-      - name: what the tarball holds
-        run: |
-          set -euo pipefail
-          npm pack --dry-run 2>&1 | sed -n '/Tarball Contents/,/Tarball Details/p'
