@@ -87,13 +87,17 @@ export async function daemonStatus(config: Config): Promise<DaemonStatus> {
   }
   const healthy = await isHealthy(config);
   if (!healthy && pid !== null) {
-    // Stale pidfile: the process is gone.
-    try {
-      fs.rmSync(pidFile, { force: true });
-    } catch {
-      // ignore
+    // The pidfile is stale when the process is gone. A daemon that is
+    // still starting is not stale: it answers /healthz in a moment, and
+    // its pidfile is its own.
+    if (!isProcessAlive(pid)) {
+      try {
+        fs.rmSync(pidFile, { force: true });
+      } catch {
+        // ignore
+      }
+      pid = null;
     }
-    pid = null;
   }
   return { pid, healthy, pidFile };
 }
@@ -144,4 +148,102 @@ export async function ensureDaemon(
   }
 
   return { started: true, pid: null, error: `daemon did not answer /healthz within ${timeoutMs} ms (see ${logFile})` };
+}
+
+/** Is the process alive? */
+export function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+/**
+ * Is this process the gateway daemon?
+ *
+ * The daemon is started through one of its launchers: `daemon.ts` (the
+ * lazy start), `dev-gateway-daemon.js` and `traefik-devd.js` (the names
+ * the package installs, the last one the old name of the second). All of
+ * them are the daemon; a process that is none of them is not.
+ *
+ * The pidfile is a file in the state directory: something else may have
+ * written it, and the CLI must never stop a process it does not own. On
+ * Linux the command line of the process says what it is; on the other
+ * platforms the pidfile is the only source there is.
+ */
+export function isGatewayDaemon(pid: number): boolean {
+  if (process.platform !== 'linux') return true;
+  try {
+    const raw = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8');
+    const parts = raw.split('\0').filter((part) => part.length > 0);
+    // The script is the first argument that names a file.
+    const script = parts.find((part) => /\.(ts|js|mjs|cjs)$/.test(part));
+    if (!script) return false;
+    // Only the name of the script counts: the directories it lives in say
+    // nothing about what the process does.
+    const name = path.basename(script);
+    return /daemon|devd/.test(name) && !/cli/.test(name);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Stop the daemon and wait for it to be gone.
+ *
+ * The daemon removes its own pidfile when it stops; the file is removed
+ * here as well, for a daemon that did not get that far. A process that
+ * is not the gateway's daemon is never stopped.
+ */
+export async function stopDaemon(
+  config: Config,
+  opts: { timeoutMs?: number } = {},
+): Promise<{ stopped: boolean; wasRunning: boolean; pid: number | null; error?: string }> {
+  const status = await daemonStatus(config);
+  const pidFile = pidFilePath(config);
+
+  if (status.pid === null) {
+    return { stopped: false, wasRunning: false, pid: null };
+  }
+
+  if (!isGatewayDaemon(status.pid)) {
+    return {
+      stopped: false,
+      wasRunning: true,
+      pid: status.pid,
+      error: `the pid ${status.pid} in ${pidFile} does not belong to the gateway daemon; nothing was stopped`,
+    };
+  }
+
+  try {
+    process.kill(status.pid, 'SIGTERM');
+  } catch (error) {
+    return {
+      stopped: false,
+      wasRunning: true,
+      pid: status.pid,
+      error: `could not stop the daemon: ${(error as Error).message}`,
+    };
+  }
+
+  const deadline = Date.now() + (opts.timeoutMs ?? 10_000);
+  while (Date.now() < deadline && isProcessAlive(status.pid)) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  const stopped = !isProcessAlive(status.pid);
+  if (stopped) {
+    try {
+      fs.rmSync(pidFile, { force: true });
+    } catch {
+      // ignore
+    }
+  }
+  return {
+    stopped,
+    wasRunning: true,
+    pid: status.pid,
+    error: stopped ? undefined : 'the daemon did not stop',
+  };
 }

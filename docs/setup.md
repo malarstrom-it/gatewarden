@@ -38,13 +38,25 @@ a daemon is already running.
 The proxy adapter is asked what the proxy is: for Traefik it reads
 `/api/version` and `/api/http/routers`. From the routers it derives the zone
 (the common host-name suffix), the entry points, the certificate resolver and
-the middleware provider.
+the middleware provider. The routers of Traefik itself — the API, the
+dashboard, the ACME challenge — are left out: they say nothing about the
+routes of the user. The dispatch middleware of the gateway is left out as
+well: it lives in the HTTP provider, and the provider of it is not the
+provider of the middlewares the user shares.
+
+The port of every entry point is read as well (`/api/entrypoints`): a proxy
+that serves the routes on another port (8443, say) needs the port in the
+public URL, and nobody can guess it.
 
 What cannot be derived is asked for — **the value in the configuration file is
-the default in the question, not an answer**. When there is nobody to ask (a
-non-interactive run, a machine without a terminal), the value is kept and
-reported as unconfirmed, together with where every value came from: the proxy,
-the user, the configuration file or the built-in default.
+the default in the question, not an answer**. The host name the proxy reaches
+this machine under is asked for as well: the proxy's API does not say it, and
+the wiring is written with it. When there is nobody to ask (a non-interactive
+run, a machine without a terminal, a question that times out), the value is
+kept and reported as unconfirmed, together with where every value came from:
+the proxy, the user, the configuration file or the built-in default. A value
+that is kept and is the built-in default is not written to the configuration
+file at all: a new installation does not get the zone of another project.
 
 ### 3. Is the proxy already wired?
 
@@ -73,9 +85,30 @@ wizard says so plainly instead of pretending.
 1. Start a throwaway server on a free port (`throwaway server`).
 2. Register it (`route registered`).
 3. Wait for one poll interval.
-4. Fetch the public URL and require a successful response (`public URL`).
+4. Fetch the public URL and require a successful response (`public URL`). The
+   URL is fetched over HTTPS first; a proxy that serves the zone over plain
+   HTTP answers the second try. The port of the entry point the routes
+   attach to is tried as well. The answer has to be the answer of the
+   throwaway server: something else may answer a request for a route with a
+   successful response (the dashboard of the proxy does), and that is not the
+   route.
+
+   **The certificate of the public URL has to be trusted by the machine that
+   runs the wizard.** The check is never switched off. A test environment
+   trusts its own certificate authority with `NODE_EXTRA_CA_CERTS`; a
+   machine that does not trust it gets a failed verification that says the
+   certificate is the reason. A plain HTTP answer does not make it pass: the
+   public URL is served over HTTPS, and a URL whose certificate is not
+   trusted is not usable. Every attempt is reported, so a URL that did not
+   answer stays visible.
 5. Remove the route and stop the throwaway server (`cleaned up` — the route is
-   removed and the server stopped whatever the outcome was).
+   removed and the server stopped whatever the outcome was). A route of the
+   user that has the same name is put back.
+
+When the proxy knows the URL but does not serve the route, the verification
+is **skipped**: the wiring has to be added to the proxy first, and the
+wizard cannot apply it (§9.4). That is not a failed setup, and the exit
+code says so.
 
 Each step is reported as it goes, and what could not be verified is reported
 too. Without a proxy that answers there is no public URL to fetch, and the
@@ -97,6 +130,17 @@ surviving a reboot.
 Both happen before the verification of step five, because the verification
 needs them.
 
+A daemon that is already running serves the configuration it was started
+with, so the wizard restarts it: otherwise the document the proxy polls is
+the old one, and the verification would check the old configuration. The
+routes live in the route store and not in the daemon, so a restart does not
+lose them. A route keeps the host name it was registered with; a new zone
+applies to the routes that come after it.
+
+The values nobody confirmed are not written when they are the built-in
+default: a new installation would otherwise get the zone of another project
+in its configuration file. They are listed in `config.omitted`.
+
 ## The report
 
 `dev-gateway setup --json` writes one object with:
@@ -108,13 +152,17 @@ needs them.
 | `wired` | the answer of step three |
 | `wiring` | the path and the content of the snippet of step four |
 | `verification` | `verified`, `failed` or `skipped`, with the reason and the steps |
-| `config` | the path, the values, where every value came from (`sources`) and the values nobody confirmed (`unconfirmed`) |
-| `daemon` | whether the daemon runs after the wizard |
+| `config` | the path, the values, where every value came from (`sources`), the values nobody confirmed (`unconfirmed`) and the values that were not written (`omitted`) |
+| `daemon` | whether the daemon runs after the wizard, and whether it was restarted |
 | `nextSteps` | what the user should do next |
 
-With `--json` the exit code is 1 when the verification failed, and 0 otherwise —
-including when it was skipped. In the text output the exit code is always 0;
-the verdict is in the report.
+The exit code is 1 when the verification failed, in every mode — a script
+sees it. It is 0 when the verification was skipped: there was no proxy to
+verify against.
+
+With `--json` the report is written as one object and nothing else. In the
+text output the steps are written as they happen, and the verdict is in the
+report and in the exit code.
 
 ## The values the wizard writes
 

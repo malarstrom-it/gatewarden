@@ -184,13 +184,40 @@ export const DOCUMENT_PATH = `/${TRAEFIK_ID}`;
 /** Where Traefik's API usually answers. */
 export const DEFAULT_API_BASE_URL = 'http://127.0.0.1:8080';
 
+/**
+ * The name of Traefik's HTTP provider.
+ *
+ * The routers the HTTP provider serves carry it: that is how the proxy
+ * says "this router came from the provider the gateway serves" (§9.3).
+ */
+export const HTTP_PROVIDER = 'http';
+
+/**
+ * The name of the provider of Traefik's own routers.
+ *
+ * The API, the dashboard and the ACME challenge are served by it. They
+ * say nothing about the user's routes.
+ */
+export const INTERNAL_PROVIDER = 'internal';
+
 /** One router, as Traefik's API describes it. */
-interface TraefikRouter {
+export interface TraefikRouter {
+  name?: string;
   rule?: string;
   entryPoints?: string[];
   middlewares?: string[];
   tls?: { certResolver?: string };
   service?: string;
+  /** The provider that served the router (`http`, `file`, ...). */
+  provider?: string;
+  status?: string;
+}
+
+/** One service, as Traefik's API describes it. */
+export interface TraefikService {
+  name?: string;
+  status?: string;
+  loadBalancer?: { servers?: Array<{ url?: string }> };
 }
 
 /** The host names a router rule matches, when the rule is a `Host(...)` rule. */
@@ -247,6 +274,37 @@ function mostCommon(values: string[]): string | undefined {
 }
 
 /**
+ * The provider that owns a middleware.
+ *
+ * The gateway's own dispatch middleware is not one of the user's: it
+ * lives in the HTTP provider, and the provider of it says nothing about
+ * the middlewares the user shares (the compression, the security
+ * headers). It is left out here: the wizard would otherwise write
+ * "http" into the configuration, and every route would then ask for a
+ * middleware that does not exist.
+ */
+export function middlewareProviderOf(middleware: string): string | undefined {
+  const at = middleware.lastIndexOf('@');
+  if (at <= 0) return undefined;
+  const name = middleware.slice(0, at);
+  if (name.startsWith(MIDDLEWARE_PREFIX)) return undefined;
+  return middleware.slice(at + 1);
+}
+
+/**
+ * The port an entry point answers on.
+ *
+ * The address of an entry point is `":8443"` or `"127.0.0.1:8443"`.
+ */
+export function portOfAddress(address: string | undefined): number | undefined {
+  if (!address) return undefined;
+  const at = address.lastIndexOf(':');
+  if (at < 0) return undefined;
+  const port = Number.parseInt(address.slice(at + 1), 10);
+  return Number.isInteger(port) && port > 0 && port <= 65535 ? port : undefined;
+}
+
+/**
  * Read the Traefik API and describe the proxy.
  *
  * Returns `undefined` when no Traefik answers: the caller then asks the
@@ -278,13 +336,19 @@ export async function discoverTraefik(options: DiscoverOptions = {}): Promise<Pr
   const certResolvers: string[] = [];
   const providers: string[] = [];
 
-  for (const router of routers) {
+  // Traefik's own routers — the API, the dashboard, the ACME challenge —
+  // are not the user's: they attach to the entry point the API answers
+  // on, and the dev routes have nothing to do with it. Only the routers
+  // of the other providers say what the user's routes look like.
+  const userRouters = routers.filter((router) => router.provider !== INTERNAL_PROVIDER);
+
+  for (const router of userRouters) {
     hosts.push(...hostsOfRule(router.rule));
     for (const entryPoint of router.entryPoints ?? []) entryPoints.push(entryPoint);
     if (router.tls?.certResolver) certResolvers.push(router.tls.certResolver);
     for (const middleware of router.middlewares ?? []) {
-      const at = middleware.lastIndexOf('@');
-      if (at > 0) providers.push(middleware.slice(at + 1));
+      const provider = middlewareProviderOf(middleware);
+      if (provider) providers.push(provider);
     }
   }
 
@@ -294,13 +358,47 @@ export async function discoverTraefik(options: DiscoverOptions = {}): Promise<Pr
     derived: {
       zone: deriveZone(hosts),
       entryPoints: [...new Set(entryPoints)],
+      entryPointPorts: await discoverEntryPointPorts(base, timeoutMs),
       certResolver: mostCommon(certResolvers),
       middlewareProvider: mostCommon(providers),
     },
     wired: options.expectEndpoints
-      ? await isWiredAt(base, options.expectEndpoints, timeoutMs)
+      ? await isWiredAt(base, routers, options.expectEndpoints, timeoutMs)
       : undefined,
   };
+}
+
+/**
+ * The port every entry point of the proxy answers on.
+ *
+ * The public URL of a route has no port of its own when the proxy
+ * serves it on the standard one. A proxy that serves it on another port
+ * (8443, say) needs the port in the URL, and nobody can guess it.
+ *
+ * An API that does not answer has no ports: the wizard then tries the
+ * standard ones only.
+ */
+async function discoverEntryPointPorts(
+  base: string,
+  timeoutMs: number,
+): Promise<Record<string, number> | undefined> {
+  let body: Array<{ name?: string; address?: string }>;
+  try {
+    const response = await fetch(`${base}/api/entrypoints`, { signal: AbortSignal.timeout(timeoutMs) });
+    if (!response.ok) return undefined;
+    const parsed = (await response.json()) as typeof body;
+    if (!Array.isArray(parsed)) return undefined;
+    body = parsed;
+  } catch {
+    return undefined;
+  }
+  const ports: Record<string, number> = {};
+  for (const entryPoint of body) {
+    if (typeof entryPoint.name !== 'string') continue;
+    const port = portOfAddress(entryPoint.address);
+    if (port !== undefined) ports[entryPoint.name] = port;
+  }
+  return Object.keys(ports).length > 0 ? ports : undefined;
 }
 
 /** The host and the port of a URL, or `undefined` when it has none. */
@@ -343,28 +441,34 @@ async function sameMachine(a: string, b: string): Promise<boolean> {
  * Does the proxy already serve something from this machine?
  *
  * The question the setup wizard asks in §9.3: is there a router whose
- * service points at the host and the port the gateway serves the dynamic
- * configuration on? The router list alone does not say; the service list
- * does.
+ * provider is the HTTP provider and whose service points at this host and
+ * port? The router list alone does not say; the service list does.
+ *
+ * A router without a provider is taken for one of the HTTP provider's:
+ * the API of an older Traefik does not report the field, and a router
+ * that is not ours cannot point at our ports anyway.
  */
-async function isWiredAt(base: string, expectEndpoints: string[], timeoutMs: number): Promise<boolean> {
+async function isWiredAt(
+  base: string,
+  routers: TraefikRouter[],
+  expectEndpoints: string[],
+  timeoutMs: number,
+): Promise<boolean> {
   const expected = expectEndpoints
     .map((endpoint) => hostPortOf(endpoint))
     .filter((endpoint): endpoint is { host: string; port: string } => endpoint !== undefined);
   if (expected.length === 0) return false;
 
-  let services: Array<{ loadBalancer?: { servers?: Array<{ url?: string }> } }>;
-  try {
-    const response = await fetch(`${base}/api/http/services`, { signal: AbortSignal.timeout(timeoutMs) });
-    if (!response.ok) return false;
-    const body = (await response.json()) as typeof services;
-    if (!Array.isArray(body)) return false;
-    services = body;
-  } catch {
-    return false;
-  }
+  const ours = routers.filter((router) => router.provider === undefined || router.provider === HTTP_PROVIDER);
+  if (ours.length === 0) return false;
 
-  for (const service of services) {
+  const services = await fetchServices(base, timeoutMs);
+  if (!services) return false;
+
+  for (const router of ours) {
+    if (!router.service) continue;
+    const service = services.get(router.service);
+    if (!service) continue;
     for (const server of service.loadBalancer?.servers ?? []) {
       if (!server.url) continue;
       const found = hostPortOf(server.url);
@@ -376,6 +480,34 @@ async function isWiredAt(base: string, expectEndpoints: string[], timeoutMs: num
     }
   }
   return false;
+}
+
+/**
+ * The services the proxy has, by name.
+ *
+ * The API names a service `name@provider` — the name the router refers
+ * to, with the provider that served it. A router refers to the service
+ * without the suffix, so the map is keyed by both.
+ */
+async function fetchServices(base: string, timeoutMs: number): Promise<Map<string, TraefikService> | undefined> {
+  let body: TraefikService[];
+  try {
+    const response = await fetch(`${base}/api/http/services`, { signal: AbortSignal.timeout(timeoutMs) });
+    if (!response.ok) return undefined;
+    const parsed = (await response.json()) as TraefikService[];
+    if (!Array.isArray(parsed)) return undefined;
+    body = parsed;
+  } catch {
+    return undefined;
+  }
+  const services = new Map<string, TraefikService>();
+  for (const service of body) {
+    if (typeof service.name !== 'string') continue;
+    services.set(service.name, service);
+    const at = service.name.indexOf('@');
+    if (at > 0) services.set(service.name.slice(0, at), service);
+  }
+  return services;
 }
 
 /**
@@ -405,6 +537,7 @@ export function traefikWiringSnippet(config: Config): string {
 /** The Traefik adapter. */
 export const traefikAdapter: ProxyAdapter = {
   id: TRAEFIK_ID,
+  defaultApiBaseUrl: DEFAULT_API_BASE_URL,
   discover: (options) => discoverTraefik(options),
   render: (routes, config) => renderDocument(routes, config),
   wiringSnippet: (config) => traefikWiringSnippet(config),

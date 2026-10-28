@@ -367,8 +367,16 @@ export function configFileContent(config: Config): Record<string, unknown> {
   return data;
 }
 
-/** Write a config file with the current values (used by `traefik-dev config --write`). */
-export function writeConfigFile(configPath: string, config: Config): void {
+/**
+ * Write a config file with the current values (used by `traefik-dev config --write`).
+ *
+ * The keys in `opts.omit` are left out: the setup wizard does not write
+ * the values nobody confirmed when they are the built-in default, so that
+ * a new installation does not get the zone of another project.
+ */
+export function writeConfigFile(configPath: string, config: Config, opts: { omit?: string[] } = {}): void {
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
-  fs.writeFileSync(configPath, JSON.stringify(configFileContent(config), null, 2) + '\n');
+  const content = configFileContent(config);
+  for (const key of opts.omit ?? []) delete content[key];
+  fs.writeFileSync(configPath, JSON.stringify(content, null, 2) + '\n');
 }

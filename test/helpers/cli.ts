@@ -64,6 +64,8 @@ export interface FixtureOptions {
   config?: Record<string, unknown>;
   /** The CLI to run. Defaults to the current one. */
   cli?: string;
+  /** Extra environment variables for the CLI process. */
+  env?: Record<string, string>;
 }
 
 /**
@@ -110,6 +112,7 @@ export async function makeCliFixture(options: FixtureOptions = {}): Promise<CliF
     XDG_CONFIG_HOME: path.join(dir, '.config'),
     XDG_STATE_HOME: path.join(dir, '.local', 'state'),
     XDG_CACHE_HOME: path.join(dir, '.cache'),
+    ...(options.env ?? {}),
   };
 
   const cli = options.cli ?? CLI;

@@ -27,7 +27,7 @@ import path from 'node:path';
 import { createInterface, type Interface } from 'node:readline';
 import { requireAdapter } from '../adapters/index.ts';
 import { DEFAULT_CONFIG, writeConfigFile } from '../core/config.ts';
-import { daemonStatus, ensureDaemon } from '../core/daemonControl.ts';
+import { daemonStatus, ensureDaemon, stopDaemon } from '../core/daemonControl.ts';
 import { RegistrationStore } from '../core/state.ts';
 import { buildFqdn } from '../core/util/slug.ts';
 import type { GatewayPaths } from '../core/paths.ts';
@@ -38,6 +38,25 @@ export type VerificationStatus = 'verified' | 'failed' | 'skipped';
 
 /** Why the verification was skipped when no proxy answers. */
 export const NO_PROXY_REASON = 'no proxy answers, so there is no public URL to fetch';
+
+/**
+ * Why the verification was skipped when the proxy does not serve the
+ * route.
+ *
+ * The wiring may not be in the proxy's configuration yet: the wizard
+ * cannot apply it (§9.4), and the user has to. The chain cannot be
+ * verified before that, and that is not a failure of the setup.
+ */
+export const NOT_SERVED_REASON = 'the proxy does not serve the route: the wiring may not be in place yet';
+
+/**
+ * The answer of the throwaway server.
+ *
+ * The public URL has to answer with it: something else may answer a
+ * request for a route with a successful response (the dashboard of the
+ * proxy does), and that is not the route.
+ */
+export const THROWAWAY_MARKER = 'dev-gateway setup check';
 
 /** One step of the end-to-end verification (§9.5). */
 export interface VerificationStep {
@@ -64,6 +83,8 @@ export interface SetupReport {
     apiBaseUrl: string;
     zone?: string;
     entryPoints?: string[];
+    /** The port every entry point of the proxy answers on. */
+    entryPointPorts?: Record<string, number>;
     certResolver?: string;
     middlewareProvider?: string;
   };
@@ -81,6 +102,8 @@ export interface SetupReport {
   config: {
     path: string;
     written: boolean;
+    /** The values that were not written: nobody confirmed them. */
+    omitted: string[];
     zone: string;
     entryPoints: string[];
     certResolver: string;
@@ -98,7 +121,7 @@ export interface SetupReport {
     unconfirmed: string[];
   };
   /** The daemon after the wizard (§9.6). */
-  daemon: { running: boolean; pid: number | null; error?: string };
+  daemon: { running: boolean; pid: number | null; restarted?: boolean; error?: string };
   /** What the user should do next. */
   nextSteps: string[];
 }
@@ -166,18 +189,22 @@ export function localAddresses(): string[] {
 }
 
 /**
- * The endpoints the gateway serves the dynamic configuration on.
+ * The endpoints of this machine the proxy may point at.
  *
- * The proxy may reach the machine by its host name (`devbox`) or by its
- * IP, and the configuration may say either: every name the machine is
- * known by is an answer to the question "is the proxy already wired?"
- * (§9.3).
+ * The machine is known by more than one name: the advertised host name and
+ * the advertised IP. The proxy may reach it by either of them, and a name
+ * that resolves to an address is the same machine as that address.
+ *
+ * The ports are the ones the gateway serves on: the relay, which the
+ * proxy's services point at, and the registry, which the proxy's HTTP
+ * provider polls.
  */
-export function expectedEndpoints(config: Config, proxyId: string): string[] {
+export function expectedEndpoints(config: Config): string[] {
   const hosts = [config.advertisedHost, config.advertisedIp].filter(
     (host): host is string => typeof host === 'string' && host.length > 0,
   );
-  return [...new Set(hosts)].map((host) => `http://${host}:${config.registryPort}/${proxyId}`);
+  const ports = [config.relayPort, config.registryPort];
+  return [...new Set(hosts.flatMap((host) => ports.map((port) => `http://${host}:${port}`)))];
 }
 
 /** The directory the wiring is written to (§9.4). */
@@ -201,6 +228,8 @@ class Prompter {
   private readonly rl: Interface;
   private readonly queue: string[] = [];
   private readonly waiting: Array<(line: string) => void> = [];
+  /** The timers of the questions that are waiting for an answer. */
+  private readonly timers = new Set<NodeJS.Timeout>();
   private discardNext = false;
 
   constructor(input: NodeJS.ReadableStream, output: NodeJS.WritableStream) {
@@ -222,7 +251,9 @@ class Prompter {
    *
    * The question is bounded: a wizard that waits for an answer forever is
    * a wizard that hangs when nobody is there to answer it. When the time
-   * runs out, the fallback is used and the wizard says that it did.
+   * runs out, the fallback is used and the wizard says that it did — the
+   * question was not answered, and the value that is kept is a value
+   * nobody confirmed.
    */
   async ask(question: string, fallback: string, timeoutMs: number): Promise<{ answer: string; timedOut: boolean }> {
     this.rl.setPrompt(`${question} [${fallback}]: `);
@@ -245,22 +276,29 @@ class Prompter {
       const waiter = (line: string): void => {
         if (expired) return;
         clearTimeout(timer);
+        this.timers.delete(timer);
         resolve(line);
       };
       const timer = setTimeout(() => {
         expired = true;
+        this.timers.delete(timer);
         this.discardNext = true;
         const index = this.waiting.indexOf(waiter);
         if (index >= 0) this.waiting.splice(index, 1);
         resolve(null);
       }, timeoutMs);
-      timer.unref?.();
+      // The timer is not unref'd: the timeout is the promise the wizard
+      // waits for, and a program that has nothing else pending has to
+      // reach it.
+      this.timers.add(timer);
       this.waiting.push(waiter);
     });
   }
 
   /** Close the terminal. */
   close(): void {
+    for (const timer of this.timers) clearTimeout(timer);
+    this.timers.clear();
     this.rl.close();
   }
 }
@@ -301,10 +339,10 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
   log(`   daemon:         ${environment.daemonRunning ? `running (pid ${environment.daemonPid})` : 'not running'}`);
 
   // Step two: discover the proxy (§9.2).
-  const apiBaseUrl = opts.apiBaseUrl ?? (proxyId === 'traefik' ? 'http://127.0.0.1:8080' : undefined);
+  const apiBaseUrl = opts.apiBaseUrl ?? adapter.defaultApiBaseUrl;
   const discovered = await adapter.discover({
     apiBaseUrl,
-    expectEndpoints: expectedEndpoints(config, proxyId),
+    expectEndpoints: expectedEndpoints(config),
   });
   const proxy: SetupReport['proxy'] = {
     id: proxyId,
@@ -313,6 +351,7 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
     apiBaseUrl: apiBaseUrl ?? '(the default of the adapter)',
     zone: discovered?.derived.zone,
     entryPoints: discovered?.derived.entryPoints,
+    entryPointPorts: discovered?.derived.entryPointPorts,
     certResolver: discovered?.derived.certResolver,
     middlewareProvider: discovered?.derived.middlewareProvider,
   };
@@ -360,6 +399,13 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
     }
     if (interactive && prompter) {
       const answer = await prompter.ask(question, current || fallback, promptTimeoutMs);
+      if (answer.timedOut) {
+        // Nobody answered: the value that is kept is a value nobody
+        // confirmed, exactly like in a run without anybody to ask (§9.2).
+        sources[name] = origin(current, fallback);
+        unconfirmed.push(name);
+        return current;
+      }
       sources[name] = answer.answer === current ? origin(current, fallback) : 'the user';
       return answer.answer;
     }
@@ -376,18 +422,25 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
     proxy.zone !== undefined,
   );
 
-  if (proxy.entryPoints !== undefined) {
+  if (proxy.entryPoints !== undefined && proxy.entryPoints.length > 0) {
     config.entryPoints = proxy.entryPoints;
     sources['entryPoints'] = 'the proxy';
   } else if (interactive && prompter) {
     const current = config.entryPoints.join(', ');
     const answer = await prompter.ask('   the entry points the routers attach to (comma separated)', current, promptTimeoutMs);
-    const parsed = answer.answer
-      .split(',')
-      .map((entry) => entry.trim())
-      .filter((entry) => entry.length > 0);
-    if (parsed.length > 0) config.entryPoints = parsed;
-    sources['entryPoints'] = answer.answer === current ? origin(config.entryPoints, DEFAULT_CONFIG.entryPoints) : 'the user';
+    if (answer.timedOut) {
+      // Nobody answered: the value that is kept is a value nobody
+      // confirmed (§9.2).
+      sources['entryPoints'] = origin(config.entryPoints, DEFAULT_CONFIG.entryPoints);
+      unconfirmed.push('entryPoints');
+    } else {
+      const parsed = answer.answer
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0);
+      if (parsed.length > 0) config.entryPoints = parsed;
+      sources['entryPoints'] = answer.answer === current ? origin(config.entryPoints, DEFAULT_CONFIG.entryPoints) : 'the user';
+    }
   } else {
     sources['entryPoints'] = origin(config.entryPoints, DEFAULT_CONFIG.entryPoints);
     unconfirmed.push('entryPoints');
@@ -411,27 +464,35 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
 
   // The host name the proxy reaches this machine under is not something the
   // proxy's API says: it is this machine's own name. It is asked for when
-  // it is the built-in default and no proxy answered, because the wiring
-  // is written with it.
+  // there is somebody to ask, because the wiring is written with it, and
+  // it is reported as unconfirmed when there is not (§9.2).
   const advertisedIsDefault = origin(config.advertisedHost, DEFAULT_CONFIG.advertisedHost) === 'the default';
-  if (interactive && prompter && (!config.advertisedHost || (advertisedIsDefault && !discovered))) {
-    const answer = await prompter.ask(
-      '   the host name the proxy reaches this machine under',
-      config.advertisedIp,
-      promptTimeoutMs,
-    );
-    config.advertisedHost = answer.answer;
-    sources['advertisedHost'] = 'the user';
+  if (interactive && prompter) {
+    const current = config.advertisedHost || config.advertisedIp;
+    const answer = await prompter.ask('   the host name the proxy reaches this machine under', current, promptTimeoutMs);
+    if (answer.timedOut) {
+      // Nobody answered: the value that is kept is a value nobody
+      // confirmed (§9.2).
+      sources['advertisedHost'] = origin(current, DEFAULT_CONFIG.advertisedHost);
+      unconfirmed.push('advertisedHost');
+    } else {
+      config.advertisedHost = answer.answer;
+      sources['advertisedHost'] = answer.answer === current ? origin(current, DEFAULT_CONFIG.advertisedHost) : 'the user';
+    }
   } else {
     sources['advertisedHost'] = advertisedIsDefault ? 'the default' : 'the configuration';
-    if (advertisedIsDefault && !discovered) unconfirmed.push('advertisedHost');
+    unconfirmed.push('advertisedHost');
   }
   prompter?.close();
 
   // Step three: is the proxy already wired? (§9.3).
   const wired = discovered?.wired === true;
   log('3. wiring');
-  log(wired ? '   the proxy already points at this machine' : '   the proxy does not point at this machine yet');
+  log(
+    wired
+      ? '   the proxy already points at this machine'
+      : '   the proxy has no route of this machine yet (the wiring may be in place already)',
+  );
 
   // Step four: emit the wiring (§9.4).
   let wiring: SetupReport['wiring'] = null;
@@ -447,35 +508,64 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
     log('   the wizard cannot apply it: the proxy runs on another machine');
   }
 
-  // The verification needs a gateway that serves the document (§9.5): the
-  // configuration is written and the daemon is started before it. §9 puts
-  // both in step six, but a verification that runs against a gateway that
-  // is not up yet verifies nothing — the proxy polls the document and gets
-  // nothing back.
-  writeConfigFile(opts.configPath, config);
-  const daemon = await ensureDaemon(config, { configPath: opts.configPath });
+  // The configuration the daemon serves is the one the wizard just
+  // wrote: a daemon that runs with the old configuration serves the old
+  // document, and the verification of §9.5 would check the old
+  // configuration. The daemon is therefore restarted. The routes live in
+  // the route store, not in the daemon, so a restart does not lose them.
+  //
+  // The values nobody confirmed are not written when they are the
+  // built-in default: a new installation would otherwise get the zone of
+  // another project in its configuration file.
+  const omitted = unconfirmed.filter((name) => sources[name] === 'the default');
+  writeConfigFile(opts.configPath, config, { omit: omitted });
+  const daemon = await startDaemonWith(config, opts.configPath);
+  if (daemon.error) {
+    log(`   the daemon was not restarted: ${daemon.error}`);
+  }
 
   // Step five: verify end to end (§9.5).
+  log('5. end-to-end verification');
   const verification = await verifyEndToEnd({
     config,
     proxyReachable: discovered !== undefined,
     enabled: opts.verify !== false,
     pollIntervalMs: opts.pollIntervalMs ?? 3000,
-    log,
+    entryPointPorts: proxy.entryPointPorts,
+    knowsRoute: async () => {
+      // The proxy is asked again: does it point at this machine? The
+      // throwaway route is still registered when the question is asked.
+      const again = await adapter.discover({
+        apiBaseUrl,
+        expectEndpoints: expectedEndpoints(config),
+      });
+      return again?.wired === true;
+    },
+    onStep: (step) => log(`   ${step.ok ? 'ok' : 'failed'}  ${step.name}: ${step.detail}`),
   });
-  log('5. end-to-end verification');
   log(`   ${verification.status}${verification.reason ? `: ${verification.reason}` : ''}`);
-  for (const step of verification.steps) log(`   ${step.ok ? 'ok' : 'failed'}  ${step.name}: ${step.detail}`);
 
   // Step six: the configuration and the daemon (§9.6). Both are in place:
   // they were needed for the verification.
   log('6. configuration and daemon');
   log(`   configuration:  ${opts.configPath}`);
-  log(`   daemon:         ${daemon.error ? `not started (${daemon.error})` : `running (pid ${daemon.pid})`}`);
+  log(
+    `   daemon:         ${
+      daemon.error
+        ? `not started (${daemon.error})`
+        : `${daemon.restarted ? 'restarted' : 'running'} (pid ${daemon.pid})`
+    }`,
+  );
 
   const nextSteps: string[] = [];
   if (!wired && wiring) {
-    nextSteps.push(`add the wiring from ${wiring.path} to the proxy's static configuration`);
+    // The wiring may already be in the proxy: a proxy that polls the
+    // gateway has no route of ours to show before the first one is
+    // registered. The advice says so instead of sending the user after
+    // a wiring that is already there.
+    nextSteps.push(
+      `add the wiring from ${wiring.path} to the proxy's static configuration, if it is not there already`,
+    );
   }
   if (unconfirmed.length > 0) {
     nextSteps.push(
@@ -484,8 +574,14 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
   }
   if (verification.status === 'skipped' && verification.reason === NO_PROXY_REASON) {
     nextSteps.push('run the setup again once the proxy has the wiring: the verification needs a proxy that answers');
+  } else if (verification.status === 'skipped' && verification.reason === NOT_SERVED_REASON) {
+    nextSteps.push(
+      'the proxy does not serve the route: add the wiring, and check that the entry points of the proxy are the ones the routes attach to',
+    );
   } else if (verification.status === 'failed') {
-    nextSteps.push('the public URL did not answer: the proxy has to route the route, and the certificate has to be in place');
+    nextSteps.push(
+      'the public URL did not answer: the proxy has to route the route, and the certificate of the public URL has to be trusted by this machine',
+    );
   }
   nextSteps.push('run "dev-gateway install-service" so the daemon survives a reboot');
 
@@ -498,6 +594,7 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
     config: {
       path: opts.configPath,
       written: true,
+      omitted,
       zone: config.zone,
       entryPoints: config.entryPoints,
       certResolver: config.certResolver,
@@ -506,8 +603,41 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
       sources,
       unconfirmed,
     },
-    daemon: { running: !daemon.error, pid: daemon.pid, error: daemon.error },
+    daemon: { running: !daemon.error, pid: daemon.pid, restarted: daemon.restarted, error: daemon.error },
     nextSteps,
+  };
+}
+
+/**
+ * Start the daemon with the configuration the wizard just wrote.
+ *
+ * A daemon that is already running serves the configuration it was
+ * started with. The wizard has written a new one, so a running daemon is
+ * stopped first: otherwise the document the proxy polls is the old one,
+ * and the verification of §9.5 would check the old configuration.
+ */
+async function startDaemonWith(
+  config: Config,
+  configPath: string,
+): Promise<{ running: boolean; pid: number | null; restarted: boolean; error?: string }> {
+  const before = await daemonStatus(config);
+  if (before.healthy && before.pid !== null) {
+    const stopped = await stopDaemon(config);
+    if (!stopped.stopped) {
+      return {
+        running: true,
+        pid: before.pid,
+        restarted: false,
+        error: stopped.error ?? 'the daemon did not stop',
+      };
+    }
+  }
+  const started = await ensureDaemon(config, { configPath });
+  return {
+    running: !started.error,
+    pid: started.pid,
+    restarted: before.healthy,
+    error: started.error,
   };
 }
 
@@ -516,7 +646,18 @@ interface VerifyOptions {
   proxyReachable: boolean;
   enabled: boolean;
   pollIntervalMs: number;
-  log: (line: string) => void;
+  /** The port every entry point of the proxy answers on. */
+  entryPointPorts?: Record<string, number>;
+  /**
+   * Does the proxy know about the routes of this machine?
+   *
+   * It is asked after the public URL did not answer: a proxy that does
+   * not know the route has not picked up the wiring yet, and a proxy
+   * that knows it serves it in some other way (over TLS, say).
+   */
+  knowsRoute?: () => Promise<boolean>;
+  /** Called for every step, as it happens (§9.5). */
+  onStep?: (step: VerificationStep) => void;
 }
 
 /**
@@ -528,6 +669,10 @@ interface VerifyOptions {
  */
 async function verifyEndToEnd(opts: VerifyOptions): Promise<SetupReport['verification']> {
   const steps: VerificationStep[] = [];
+  const record = (step: VerificationStep): void => {
+    steps.push(step);
+    opts.onStep?.(step);
+  };
   if (!opts.enabled) {
     return { status: 'skipped', reason: 'the verification was turned off', steps };
   }
@@ -539,9 +684,12 @@ async function verifyEndToEnd(opts: VerifyOptions): Promise<SetupReport['verific
   const branch = 'check';
   const fqdn = buildFqdn(project, branch, opts.config.zone);
   const store = new RegistrationStore(opts.config.stateDir);
+  // A route of the user may have the same name: it is put back when the
+  // verification is done.
+  const previous = store.findByProjectBranch(project, branch);
   const server = http.createServer((_req, res) => {
     res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
-    res.end('dev-gateway setup check\n');
+    res.end(`${THROWAWAY_MARKER}\n`);
   });
 
   try {
@@ -553,31 +701,159 @@ async function verifyEndToEnd(opts: VerifyOptions): Promise<SetupReport['verific
         else reject(new Error('the throwaway server did not get a port'));
       });
     });
-    steps.push({ name: 'throwaway server', ok: true, detail: `127.0.0.1:${port}` });
+    record({ name: 'throwaway server', ok: true, detail: `127.0.0.1:${port}` });
 
     store.upsert({ project, branch, devPort: port, zone: opts.config.zone });
-    steps.push({ name: 'route registered', ok: true, detail: fqdn });
+    record({ name: 'route registered', ok: true, detail: fqdn });
 
     await sleep(opts.pollIntervalMs);
 
-    let ok = false;
-    let detail = '';
-    try {
-      const response = await fetch(`https://${fqdn}`, { signal: AbortSignal.timeout(5000) });
-      ok = response.ok;
-      detail = `${response.status} ${response.statusText}`.trim();
-    } catch (error) {
-      detail = error instanceof Error ? error.message : String(error);
-    }
-    steps.push({ name: 'public URL', ok, detail: `https://${fqdn} — ${detail}` });
+    const fetched = await fetchPublicUrl(fqdn, publicUrlPorts(opts));
+    record({ name: 'public URL', ok: fetched.ok, detail: fetched.detail });
 
-    return { status: ok ? 'verified' : 'failed', steps };
+    if (fetched.ok) return { status: 'verified', steps };
+    if (fetched.notFound) {
+      // The proxy knows the URL and does not serve it. Does it know the
+      // route? A proxy that does not know it has not picked up the
+      // wiring yet — the wizard cannot apply the wiring (§9.4), and the
+      // user has to. That is not a failed setup. A proxy that knows the
+      // route and does not serve it over plain HTTP serves it in some
+      // other way, and that is a failure.
+      const knows = opts.knowsRoute ? await opts.knowsRoute() : false;
+      if (knows) {
+        return {
+          status: 'failed',
+          reason: 'the proxy knows the route but does not serve it',
+          steps,
+        };
+      }
+      return { status: 'skipped', reason: NOT_SERVED_REASON, steps };
+    }
+    return { status: 'failed', steps };
   } catch (error) {
-    steps.push({ name: 'throwaway server', ok: false, detail: (error as Error).message });
+    record({ name: 'throwaway server', ok: false, detail: (error as Error).message });
     return { status: 'failed', reason: (error as Error).message, steps };
   } finally {
     store.remove(project, branch);
+    if (previous) {
+      // The route of the user is back where it was.
+      store.upsert({
+        project: previous.project,
+        branch: previous.branch,
+        devPort: previous.devPort,
+        label: previous.label,
+        zone: opts.config.zone,
+      });
+    }
     await new Promise<void>((resolve) => server.close(() => resolve()));
-    steps.push({ name: 'cleaned up', ok: true, detail: 'the route was removed and the server stopped' });
+    record({ name: 'cleaned up', ok: true, detail: 'the route was removed and the server stopped' });
   }
+}
+
+/**
+ * The ports the public URL of a route may be served on.
+ *
+ * The ports of the entry points the routes attach to. The standard ports
+ * are left out: the URL without a port is one of them.
+ *
+ * Only the entry points the routes attach to are looked at. The other
+ * ports of the proxy are not tried: the API of Traefik answers on one of
+ * them, and its dashboard would answer a request for a route with a
+ * successful response.
+ */
+function publicUrlPorts(opts: VerifyOptions): number[] {
+  const ports = opts.entryPointPorts ?? {};
+  const wanted = opts.config.entryPoints
+    .map((name) => ports[name])
+    .filter((port): port is number => typeof port === 'number');
+  return [...new Set(wanted)].filter((port) => port !== 443 && port !== 80);
+}
+
+/**
+ * Fetch the public URL of a route (§9.5).
+ *
+ * The URL is the host name the route is served under. HTTPS is tried
+ * first; a proxy that serves the zone over plain HTTP answers the second
+ * try. The port of the entry point the routes attach to is tried as well:
+ * a proxy that serves them on another port (8443, say) needs the port in
+ * the URL, and nobody can guess it.
+ *
+ * Every attempt is reported: a URL that did not answer is a fact the
+ * user needs, not something to hide behind a verdict.
+ */
+async function fetchPublicUrl(
+  fqdn: string,
+  ports: number[] = [],
+): Promise<{ ok: boolean; detail: string; notFound: boolean }> {
+  const details: string[] = [];
+  const candidates: string[] = [];
+
+  for (const scheme of ['https', 'http']) {
+    candidates.push(`${scheme}://${fqdn}`);
+    for (const port of ports) candidates.push(`${scheme}://${fqdn}:${port}`);
+  }
+
+  /** The certificate of the public URL, when it is not trusted. */
+  let certificateFailure: string | undefined;
+  /** Did the proxy answer that it does not know the host name? */
+  let notFound = false;
+
+  for (const url of candidates) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      const status = `${response.status} ${response.statusText}`.trim();
+      if (response.status === 404) {
+        // The proxy knows the URL and does not serve it.
+        notFound = true;
+        details.push(`${url} — ${status}`);
+        continue;
+      }
+      if (!response.ok) {
+        details.push(`${url} — ${status}`);
+        continue;
+      }
+      const body = await response.text();
+      if (!body.includes(THROWAWAY_MARKER)) {
+        // Something answered, but it is not the throwaway server: the
+        // dashboard of the proxy answers a request for a route as well.
+        details.push(`${url} — ${status}, but the answer is not the one of the throwaway server`);
+        continue;
+      }
+      if (url.startsWith('http://') && certificateFailure) {
+        // The public URL is served over HTTPS and its certificate is not
+        // trusted. A plain HTTP answer does not make it usable, and the
+        // verification of it would prove nothing.
+        details.push(`${url} — ${status}, but ${certificateFailure}`);
+        return { ok: false, detail: details.join('; '), notFound };
+      }
+      details.push(`${url} — ${status}`);
+      return { ok: true, detail: details.join('; '), notFound };
+    } catch (error) {
+      const reason = describeFetchError(error);
+      if (url.startsWith('https://') && reason.includes('certificate')) certificateFailure = reason;
+      details.push(`${url} — ${reason}`);
+    }
+  }
+  return { ok: false, detail: details.join('; ') || 'no URL was tried', notFound };
+}
+
+/**
+ * What went wrong when a URL did not answer.
+ *
+ * The reasons are told apart, because they ask different things of the
+ * user: a certificate that is not trusted is not a route that does not
+ * work, and a name that does not resolve is not a proxy that is down.
+ */
+export function describeFetchError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  const cause = (error as { cause?: { code?: string; message?: string } })?.cause;
+  const code = cause?.code ?? '';
+  const detail = (cause?.message ?? message).replace(/\s+/g, ' ').trim();
+
+  if (/certificate|self.signed|self signed|SSL|TLS|trust/i.test(detail) || /CERT_|SELF_SIGNED|UNABLE_TO_VERIFY/i.test(code)) {
+    return `the certificate of the public URL is not trusted: ${detail}`;
+  }
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN') return `the name of the public URL does not resolve: ${detail}`;
+  if (code === 'ECONNREFUSED') return `nothing answers at the public URL: ${detail}`;
+  return detail;
 }

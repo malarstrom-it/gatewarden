@@ -26,17 +26,17 @@ export interface DiscoverOptions {
   /** How long to wait for the API to answer. */
   timeoutMs?: number;
   /**
-   * The endpoints the gateway serves the dynamic configuration on.
+   * The endpoints the gateway serves on.
    *
    * When they are given, the adapter reports whether the proxy already
    * points at one of them: that is the question the setup wizard asks in
    * §9.3. The list holds every name the machine is known by — the
-   * advertised host name and the advertised IP — because the proxy may
-   * reach the gateway by either of them.
+   * advertised host name and the advertised IP — and every port the
+   * gateway serves on, because the proxy may reach the gateway by either
+   * of them.
    */
   expectEndpoints?: string[];
 }
-
 /** What an adapter learned about the proxy it found. */
 export interface ProxyInfo {
   /** The id of the adapter that found it. */
@@ -49,6 +49,15 @@ export interface ProxyInfo {
     zone?: string;
     /** The entry points the proxy's routers attach to. */
     entryPoints?: string[];
+    /**
+     * The port every entry point answers on.
+     *
+     * The public URL of a route has no port of its own when the proxy
+     * serves it on the standard one. A proxy that serves it on another
+     * port (8443, say) needs the port in the URL, and the wizard cannot
+     * guess it.
+     */
+    entryPointPorts?: Record<string, number>;
     /** The name of the proxy's ACME resolver. */
     certResolver?: string;
     /** The provider that owns the shared middlewares. */
@@ -72,6 +81,14 @@ export interface ProxyInfo {
 export interface ProxyAdapter {
   /** The id of the proxy this adapter speaks for (`traefik`). */
   id: string;
+  /**
+   * Where the proxy's API usually answers.
+   *
+   * The wizard asks the adapter where to look when nobody says (§9.2):
+   * the address belongs to the adapter, not to the wizard, so that a
+   * second proxy does not have to be hard-coded in the wizard.
+   */
+  defaultApiBaseUrl?: string;
   /** Identify the proxy: find its API, read its version. */
   discover(options: DiscoverOptions): Promise<ProxyInfo | undefined>;
   /** Render the dynamic configuration for the current routes. */

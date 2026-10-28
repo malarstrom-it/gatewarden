@@ -36,7 +36,7 @@ import {
 import { legacyDir, type GatewayPaths } from '../core/paths.ts';
 import { migrateLegacyLayout } from '../core/migrate.ts';
 import { RegistrationStore } from '../core/state.ts';
-import { ensureDaemon, daemonStatus, pidFilePath } from '../core/daemonControl.ts';
+import { ensureDaemon, daemonStatus, isGatewayDaemon, isProcessAlive, pidFilePath, stopDaemon } from '../core/daemonControl.ts';
 import { isPortListening } from '../core/util/net.ts';
 import { slugify } from '../core/util/slug.ts';
 import { moduleDirectory, packageVersion } from '../core/util/module.ts';
@@ -44,7 +44,7 @@ import { discoverProxyStatus, requireAdapter } from '../adapters/index.ts';
 import { gatewayStatus, routeJson } from '../core/status.ts';
 import type { RouteJson } from '../core/status.ts';
 import type { Config } from '../core/types.ts';
-import { runSetup } from './setup.ts';
+import { runSetup, type SetupReport } from './setup.ts';
 import { installService, manualEnableCommand, serviceUnitFor, type ServiceUnit } from './service.ts';
 
 interface ParsedArgs {
@@ -462,44 +462,7 @@ async function commandStart(flags: Record<string, string | boolean>): Promise<nu
 }
 
 /** Is the process alive? */
-export function isProcessAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'EPERM';
-  }
-}
-
-/**
- * Is this process the gateway daemon?
- *
- * The daemon is started through one of its launchers: `daemon.ts` (the
- * lazy start), `dev-gateway-daemon.js` and `traefik-devd.js` (the names
- * the package installs, the last one the old name of the second). All of
- * them are the daemon; a process that is none of them is not.
- *
- * The pidfile is a file in the state directory: something else may have
- * written it, and the CLI must never stop a process it does not own. On
- * Linux the command line of the process says what it is; on the other
- * platforms the pidfile is the only source there is.
- */
-export function isGatewayDaemon(pid: number): boolean {
-  if (process.platform !== 'linux') return true;
-  try {
-    const raw = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8');
-    const parts = raw.split('\0').filter((part) => part.length > 0);
-    // The script is the first argument that names a file.
-    const script = parts.find((part) => /\.(ts|js|mjs|cjs)$/.test(part));
-    if (!script) return false;
-    // Only the name of the script counts: the directories it lives in say
-    // nothing about what the process does.
-    const name = path.basename(script);
-    return /daemon|devd/.test(name) && !/cli/.test(name);
-  } catch {
-    return false;
-  }
-}
+export { isProcessAlive, isGatewayDaemon } from '../core/daemonControl.ts';
 
 /**
  * Stop the daemon (§5).
@@ -510,10 +473,9 @@ export function isGatewayDaemon(pid: number): boolean {
  */
 async function commandStop(flags: Record<string, string | boolean>): Promise<number> {
   const { config } = resolveConfig(flags);
-  const status = await daemonStatus(config);
-  const pidFile = pidFilePath(config);
+  const result = await stopDaemon(config);
 
-  if (status.pid === null) {
+  if (!result.wasRunning) {
     if (wantsJson(flags)) {
       emitJson({ stopped: false, wasRunning: false, pid: null });
       return 0;
@@ -522,51 +484,22 @@ async function commandStop(flags: Record<string, string | boolean>): Promise<num
     return 0;
   }
 
-  if (!isGatewayDaemon(status.pid)) {
-    const message = `the pid ${status.pid} in ${pidFile} does not belong to the gateway daemon; nothing was stopped`;
+  if (!result.stopped) {
+    const message = result.error ?? 'the daemon did not stop';
     if (wantsJson(flags)) {
-      emitJson({ stopped: false, wasRunning: true, pid: status.pid, error: message });
+      emitJson({ stopped: false, wasRunning: true, pid: result.pid, error: message });
       return 1;
     }
     process.stderr.write(`error: ${message}\n`);
     return 1;
-  }
-
-  try {
-    process.kill(status.pid, 'SIGTERM');
-  } catch (error) {
-    const message = `could not stop the daemon: ${(error as Error).message}`;
-    if (wantsJson(flags)) {
-      emitJson({ stopped: false, wasRunning: true, pid: status.pid, error: message });
-      return 1;
-    }
-    process.stderr.write(`error: ${message}\n`);
-    return 1;
-  }
-
-  const deadline = Date.now() + 10_000;
-  while (Date.now() < deadline && isProcessAlive(status.pid)) {
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  const stopped = !isProcessAlive(status.pid);
-  if (stopped) {
-    try {
-      fs.rmSync(pidFile, { force: true });
-    } catch {
-      // ignore
-    }
   }
 
   if (wantsJson(flags)) {
-    emitJson({ stopped, wasRunning: true, pid: status.pid });
-    return stopped ? 0 : 1;
-  }
-  if (stopped) {
-    process.stdout.write(`stopped the daemon (pid ${status.pid})\n`);
+    emitJson({ stopped: true, wasRunning: true, pid: result.pid });
     return 0;
   }
-  process.stderr.write(`error: the daemon (pid ${status.pid}) did not stop within 10 seconds\n`);
-  return 1;
+  process.stdout.write(`stopped the daemon (pid ${result.pid})\n`);
+  return 0;
 }
 
 /** One check of the doctor. */
@@ -779,26 +712,42 @@ async function commandSetup(flags: Record<string, string | boolean>): Promise<nu
     Boolean(process.stdin.isTTY) &&
     !json;
 
-  const report = await runSetup({
-    config,
-    configPath,
-    paths,
-    cwd: process.cwd(),
-    proxy: flagString(flags, 'proxy') ?? config.proxy,
-    apiBaseUrl: flagString(flags, 'api-base-url'),
-    interactive,
-    verify: flags['no-verify'] !== true,
-    pollIntervalMs: Number(flagString(flags, 'poll-interval') ?? 3000),
-    promptTimeoutMs: Number(flagString(flags, 'prompt-timeout') ?? 30) * 1000,
-    log: json ? () => {} : (line) => process.stdout.write(line + '\n'),
-  });
+  let report: SetupReport;
+  try {
+    report = await runSetup({
+      config,
+      configPath,
+      paths,
+      cwd: process.cwd(),
+      proxy: flagString(flags, 'proxy') ?? config.proxy,
+      apiBaseUrl: flagString(flags, 'api-base-url'),
+      interactive,
+      verify: flags['no-verify'] !== true,
+      pollIntervalMs: Number(flagString(flags, 'poll-interval') ?? 3000),
+      promptTimeoutMs: Number(flagString(flags, 'prompt-timeout') ?? 30) * 1000,
+      log: json ? () => {} : (line) => process.stdout.write(line + '\n'),
+    });
+  } catch (error) {
+    // The wizard does not die with a stack trace: the user gets a line
+    // that says what went wrong and where.
+    const message = error instanceof Error ? error.message : String(error);
+    if (json) {
+      emitJson({ error: message });
+      return 1;
+    }
+    process.stderr.write(`error: the setup did not finish: ${message}\n`);
+    return 1;
+  }
 
+  // A failed verification is a failed setup: the exit code says so, in
+  // every mode, so that a script can see it.
+  const failed = report.verification.status === 'failed';
   if (json) {
     emitJson(report);
-    return report.verification.status === 'failed' ? 1 : 0;
+    return failed ? 1 : 0;
   }
   for (const step of report.nextSteps) process.stdout.write(`next: ${step}\n`);
-  return 0;
+  return failed ? 1 : 0;
 }
 
 export async function main(argv: string[]): Promise<number> {
