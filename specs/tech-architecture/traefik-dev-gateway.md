@@ -2,7 +2,7 @@
 
 Status: **implemented (container side)**. The registry, the relay and the `traefik-dev` CLI are in
 `src/`; see [`README.md`](../README.md) for usage and
-[`docs/traefik-wiring.md`](../docs/traefik-wiring.md) for the Traefik-side patch. The Traefik side
+[`docs/traefik.md`](../docs/traefik.md) for the Traefik-side patch. The Traefik side
 itself is **not** part of this repository.
 
 Implementation notes and the deviations from the plan are listed in

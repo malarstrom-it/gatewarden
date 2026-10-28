@@ -296,7 +296,7 @@ text in the repo:
 
 - `specs/tech-architecture/traefik-dev-gateway.md` — the architecture plan (namespace, TLS, relay,
   flows, the decisions D1–D8).
-- `docs/traefik-wiring.md` — the host side: Traefik's static configuration, the Cloudflare dns-01
+- `docs/traefik.md` — the host side: Traefik's static configuration, the Cloudflare dns-01
   resolver, the index router.
 - `README.md` — the current behaviour, the CLI and the configuration table.
 
