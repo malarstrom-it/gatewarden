@@ -1,0 +1,33 @@
+# A temporary instrument: one job per test, so a failing run names the
+# test that failed. Gitea reports one commit status per job.
+name: diagnose
+
+on:
+  push:
+    branches: [feat/npm-package]
+
+jobs:
+  one:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        name:
+          - start starts the daemon and waits for it
+          - start says that the daemon is already running
+          - stop stops the daemon
+          - stop says that the daemon was not running
+          - stop stops a daemon that was started through the old launcher
+          - doctor reports what it finds
+          - doctor fails when the daemon is not running
+          - install-service writes the unit of the platform and enables it
+          - install-service reports the command to enable the unit by hand
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: node --test --test-name-pattern "${{ matrix.name }}" test/cli-lifecycle.test.ts
