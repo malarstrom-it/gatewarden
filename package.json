@@ -6,12 +6,14 @@
   "description": "Container side of the Traefik dev gateway: registry, relay and CLI for agent dev servers",
   "bin": {
     "dev-gateway": "bin/dev-gateway.js",
+    "dev-gateway-daemon": "bin/dev-gateway-daemon.js",
     "traefik-dev": "bin/traefik-dev.js",
     "traefik-devd": "bin/traefik-devd.js"
   },
   "files": [
     "dist",
     "bin",
+    "scripts",
     "skills",
     "docs",
     "README.md"
@@ -23,6 +25,7 @@
     "typecheck": "tsc --noEmit",
     "prepack": "npm run build",
     "prepublishOnly": "npm run build && npm test",
+    "postinstall": "node scripts/postinstall.mjs",
     "start": "node src/daemon.ts"
   },
   "engines": {

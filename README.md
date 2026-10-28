@@ -7,8 +7,8 @@ user's Traefik.
   health probe. Nothing else: the web interface is gone (D8).
 * A **relay** forwards a request to the right dev server on `127.0.0.1:<port>`, including WebSocket
   upgrades (Vite HMR, Next.js) and `X-Forwarded-*` headers untouched.
-* A **CLI** (`traefik-dev`) registers and unregisters a dev server and starts the daemon if it is not
-  running.
+* A **CLI** (`dev-gateway`) registers and unregisters a dev server, starts the daemon if it is not
+  running, and sets a new installation up.
 
 The user's Traefik is **not** touched by this repository. The one change the user makes is the
 static configuration patch in [`docs/traefik-wiring.md`](docs/traefik-wiring.md).
@@ -36,7 +36,7 @@ slug (GitLab `CI_COMMIT_REF_SLUG` convention).
 src/
 ├── core/         # proxy-agnostic: routes, ports, host names, reachability
 ├── adapters/     # one per proxy: Traefik's document format lives here
-├── cli.ts        # the command line, a client of the core
+├── cli/          # the command line: the commands, the setup wizard, the service units
 ├── daemon.ts     # the daemon entry point
 └── worker.ts     # the worker entry point
 ```
@@ -52,29 +52,61 @@ adapter's id (`/traefik`).
 ## What an agent needs to run
 
 ```bash
-traefik-dev register --project <project> --branch <branch> --port <dev port>
+dev-gateway register --project <project> --branch <branch> --port <dev port>
 # → registered feature-login.alpha.home.malarstrom.com -> 127.0.0.1:5173
 #   url: https://feature-login.alpha.home.malarstrom.com
 
-traefik-dev unregister --project <project> --branch <branch>
+dev-gateway unregister --project <project> --branch <branch>
 ```
 
 `register` writes the registration to the persistent state and **starts the daemon if it is not
 running**, so the first `register` after a container restart brings the whole gateway back up.
 Nothing else has to be started by hand.
 
+The command is `dev-gateway`. The name it had before, `traefik-dev`, still works: it is the same
+program under another name, and so is `traefik-devd` for the daemon.
+
 Other commands:
 
 | Command | What it does |
 | --- | --- |
-| `traefik-dev register --project p --branch b --port N [--label text]` | register (or update the port of) a dev server |
-| `traefik-dev unregister --project p --branch b` | remove the registration |
-| `traefik-dev list` | list the registrations (`--json` for scripts) |
-| `traefik-dev status` | daemon state, ports, configuration summary |
-| `traefik-dev config [--write]` | show the configuration and every key (`--write` writes the file) |
-| `traefik-dev migrate [--dry-run]` | move the old layout (`~/.traefik-dev/`) to the new one, and report what moved |
+| `dev-gateway register --project p --branch b --port N [--label text]` | register (or update the port of) a dev server |
+| `dev-gateway unregister --project p --branch b` | remove the registration |
+| `dev-gateway list` | list the registrations (`--json` for scripts) |
+| `dev-gateway status` | daemon state, ports, configuration summary |
+| `dev-gateway config [--write]` | show the configuration and every key (`--write` writes the file) |
+| `dev-gateway setup` | walk a new installation through the six steps of the setup |
+| `dev-gateway start` | start the daemon and wait for it |
+| `dev-gateway stop` | stop the daemon |
+| `dev-gateway doctor` | report what is broken, if anything |
+| `dev-gateway install-service` | install the daemon as a service, so it survives a reboot |
+| `dev-gateway migrate [--dry-run]` | move the old layout (`~/.traefik-dev/`) to the new one, and report what moved |
 
-Global options: `--config <path>`, `--state-dir <path>`, `--json`.
+Global options: `--config <path>`, `--state-dir <path>`, `--json`. They are
+global: they work before the command and after it.
+
+Every command that reports something can report it as JSON: `--json` writes one object to the
+standard output and nothing else. `dev-gateway list --json` writes the routes in the shape the
+MCP tool `list_dev_servers` uses:
+
+```json
+{
+  "routes": [
+    {
+      "project": "alpha",
+      "branch": "main",
+      "port": 5173,
+      "fqdn": "main.alpha.home.malarstrom.com",
+      "url": "https://main.alpha.home.malarstrom.com",
+      "state": "up"
+    }
+  ],
+  "registrations": []
+}
+```
+
+`routes` is the shape an agent reads; `registrations` is the raw state, for the scripts that want
+every field of the store.
 
 Environment: `DEV_GATEWAY_HOME` (everything in one directory), `DEV_GATEWAY_CONFIG` (the
 configuration file), `DEV_GATEWAY_STATE_DIR` (the state directory).
@@ -151,16 +183,18 @@ npm install          # dev-only tooling (typescript, @types/node)
 The commands are plain scripts:
 
 ```bash
-node bin/traefik-dev.js  register --project alpha --branch main --port 5173
-node bin/traefik-devd.js                        # run the daemon in the foreground
-node bin/traefik-devd.js --config <path>        # ... with another configuration file
+node bin/dev-gateway.js       register --project alpha --branch main --port 5173
+node bin/dev-gateway-daemon.js                       # run the daemon in the foreground
+node bin/dev-gateway-daemon.js --config <path>       # ... with another configuration file
 ```
+
+`bin/traefik-dev.js` and `bin/traefik-devd.js` are the same programs under their old names.
 
 The daemon reads the configuration file of the XDG configuration directory, the same file the CLI
 reads. `--config <path>` names another one; the daemon hands that file to the workers it forks, so
 that all three read the same configuration.
 
-`npm link` (or a symlink into `~/.local/bin`) makes `traefik-dev` available on the `PATH`.
+`npm link` (or a symlink into `~/.local/bin`) makes `dev-gateway` available on the `PATH`.
 
 ## Files and configuration
 
@@ -221,9 +255,52 @@ The configuration file (`~/.config/dev-gateway/config.json` on Linux; create it 
 | `logKeep` | `3` | rotated log files to keep |
 | `autostart` | `true` | whether `postinstall` may start the daemon |
 
+## The daemon lifecycle
+
+Three layers start the daemon, and each one is enough on its own:
+
+| Layer | What it does | When |
+| --- | --- | --- |
+| the lazy start | every command that needs the daemon starts it and waits for it | always |
+| `postinstall` | the install starts it once | after `npm install` |
+| `install-service` | the daemon is a service of the user | survives a reboot |
+
+```bash
+dev-gateway start            # start the daemon and wait for it
+dev-gateway stop             # stop the daemon
+dev-gateway doctor           # what is broken, if anything
+dev-gateway install-service  # the service of the platform
+```
+
+`install-service` writes the unit of the platform and enables it:
+
+| Platform | Unit |
+| --- | --- |
+| Linux | `~/.config/systemd/user/dev-gateway.service` |
+| macOS | `~/Library/LaunchAgents/dev.mal.arstrom.dev-gateway.plist` |
+| Windows | a scheduled task running `dev-gateway-daemon.js` |
+
+The unit runs the daemon directly, not the CLI. `--no-enable` writes the unit without enabling it,
+which is what a machine without `systemctl --user` needs.
+
+`doctor` reads the installation and reports every check it made: the configuration file, the state
+directory, the daemon, the two ports, the routes, the proxy and the service unit. It exits 1 when
+a check fails, so a script can ask it.
+
+`setup` walks a new installation through six steps: it reads the environment, discovers the proxy,
+says whether the proxy already points at this machine, writes the wiring the user has to add to
+the proxy, verifies the chain end to end when a proxy answers, and finally writes the
+configuration and starts the daemon. What it could not verify, it says.
+
+The wizard asks for every value it could not derive from the proxy — the zone, the entry points,
+the certificate resolver and the middleware provider — and the value in the configuration file is
+the default in the question, not an answer. When there is nobody to ask (a non-interactive run),
+the value is kept and the report names it as unconfirmed, together with where every value came
+from: the proxy, the user, the configuration file or the built-in default.
+
 ## Self-healing
 
-* `traefik-dev register` probes `/healthz` and the pidfile; if the daemon is not running it starts it
+* `dev-gateway register` probes `/healthz` and the pidfile; if the daemon is not running it starts it
   detached and waits until it answers.
 * The daemon supervises two workers (registry, relay). A worker that dies is respawned; the other
   listener keeps serving.
@@ -237,7 +314,7 @@ Optional host-side autostart (not applied by this repository — the container e
 docker exec <container> sh -lc 'nohup node /home/node/projects/traefik-api/bin/traefik-devd.js >> /home/node/.local/state/dev-gateway/daemon.log 2>&1 &'
 ```
 
-Lazy start makes this optional: the first `traefik-dev register` after a restart is enough.
+Lazy start makes this optional: the first `dev-gateway register` after a restart is enough.
 
 ## Building
 

@@ -51,7 +51,9 @@ before(async () => {
 
 test('the build writes the compiled modules to dist/', () => {
   const modules = [
-    'cli.js',
+    'cli/index.js',
+    'cli/setup.js',
+    'cli/service.js',
     'daemon.js',
     'worker.js',
     'core/daemon.js',
@@ -66,15 +68,15 @@ test('the build writes the compiled modules to dist/', () => {
 });
 
 test('the compiled imports point at JavaScript', () => {
-  const compiled = fs.readFileSync(path.join(DIST, 'cli.js'), 'utf8');
-  assert.doesNotMatch(compiled, /from "\.\/[^"]*\.ts"/, 'a .ts import specifier survived the build');
-  assert.match(compiled, /from "\.\/core\/config\.js"/);
+  const compiled = fs.readFileSync(path.join(DIST, 'cli', 'index.js'), 'utf8');
+  assert.doesNotMatch(compiled, /from "\.\.?\/[^"]*\.ts"/, 'a .ts import specifier survived the build');
+  assert.match(compiled, /from "\.\.\/core\/config\.js"/);
 });
 
 test('the compiled CLI runs and prints the version', async () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'));
 
-  const { stdout } = await execFileAsync(process.execPath, [path.join(DIST, 'cli.js'), '--version']);
+  const { stdout } = await execFileAsync(process.execPath, [path.join(DIST, 'cli', 'index.js'), '--version']);
 
   assert.equal(stdout.trim(), manifest.version);
 });

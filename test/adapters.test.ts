@@ -145,3 +145,71 @@ test('the registry serves the document under the id of the adapter', async (t) =
   const missing = await fetch(`http://127.0.0.1:${port}/traefik`);
   assert.equal(missing.status, 404);
 });
+
+/** A fake Traefik API that also has services. */
+async function fakeTraefikWithServices(
+  services: unknown[],
+): Promise<{ baseUrl: string; close: () => Promise<void> }> {
+  const server = http.createServer((req, res) => {
+    const send = (body: unknown): void => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(body));
+    };
+    if (req.url === '/api/version') return send({ Version: '3.7.16' });
+    if (req.url === '/api/http/routers') return send([]);
+    if (req.url === '/api/http/services') return send(services);
+    res.writeHead(404);
+    res.end('not found');
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', () => resolve()));
+  const address = server.address();
+  const port = typeof address === 'object' && address ? address.port : 0;
+  return {
+    baseUrl: `http://127.0.0.1:${port}`,
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  };
+}
+
+test('discover says that the proxy is wired when a service points at the gateway', async (t) => {
+  const traefik = await fakeTraefikWithServices([
+    { loadBalancer: { servers: [{ url: 'http://127.0.0.1:45002' }] } },
+  ]);
+  t.after(() => traefik.close());
+
+  const info = await discoverTraefik({
+    apiBaseUrl: traefik.baseUrl,
+    expectEndpoints: ['http://127.0.0.1:45002/traefik'],
+  });
+
+  assert.equal(info?.wired, true);
+});
+
+test('discover says that the proxy is not wired when no service points at the gateway', async (t) => {
+  const traefik = await fakeTraefikWithServices([
+    { loadBalancer: { servers: [{ url: 'http://10.0.0.9:45002' }] } },
+  ]);
+  t.after(() => traefik.close());
+
+  const info = await discoverTraefik({
+    apiBaseUrl: traefik.baseUrl,
+    expectEndpoints: ['http://127.0.0.1:45002/traefik'],
+  });
+
+  assert.equal(info?.wired, false);
+});
+
+test('a name that resolves to the address is the same machine', async (t) => {
+  // The proxy reaches the gateway by its address, the configuration
+  // advertises its name: the gateway is still wired.
+  const traefik = await fakeTraefikWithServices([
+    { loadBalancer: { servers: [{ url: 'http://127.0.0.1:45002' }] } },
+  ]);
+  t.after(() => traefik.close());
+
+  const info = await discoverTraefik({
+    apiBaseUrl: traefik.baseUrl,
+    expectEndpoints: ['http://localhost:45002/traefik'],
+  });
+
+  assert.equal(info?.wired, true);
+});

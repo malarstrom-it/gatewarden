@@ -1,158 +1,337 @@
+/**
+ * The CLI: the commands that were there before, and their JSON output.
+ *
+ * Every test runs against a throwaway installation (see
+ * `test/helpers/cli.ts`): a temporary directory, free ports, and a home
+ * directory of its own. The gateway that runs on the user's machine is
+ * never touched.
+ */
+
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
 import fs from 'node:fs';
-import net from 'node:net';
-import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { promisify } from 'node:util';
-import { fileURLToPath } from 'node:url';
-import { loadConfig } from '../src/core/config.ts';
-import { isHealthy } from '../src/core/daemonControl.ts';
 import { RegistrationStore } from '../src/core/state.ts';
-
-const execFileAsync = promisify(execFile);
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const CLI = path.join(REPO_ROOT, 'bin', 'traefik-dev.js');
-
-async function freePort(): Promise<number> {
-  return new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => {
-      const { port } = server.address() as net.AddressInfo;
-      server.close(() => resolve(port));
-    });
-  });
-}
-
-async function waitFor(predicate: () => Promise<boolean>, timeoutMs = 15000): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (await predicate()) return true;
-    await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-  return false;
-}
-
-async function setup(): Promise<{ dir: string; configPath: string; run: (args: string[]) => Promise<string> }> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'traefik-dev-cli-'));
-  const registryPort = await freePort();
-  const relayPort = await freePort();
-  const configPath = path.join(dir, 'config.json');
-  fs.writeFileSync(
-    configPath,
-    JSON.stringify(
-      {
-        registryPort,
-        relayPort,
-        advertisedIp: '127.0.0.1',
-        advertisedHost: '127.0.0.1',
-        zone: 'home.malarstrom.com',
-        entryPoints: ['websecure'],
-        certResolver: 'cloudflare',
-        tlsMode: 'wildcard',
-        securityHeaders: false,
-        compressMiddleware: false,
-        middlewareProvider: 'file',
-        allowedCidrs: ['127.0.0.1/32', '::1/128'],
-        secret: '',
-        stateDir: dir,
-        documentFormat: 'yaml',
-      },
-      null,
-      2,
-    ),
-  );
-
-  const run = async (args: string[]): Promise<string> => {
-    const { stdout } = await execFileAsync(process.execPath, [CLI, ...args, '--config', configPath, '--state-dir', dir]);
-    return stdout;
-  };
-  return { dir, configPath, run };
-}
-
-async function stopDaemon(configPath: string, dir: string): Promise<void> {
-  const config = loadConfig({ configPath, stateDir: dir });
-  try {
-    const pid = Number.parseInt(fs.readFileSync(path.join(dir, 'daemon.pid'), 'utf8').trim(), 10);
-    if (Number.isFinite(pid)) process.kill(pid, 'SIGTERM');
-  } catch {
-    // not running
-  }
-  await waitFor(async () => !(await isHealthy(config)), 8000);
-}
+import { LEGACY_CLI, REPO_ROOT, makeCliFixture } from './helpers/cli.ts';
 
 test('register starts the daemon and records the registration', async (t) => {
-  const { dir, configPath, run } = await setup();
+  const cli = await makeCliFixture();
   t.after(async () => {
-    await stopDaemon(configPath, dir);
-    fs.rmSync(dir, { recursive: true, force: true });
+    await cli.stopDaemon();
+    cli.cleanup();
   });
 
-  const output = await run(['register', '--project', 'probe', '--branch', 'feature/login', '--port', '3999']);
+  const output = await cli.run(['register', '--project', 'probe', '--branch', 'feature/login', '--port', '3999']);
   assert.match(output, /main\.probe|feature-login\.probe/);
-  assert.match(output, /https:\/\/feature-login\.probe\.home\.malarstrom\.com/);
+  assert.match(output, /https:\/\/feature-login\.probe\.gwtest\.local/);
 
-  const store = new RegistrationStore(dir);
+  const store = new RegistrationStore(cli.dir);
   const registrations = store.list();
   assert.equal(registrations.length, 1);
   assert.equal(registrations[0].devPort, 3999);
-  assert.equal(registrations[0].fqdn, 'feature-login.probe.home.malarstrom.com');
-
-  const config = loadConfig({ configPath, stateDir: dir });
-  assert.equal(await isHealthy(config), true, 'the daemon must be running after register');
+  assert.equal(registrations[0].fqdn, 'feature-login.probe.gwtest.local');
 });
 
 test('registering the same project and branch twice keeps one registration', async (t) => {
-  const { dir, configPath, run } = await setup();
+  const cli = await makeCliFixture();
   t.after(async () => {
-    await stopDaemon(configPath, dir);
-    fs.rmSync(dir, { recursive: true, force: true });
+    await cli.stopDaemon();
+    cli.cleanup();
   });
 
-  await run(['register', '--project', 'probe', '--branch', 'main', '--port', '3999']);
-  await run(['register', '--project', 'probe', '--branch', 'main', '--port', '4000']);
+  await cli.run(['register', '--project', 'probe', '--branch', 'main', '--port', '3999']);
+  await cli.run(['register', '--project', 'probe', '--branch', 'main', '--port', '4000']);
 
-  const store = new RegistrationStore(dir);
+  const store = new RegistrationStore(cli.dir);
   assert.equal(store.list().length, 1);
   assert.equal(store.list()[0].devPort, 4000);
 });
 
 test('list and status report the state, unregister removes it', async (t) => {
-  const { dir, configPath, run } = await setup();
+  const cli = await makeCliFixture();
   t.after(async () => {
-    await stopDaemon(configPath, dir);
-    fs.rmSync(dir, { recursive: true, force: true });
+    await cli.stopDaemon();
+    cli.cleanup();
   });
 
-  await run(['register', '--project', 'probe', '--branch', 'main', '--port', '3999']);
+  await cli.run(['register', '--project', 'probe', '--branch', 'main', '--port', '3999']);
 
-  const list = await run(['list']);
+  const list = await cli.run(['list']);
   assert.match(list, /probe/);
-  assert.match(list, /main\.probe\.home\.malarstrom\.com/);
+  assert.match(list, /main\.probe\.gwtest\.local/);
 
-  const status = await run(['status']);
+  const status = await cli.run(['status']);
   assert.match(status, /daemon:\s+running/);
   assert.match(status, /registrations: 1/);
 
-  await run(['unregister', '--project', 'probe', '--branch', 'main']);
-  const after = await run(['list']);
+  await cli.run(['unregister', '--project', 'probe', '--branch', 'main']);
+  const after = await cli.run(['list']);
   assert.match(after, /no registrations/);
 });
 
-test('register rejects invalid input', async () => {
-  const { dir, configPath } = await setup();
-  try {
-    await assert.rejects(
-      execFileAsync(process.execPath, [CLI, 'register', '--project', 'probe', '--branch', 'main', '--port', 'abc', '--config', configPath, '--state-dir', dir]),
-      /invalid --port/,
-    );
-    await assert.rejects(
-      execFileAsync(process.execPath, [CLI, 'register', '--project', 'probe', '--config', configPath, '--state-dir', dir]),
-      /register needs --project, --branch and --port/,
-    );
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
+test('register rejects invalid input', async (t) => {
+  const cli = await makeCliFixture();
+  t.after(() => cli.cleanup());
+
+  const badPort = await cli.runFail(['register', '--project', 'probe', '--branch', 'main', '--port', 'abc']);
+  assert.equal(badPort.code, 2);
+  assert.match(badPort.stderr, /invalid --port/);
+
+  const missing = await cli.runFail(['register', '--project', 'probe']);
+  assert.equal(missing.code, 2);
+  assert.match(missing.stderr, /register needs --project, --branch and --port/);
+});
+
+test('unregister says when there is nothing to unregister', async (t) => {
+  const cli = await makeCliFixture();
+  t.after(async () => {
+    await cli.stopDaemon();
+    cli.cleanup();
+  });
+
+  const result = await cli.runFail(['unregister', '--project', 'probe', '--branch', 'main']);
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /not registered/);
+});
+
+test('config shows every key and writes the file', async (t) => {
+  const cli = await makeCliFixture();
+  t.after(() => cli.cleanup());
+
+  const shown = await cli.run(['config']);
+  assert.match(shown, /config file:/);
+  assert.match(shown, /zone = "gwtest\.local"/);
+
+  // A marker in the file proves that `--write` rewrote it.
+  const raw = JSON.parse(fs.readFileSync(cli.configPath, 'utf8')) as Record<string, unknown>;
+  raw['marker'] = true;
+  fs.writeFileSync(cli.configPath, JSON.stringify(raw, null, 2));
+
+  await cli.run(['config', '--write']);
+  const parsed = JSON.parse(fs.readFileSync(cli.configPath, 'utf8')) as Record<string, unknown>;
+  assert.equal(parsed.zone, 'gwtest.local');
+  assert.equal((parsed['registryPort'] as number) > 0, true);
+  assert.equal(parsed['marker'], undefined, 'the file was not rewritten');
+});
+
+test('migrate reports that there is nothing to migrate', async (t) => {
+  const cli = await makeCliFixture();
+  t.after(() => cli.cleanup());
+
+  const output = await cli.run(['migrate']);
+  assert.match(output, /nothing to migrate/);
+});
+
+test('list --json is machine-readable', async (t) => {
+  const cli = await makeCliFixture();
+  t.after(async () => {
+    await cli.stopDaemon();
+    cli.cleanup();
+  });
+
+  await cli.run(['register', '--project', 'probe', '--branch', 'main', '--port', '3999']);
+
+  const result = await cli.runFail(['list', '--json']);
+  assert.equal(result.code, 0);
+
+  const parsed = JSON.parse(result.stdout) as {
+    routes: Array<{ project: string; branch: string; port: number; fqdn: string; url: string; state: string }>;
+  };
+  assert.equal(Array.isArray(parsed.routes), true);
+  assert.equal(parsed.routes.length, 1);
+  assert.equal(parsed.routes[0].project, 'probe');
+  assert.equal(parsed.routes[0].branch, 'main');
+  assert.equal(parsed.routes[0].port, 3999);
+  assert.equal(parsed.routes[0].fqdn, 'main.probe.gwtest.local');
+  assert.equal(parsed.routes[0].url, 'https://main.probe.gwtest.local');
+  assert.equal(parsed.routes[0].state, 'down');
+});
+
+test('list --json of an empty installation is an empty list', async (t) => {
+  const cli = await makeCliFixture();
+  t.after(() => cli.cleanup());
+
+  const parsed = await cli.runJson<{ routes: unknown[] }>(['list', '--json']);
+  assert.deepEqual(parsed.routes, []);
+});
+
+test('status --json reports the daemon, the configuration and the proxy', async (t) => {
+  const cli = await makeCliFixture();
+  t.after(async () => {
+    await cli.stopDaemon();
+    cli.cleanup();
+  });
+
+  await cli.run(['start']);
+
+  const parsed = await cli.runJson<{
+    daemon: { running: boolean; pid: number | null; healthy: boolean; pidFile: string };
+    reachable: boolean;
+    proxy: { id: string; reachable: boolean };
+    config: { path: string; zone: string; registryPort: number };
+    routes: number;
+    // The keys the old CLI wrote at the top level.
+    configPath: string;
+    stateDir: string;
+    logFile: string;
+    cacheDir: string;
+    registryPort: number;
+    relayPort: number;
+    advertisedIp: string;
+    zone: string;
+    entryPoints: string[];
+    certResolver: string;
+    secretConfigured: boolean;
+    registrations: number;
+  }>(['status', '--json']);
+
+  assert.equal(parsed.daemon.running, true);
+  assert.equal(typeof parsed.daemon.pid, 'number');
+  assert.equal(parsed.reachable, true);
+  assert.equal(parsed.proxy.id, 'traefik');
+  assert.equal(parsed.config.zone, 'gwtest.local');
+  assert.equal(parsed.config.path, cli.configPath);
+  assert.equal(parsed.routes, 0);
+
+  // The old shape is still there: a script written against the previous
+  // CLI keeps reading the keys it knows.
+  assert.equal(parsed.configPath, cli.configPath);
+  assert.equal(parsed.stateDir, cli.dir);
+  assert.equal(parsed.zone, 'gwtest.local');
+  assert.deepEqual(parsed.entryPoints, ['websecure']);
+  assert.equal(parsed.certResolver, 'testca');
+  assert.equal(parsed.secretConfigured, false);
+  assert.equal(parsed.registrations, 0);
+  assert.equal(typeof parsed.registryPort, 'number');
+  assert.equal(typeof parsed.relayPort, 'number');
+  assert.equal(typeof parsed.advertisedIp, 'string');
+  assert.equal(typeof parsed.logFile, 'string');
+  assert.equal(typeof parsed.cacheDir, 'string');
+});
+
+test('the global options work before the command', async (t) => {
+  const cli = await makeCliFixture();
+  t.after(async () => {
+    await cli.stopDaemon();
+    cli.cleanup();
+  });
+
+  await cli.run(['register', '--project', 'probe', '--branch', 'main', '--port', '3999']);
+
+  const parsed = await cli.runJson<{ routes: unknown[] }>(['--json', 'list']);
+  assert.equal(parsed.routes.length, 1);
+
+  const shown = await cli.run(['--json', 'version']);
+  assert.match(shown.trim(), /^\d+\.\d+\.\d+/);
+});
+
+test('register --json and unregister --json answer with the route', async (t) => {
+  const cli = await makeCliFixture();
+  t.after(async () => {
+    await cli.stopDaemon();
+    cli.cleanup();
+  });
+
+  const registered = await cli.runJson<{ url: string; fqdn: string; port: number; state: string }>([
+    'register',
+    '--project',
+    'probe',
+    '--branch',
+    'main',
+    '--port',
+    '3999',
+    '--json',
+  ]);
+  assert.equal(registered.url, 'https://main.probe.gwtest.local');
+  assert.equal(registered.fqdn, 'main.probe.gwtest.local');
+  assert.equal(registered.port, 3999);
+  assert.equal(registered.state, 'down');
+
+  const removed = await cli.runJson<{ removed: boolean; fqdn?: string }>([
+    'unregister',
+    '--project',
+    'probe',
+    '--branch',
+    'main',
+    '--json',
+  ]);
+  assert.equal(removed.removed, true);
+  assert.equal(removed.fqdn, 'main.probe.gwtest.local');
+});
+
+test('config --json writes the configuration as JSON', async (t) => {
+  const cli = await makeCliFixture();
+  t.after(() => cli.cleanup());
+
+  const parsed = await cli.runJson<{ path: string; config: { zone: string; proxy: string } }>([
+    'config',
+    '--json',
+  ]);
+  assert.equal(parsed.path, cli.configPath);
+  assert.equal(parsed.config.zone, 'gwtest.local');
+  assert.equal(parsed.config.proxy, 'traefik');
+});
+
+test('migrate --json reports what it moved', async (t) => {
+  const cli = await makeCliFixture();
+  t.after(() => cli.cleanup());
+
+  const parsed = await cli.runJson<{ migrated: boolean; legacyDir: string }>(['migrate', '--json']);
+  assert.equal(typeof parsed.migrated, 'boolean');
+  assert.match(parsed.legacyDir, /\.traefik-dev$/);
+});
+
+test('the old binary name still works, and so do the old command names', async (t) => {
+  const cli = await makeCliFixture({ cli: LEGACY_CLI });
+  t.after(async () => {
+    await cli.stopDaemon();
+    cli.cleanup();
+  });
+
+  const output = await cli.run(['register', '--project', 'probe', '--branch', 'main', '--port', '3999']);
+  assert.match(output, /https:\/\/main\.probe\.gwtest\.local/);
+
+  const list = await cli.run(['list']);
+  assert.match(list, /main\.probe\.gwtest\.local/);
+
+  const status = await cli.run(['status']);
+  assert.match(status, /daemon:\s+running/);
+
+  const config = await cli.run(['config']);
+  assert.match(config, /config file:/);
+
+  const migrated = await cli.run(['migrate']);
+  assert.match(migrated, /nothing to migrate/);
+});
+
+test('version prints the version of the package', async (t) => {
+  const cli = await makeCliFixture();
+  t.after(() => cli.cleanup());
+
+  const manifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')) as { version: string };
+
+  const output = await cli.run(['version']);
+  assert.equal(output.trim(), manifest.version);
+});
+
+test('help lists the commands of the specification', async (t) => {
+  const cli = await makeCliFixture();
+  t.after(() => cli.cleanup());
+
+  const output = await cli.run(['help']);
+  for (const command of [
+    'register',
+    'unregister',
+    'list',
+    'status',
+    'config',
+    'setup',
+    'start',
+    'stop',
+    'doctor',
+    'install-service',
+    'migrate',
+  ]) {
+    assert.match(output, new RegExp(`dev-gateway ${command}`), `${command} is missing from the help`);
   }
 });

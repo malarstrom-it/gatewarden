@@ -25,6 +25,16 @@ export interface DiscoverOptions {
   apiBaseUrl?: string;
   /** How long to wait for the API to answer. */
   timeoutMs?: number;
+  /**
+   * The endpoints the gateway serves the dynamic configuration on.
+   *
+   * When they are given, the adapter reports whether the proxy already
+   * points at one of them: that is the question the setup wizard asks in
+   * §9.3. The list holds every name the machine is known by — the
+   * advertised host name and the advertised IP — because the proxy may
+   * reach the gateway by either of them.
+   */
+  expectEndpoints?: string[];
 }
 
 /** What an adapter learned about the proxy it found. */
@@ -44,6 +54,13 @@ export interface ProxyInfo {
     /** The provider that owns the shared middlewares. */
     middlewareProvider?: string;
   };
+  /**
+   * Does the proxy already point at this machine?
+   *
+   * `undefined` when the adapter could not tell: the proxy API does not
+   * say, or the question was not asked.
+   */
+  wired?: boolean;
 }
 
 /**

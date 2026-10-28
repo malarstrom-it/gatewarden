@@ -13,6 +13,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import dns from 'node:dns/promises';
 import type { Config, Route } from '../core/types.ts';
 import { DISPATCH_HEADER, RELAY_SECRET_HEADER } from '../core/protocol.ts';
 import { toYaml } from '../core/util/yaml.ts';
@@ -296,7 +297,85 @@ export async function discoverTraefik(options: DiscoverOptions = {}): Promise<Pr
       certResolver: mostCommon(certResolvers),
       middlewareProvider: mostCommon(providers),
     },
+    wired: options.expectEndpoints
+      ? await isWiredAt(base, options.expectEndpoints, timeoutMs)
+      : undefined,
   };
+}
+
+/** The host and the port of a URL, or `undefined` when it has none. */
+function hostPortOf(url: string): { host: string; port: string } | undefined {
+  try {
+    const parsed = new URL(url);
+    return {
+      host: parsed.hostname,
+      port: parsed.port || (parsed.protocol === 'https:' ? '443' : '80'),
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Do two names point at the same machine?
+ *
+ * A name and an address are the same machine when the name resolves to the
+ * address. The proxy may reach the gateway by its IP while the
+ * configuration advertises its host name (`devbox`), and the wizard must
+ * not call that "not wired" (§9.3).
+ */
+async function sameMachine(a: string, b: string): Promise<boolean> {
+  if (a === b) return true;
+  const addresses = async (host: string): Promise<string[]> => {
+    try {
+      const found = await dns.lookup(host, { all: true });
+      return found.map((entry) => entry.address);
+    } catch {
+      return [];
+    }
+  };
+  const [first, second] = await Promise.all([addresses(a), addresses(b)]);
+  if (first.length === 0 || second.length === 0) return false;
+  return first.some((address) => second.includes(address));
+}
+
+/**
+ * Does the proxy already serve something from this machine?
+ *
+ * The question the setup wizard asks in §9.3: is there a router whose
+ * service points at the host and the port the gateway serves the dynamic
+ * configuration on? The router list alone does not say; the service list
+ * does.
+ */
+async function isWiredAt(base: string, expectEndpoints: string[], timeoutMs: number): Promise<boolean> {
+  const expected = expectEndpoints
+    .map((endpoint) => hostPortOf(endpoint))
+    .filter((endpoint): endpoint is { host: string; port: string } => endpoint !== undefined);
+  if (expected.length === 0) return false;
+
+  let services: Array<{ loadBalancer?: { servers?: Array<{ url?: string }> } }>;
+  try {
+    const response = await fetch(`${base}/api/http/services`, { signal: AbortSignal.timeout(timeoutMs) });
+    if (!response.ok) return false;
+    const body = (await response.json()) as typeof services;
+    if (!Array.isArray(body)) return false;
+    services = body;
+  } catch {
+    return false;
+  }
+
+  for (const service of services) {
+    for (const server of service.loadBalancer?.servers ?? []) {
+      if (!server.url) continue;
+      const found = hostPortOf(server.url);
+      if (!found) continue;
+      for (const endpoint of expected) {
+        if (found.port !== endpoint.port) continue;
+        if (await sameMachine(found.host, endpoint.host)) return true;
+      }
+    }
+  }
+  return false;
 }
 
 /**

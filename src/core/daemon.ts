@@ -107,7 +107,12 @@ class Supervisor {
  * `src/daemon.ts`, which is also the process the CLI starts.
  */
 export async function runDaemon(): Promise<void> {
-  const config = loadConfig();
+  // The configuration file the daemon runs with is the one the command
+  // line names (`--config <path>`), and the one the environment names
+  // when the command line does not. The workers are given the same file,
+  // so that the daemon and its workers cannot read different ones.
+  const configPath = configPathFromArgv(process.argv) ?? resolveConfigPath();
+  const config = loadConfig({ configPath });
   setLogLevel(process.env['TRAEFIK_DEV_LOG_LEVEL'] === 'debug' ? 'debug' : 'info');
 
   fs.mkdirSync(config.stateDir, { recursive: true });
@@ -125,7 +130,6 @@ export async function runDaemon(): Promise<void> {
   // configuration directory, not in the state directory. The file the CLI
   // resolved travels with the command line, so the workers cannot end up
   // reading another one.
-  const configPath = configPathFromArgv(process.argv) ?? resolveConfigPath();
   const registry = new Supervisor('registry', configPath, config.stateDir);
   const relay = new Supervisor('relay', configPath, config.stateDir);
   registry.start();

@@ -215,6 +215,7 @@ Published contents:
 | `bin/dev-gateway.js` | the CLI |
 | `bin/dev-gateway-mcp.js` | the MCP server (stdio) |
 | `bin/dev-gateway-daemon.js` | the daemon entry point |
+| `scripts/postinstall.mjs` | the install script that starts the daemon once (§5.2) |
 | `skills/dev-gateway/` | the Agent Skill (§8.1) |
 | `docs/` | `AGENTS.md`, the Traefik wiring guide, the setup reference |
 | `README.md`, `LICENSE` | |
@@ -234,7 +235,7 @@ Published contents:
   "exports": {
     ".": "./dist/core/index.js"
   },
-  "files": ["dist", "bin", "skills", "docs", "README.md", "LICENSE"],
+  "files": ["dist", "bin", "scripts", "skills", "docs", "README.md", "LICENSE"],
   "engines": { "node": ">=20.11" },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -643,11 +644,22 @@ and the middleware provider.
 When no proxy API answers, the wizard asks the user for these values. Nothing
 is hard-coded.
 
+The wizard asks for every value it could not derive, whether the
+configuration file already holds one or not: the value in the file is the
+default in the question, not an answer. When there is nobody to ask — a
+non-interactive run, a machine without a terminal — the value is kept and
+the wizard reports it as unconfirmed, together with where every value came
+from: the proxy, the user, the configuration file or the built-in default.
+
 ### 9.3 Step three — is it already wired?
 
 Whether the proxy already has a provider pointing at this machine. For
 Traefik: is there a router whose provider is the HTTP provider and whose
 service points at this host and port.
+
+The machine is known by more than one name: the advertised host name and
+the advertised IP. The proxy may reach it by either of them, and a name
+that resolves to an address is the same machine as that address.
 
 If it is already wired, the wizard skips to step five and verifies.
 
@@ -672,11 +684,21 @@ The wizard says so plainly rather than pretending.
 The wizard reports each step as it goes, and reports what it could not
 verify.
 
+The verification needs a gateway that serves the dynamic document: the
+proxy polls the document, and the document has to carry the throwaway
+route. The configuration is therefore written and the daemon started
+*before* the verification — a verification that runs against a gateway
+that is not up yet verifies nothing. Step six reports what the
+verification needed.
+
 ### 9.6 Step six — write the configuration and start
 
 The derived values are written to the configuration file, the daemon is
 started, and the wizard recommends `dev-gateway install-service` for
 surviving a reboot.
+
+Both happen before the verification of §9.5, because the verification
+needs them; the step reports them, it does not introduce them.
 
 ---
 
