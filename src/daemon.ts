@@ -12,7 +12,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fork, type ChildProcess } from 'node:child_process';
-import { loadConfig } from './config.ts';
+import { loadConfig, configPathFromArgv, resolveConfigPath } from './config.ts';
+import { logFileFor } from './core/paths.ts';
+import { ensureLogDirectory } from './daemonControl.ts';
 import { log, setLogLevel } from './log.ts';
 import { siblingModulePath } from './util/module.ts';
 
@@ -62,10 +64,12 @@ class Supervisor {
 
   start(): void {
     if (this.stopping) return;
-    const child = fork(WORKER_PATH, [this.role], {
+    const child = fork(WORKER_PATH, [this.role, '--config', this.configPath], {
       execArgv: [],
       env: {
         ...process.env,
+        DEV_GATEWAY_CONFIG: this.configPath,
+        DEV_GATEWAY_STATE_DIR: this.stateDir,
         TRAEFIK_DEV_CONFIG: this.configPath,
         TRAEFIK_DEV_STATE_DIR: this.stateDir,
       },
@@ -96,13 +100,21 @@ async function main(): Promise<void> {
   setLogLevel(process.env['TRAEFIK_DEV_LOG_LEVEL'] === 'debug' ? 'debug' : 'info');
 
   fs.mkdirSync(config.stateDir, { recursive: true });
-  const logFile = path.join(config.stateDir, 'daemon.log');
+  const logFile = logFileFor(config.stateDir);
+  // The log does not always live in the state directory: on macOS and
+  // Windows it lives in the log directory of the platform.
+  ensureLogDirectory(logFile);
   rotateLog(logFile, config.logMaxBytes, config.logKeep);
 
   const pidFile = path.join(config.stateDir, 'daemon.pid');
   fs.writeFileSync(pidFile, `${process.pid}\n`);
 
-  const configPath = process.env['TRAEFIK_DEV_CONFIG'] ?? path.join(config.stateDir, 'config.json');
+  // The workers read the same configuration file as the daemon. Resolving
+  // it the same way matters: the configuration file lives in the XDG
+  // configuration directory, not in the state directory. The file the CLI
+  // resolved travels with the command line, so the workers cannot end up
+  // reading another one.
+  const configPath = configPathFromArgv(process.argv) ?? resolveConfigPath();
   const registry = new Supervisor('registry', configPath, config.stateDir);
   const relay = new Supervisor('relay', configPath, config.stateDir);
   registry.start();

@@ -6,15 +6,24 @@
  *   traefik-dev list
  *   traefik-dev status
  *   traefik-dev config [--write]
+ *   traefik-dev migrate [--dry-run]
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
-import { loadConfig, resolveConfigPath, writeConfigFile, listenHost, CONFIG_KEYS } from './config.ts';
+import {
+  configFileContent,
+  loadConfigWithReport,
+  writeConfigFile,
+  listenHost,
+  CONFIG_KEYS,
+} from './config.ts';
+import { legacyDir, type GatewayPaths } from './core/paths.ts';
+import { migrateLegacyLayout, type MigrationReport } from './core/migrate.ts';
 import { RegistrationStore } from './state.ts';
-import { ensureDaemon, daemonStatus, logFilePath, pidFilePath } from './daemonControl.ts';
+import { ensureDaemon, daemonStatus, pidFilePath } from './daemonControl.ts';
 import { isPortListening } from './util/net.ts';
 import { slugify } from './util/slug.ts';
 import type { Config } from './types.ts';
@@ -74,26 +83,32 @@ Usage:
   traefik-dev list
   traefik-dev status
   traefik-dev config [--write]
+  traefik-dev migrate [--dry-run]
   traefik-dev version
 
 Global options:
-  --config <path>      configuration file (default: <state-dir>/config.json)
-  --state-dir <path>   state directory (default: ~/.traefik-dev)
-  --json               machine readable output (list, status)
+  --config <path>      configuration file (default: the XDG configuration directory)
+  --state-dir <path>   state directory (default: the XDG state directory)
+  --json               machine readable output (list, status, migrate)
   --version            print the version and exit
+
+Environment:
+  DEV_GATEWAY_HOME         everything in one directory
+  DEV_GATEWAY_CONFIG       the configuration file
+  DEV_GATEWAY_STATE_DIR    the state directory
 `;
 }
 
-function resolveConfig(flags: Record<string, string | boolean>): { config: Config; configPath: string } {
-  const configPath = resolveConfigPath({
+function resolveConfig(
+  flags: Record<string, string | boolean>,
+  opts: { migrate?: boolean } = {},
+): { config: Config; configPath: string; paths: GatewayPaths } {
+  const loaded = loadConfigWithReport({
     configPath: flagString(flags, 'config'),
     stateDir: flagString(flags, 'state-dir'),
+    migrate: opts.migrate,
   });
-  const config = loadConfig({
-    configPath,
-    stateDir: flagString(flags, 'state-dir'),
-  });
-  return { config, configPath };
+  return { config: loaded.config, configPath: loaded.configPath, paths: loaded.paths };
 }
 
 async function commandRegister(flags: Record<string, string | boolean>): Promise<number> {
@@ -191,7 +206,7 @@ async function commandList(flags: Record<string, string | boolean>): Promise<num
 }
 
 async function commandStatus(flags: Record<string, string | boolean>): Promise<number> {
-  const { config, configPath } = resolveConfig(flags);
+  const { config, configPath, paths } = resolveConfig(flags);
   const status = await daemonStatus(config);
   const store = new RegistrationStore(config.stateDir);
   const registrations = store.list();
@@ -202,6 +217,9 @@ async function commandStatus(flags: Record<string, string | boolean>): Promise<n
         {
           daemon: status,
           configPath,
+          stateDir: config.stateDir,
+          logFile: paths.logFile,
+          cacheDir: paths.cacheDir,
           registryPort: config.registryPort,
           relayPort: config.relayPort,
           advertisedIp: config.advertisedIp,
@@ -223,8 +241,10 @@ async function commandStatus(flags: Record<string, string | boolean>): Promise<n
     [
       `daemon:       ${status.healthy ? 'running' : 'not running'} (pid ${status.pid ?? '-'})`,
       `pidfile:      ${status.pidFile}`,
-      `logfile:      ${logFilePath(config)}`,
+      `logfile:      ${paths.logFile}`,
       `config file:  ${configPath}${fs.existsSync(configPath) ? '' : ' (missing, defaults are used)'}`,
+      `state dir:    ${config.stateDir}`,
+      `cache dir:    ${paths.cacheDir}`,
       `registry:     ${listenHost()}:${config.registryPort}`,
       `relay:        ${listenHost()}:${config.relayPort}`,
       `advertised:   ${config.advertisedHost || config.advertisedIp} (ip ${config.advertisedIp})`,
@@ -254,6 +274,43 @@ function commandConfig(flags: Record<string, string | boolean>): number {
   return 0;
 }
 
+/**
+ * Move the old layout (`~/.traefik-dev/`) to the new one (§3.3).
+ *
+ * The report says what moved and what stayed where it was. Nothing is ever
+ * deleted: the old directory is left in place.
+ */
+function commandMigrate(flags: Record<string, string | boolean>): number {
+  const dryRun = flags['dry-run'] === true;
+  const { config, configPath, paths } = resolveConfig(flags, { migrate: false });
+  const report = migrateLegacyLayout({
+    paths: { ...paths, configFile: configPath },
+    legacyDir: legacyDir(),
+    config: configFileContent(config),
+    dryRun,
+  });
+
+  if (flags['json']) {
+    process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+    return 0;
+  }
+
+  const lines: string[] = [`legacy layout:  ${report.legacyDir}`];
+  if (report.config) lines.push(`configuration:  ${report.config.from} -> ${report.config.to}`);
+  if (report.routes) {
+    lines.push(`routes:         ${report.routes.from} -> ${report.routes.to} (${report.routes.count} routes)`);
+  }
+  for (const file of report.leftInPlace) lines.push(`left in place:  ${file}`);
+  for (const note of report.notes) lines.push(`note:           ${note}`);
+  if (report.migrated) {
+    lines.push(dryRun ? 'dry run: nothing was moved' : 'the old layout was migrated');
+  } else {
+    lines.push('nothing to migrate');
+  }
+  process.stdout.write(lines.join('\n') + '\n');
+  return 0;
+}
+
 export async function main(argv: string[]): Promise<number> {
   const { command, flags } = parseArgs(argv);
   if (flags['version'] === true || command === 'version') {
@@ -271,6 +328,8 @@ export async function main(argv: string[]): Promise<number> {
       return commandStatus(flags);
     case 'config':
       return commandConfig(flags);
+    case 'migrate':
+      return commandMigrate(flags);
     case 'help':
     case '--help':
     case '-h':

@@ -4,10 +4,10 @@
  * The daemon supervises one worker per listener (registry, relay) so a crash
  * in one listener cannot take the other down.
  *
- * Usage: node src/worker.ts <registry|relay>
+ * Usage: node src/worker.ts <registry|relay> [--config <path>]
  */
 
-import { loadConfig, listenHost } from './config.ts';
+import { loadConfig, configPathFromArgv, listenHost } from './config.ts';
 import { RegistrationStore } from './state.ts';
 import { createRegistryServer } from './registry.ts';
 import { createRelayServer } from './relay.ts';
@@ -22,7 +22,10 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  const config = loadConfig();
+  // The daemon names the configuration file it resolved, so that the worker
+  // reads the same file as the daemon.
+  const configPath = configPathFromArgv(process.argv);
+  const config = loadConfig(configPath ? { configPath } : {});
   setLogLevel(process.env['TRAEFIK_DEV_LOG_LEVEL'] === 'debug' ? 'debug' : 'info');
   const store = new RegistrationStore(config.stateDir);
 

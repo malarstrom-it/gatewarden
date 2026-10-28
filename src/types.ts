@@ -26,6 +26,8 @@ export interface Registration {
 export type DocumentFormat = 'yaml' | 'json';
 
 export interface Config {
+  /** Which proxy adapter writes the dynamic configuration (D3). */
+  proxy: string;
   /** Port the registry listener binds (0.0.0.0). */
   registryPort: number;
   /** Port the relay listener binds (0.0.0.0). */
@@ -66,4 +68,6 @@ export interface Config {
   logMaxBytes: number;
   /** Number of rotated log files to keep. */
   logKeep: number;
+  /** Whether `postinstall` may start the daemon (D7). */
+  autostart: boolean;
 }

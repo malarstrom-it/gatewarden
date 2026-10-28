@@ -29,6 +29,9 @@
   "engines": {
     "node": ">=22.6.0"
   },
+  "dependencies": {
+    "env-paths": "^3.0.0"
+  },
   "devDependencies": {
     "@tailwindcss/cli": "4.3.3",
     "@types/node": "^22.10.0",

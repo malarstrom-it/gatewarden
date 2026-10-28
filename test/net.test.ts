@@ -1,7 +1,26 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import test, { after } from 'node:test';
 import { addressInCidr, isAddressAllowed, ipv6ToBigInt, normaliseAddress } from '../src/util/net.ts';
 import { detectIpv6Prefixes, listenHost, loadConfig } from '../src/config.ts';
+
+/**
+ * A home directory of its own, so that a configuration load never reaches
+ * the home directory of the user who runs the tests (D11).
+ */
+const homes: string[] = [];
+
+function isolatedHome(): string {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-net-'));
+  homes.push(home);
+  return home;
+}
+
+after(() => {
+  for (const home of homes) fs.rmSync(home, { recursive: true, force: true });
+});
 
 test('IPv4 CIDRs match', () => {
   assert.equal(addressInCidr('172.16.2.6', '172.16.2.0/24'), true);
@@ -41,7 +60,7 @@ test('the container IPv6 prefixes are detected and the listener is dual stack', 
 });
 
 test('the loaded configuration accepts the container IPv6 prefix', () => {
-  const config = loadConfig({ overrides: { allowedCidrs: ['172.16.2.0/24', '127.0.0.1/32', '::1/128'] } });
+  const config = loadConfig({ home: isolatedHome(), env: {}, overrides: { allowedCidrs: ['172.16.2.0/24', '127.0.0.1/32', '::1/128'] } });
   for (const prefix of detectIpv6Prefixes()) {
     assert.ok(config.allowedCidrs.includes(prefix), `${prefix} should be allowed`);
   }
@@ -49,7 +68,7 @@ test('the loaded configuration accepts the container IPv6 prefix', () => {
 });
 
 test('the default advertised host is the compose service name', () => {
-  const config = loadConfig({ overrides: { stateDir: '/tmp/traefik-dev-test' } });
+  const config = loadConfig({ home: isolatedHome(), env: {}, overrides: { stateDir: '/tmp/traefik-dev-test' } });
   assert.equal(config.advertisedHost, 'devbox');
   assert.ok(config.advertisedIp.length > 0);
 });

@@ -58,8 +58,12 @@ Other commands:
 | `traefik-dev list` | list the registrations (`--json` for scripts) |
 | `traefik-dev status` | daemon state, ports, configuration summary |
 | `traefik-dev config [--write]` | show the configuration and every key (`--write` writes the file) |
+| `traefik-dev migrate [--dry-run]` | move the old layout (`~/.traefik-dev/`) to the new one, and report what moved |
 
 Global options: `--config <path>`, `--state-dir <path>`, `--json`.
+
+Environment: `DEV_GATEWAY_HOME` (everything in one directory), `DEV_GATEWAY_CONFIG` (the
+configuration file), `DEV_GATEWAY_STATE_DIR` (the state directory).
 
 ## The index page
 
@@ -184,11 +188,12 @@ X-Registry-Secret: <secret>     # only when a secret is configured
 * When a `secret` is configured, `X-Registry-Secret` must match it, the same convention the http
   provider uses for `/traefik`. With no secret configured (the user's current setup), the UI header
   is the only guard.
-* Every removal is logged in `~/.traefik-dev/daemon.log` with project, branch and source address.
+* Every removal is logged in the daemon log (`~/.local/state/dev-gateway/daemon.log` on Linux) with
+  project, branch and source address.
 
 Trust boundary: anyone who can reach the index URL can remove a registration. The index is only
 reachable from networks that can route the private address `10.10.1.50`, and the Traefik dashboard
-next to it is already unauthenticated. A `secret` in `~/.traefik-dev/config.json` raises the bar.
+next to it is already unauthenticated. A `secret` in the configuration file raises the bar.
 
 ## URLs the user can click
 
@@ -234,27 +239,55 @@ The commands are plain scripts:
 ```bash
 node bin/traefik-dev.js  register --project alpha --branch main --port 5173
 node bin/traefik-devd.js                        # run the daemon in the foreground
+node bin/traefik-devd.js --config <path>        # ... with another configuration file
 ```
+
+The daemon reads the configuration file of the XDG configuration directory, the same file the CLI
+reads. `--config <path>` names another one; the daemon hands that file to the workers it forks, so
+that all three read the same configuration.
 
 `npm link` (or a symlink into `~/.local/bin`) makes `traefik-dev` available on the `PATH`.
 
-## State directory
+## Files and configuration
 
-Everything lives in `~/.traefik-dev/` (a mounted volume, so it survives container restarts):
+The files follow the XDG Base Directory specification (D6):
+
+| Purpose | Linux | macOS | Windows |
+| --- | --- | --- | --- |
+| configuration | `~/.config/dev-gateway/config.json` | `~/Library/Preferences/dev-gateway/` | `%APPDATA%\dev-gateway\Config\` |
+| state (routes, pid) | `~/.local/state/dev-gateway/` | `~/Library/Application Support/dev-gateway/` | `%LOCALAPPDATA%\dev-gateway\State\` |
+| log | `~/.local/state/dev-gateway/daemon.log` | `~/Library/Logs/dev-gateway/` | `%LOCALAPPDATA%\dev-gateway\Log\` |
+| cache | `~/.cache/dev-gateway/` | `~/Library/Caches/dev-gateway/` | `%LOCALAPPDATA%\dev-gateway\Cache\` |
+
+The state directory holds:
 
 | File | Content |
 | --- | --- |
 | `registrations.json` | the registrations (the single source of truth, written atomically) |
-| `config.json` | the configuration |
 | `daemon.pid` | pid of the running daemon |
 | `daemon.log` | daemon log (rotated at 5 MB, 3 files kept) |
 
+Three environment variables move the files:
+
+| Variable | Effect |
+| --- | --- |
+| `DEV_GATEWAY_HOME` | everything in one directory: the configuration, the state, the log and the cache |
+| `DEV_GATEWAY_CONFIG` | the configuration file only |
+| `DEV_GATEWAY_STATE_DIR` | the state directory only |
+
+The old layout (`~/.traefik-dev/`) is picked up on the first run: when the new configuration file
+does not exist and the old one does, the old values become the new configuration and the old route
+store is imported. The old directory is left in place. `dev-gateway migrate` does the same import
+explicitly and reports what it moved; `dev-gateway migrate --dry-run` only reports.
+
 ## Configuration
 
-`~/.traefik-dev/config.json` (create it with `traefik-dev config --write`). Every key:
+The configuration file (`~/.config/dev-gateway/config.json` on Linux; create it with
+`traefik-dev config --write`). Every key:
 
 | Key | Default | Meaning |
 | --- | --- | --- |
+| `proxy` | `"traefik"` | which proxy adapter writes the dynamic configuration |
 | `registryPort` | `45002` | port the registry binds on `0.0.0.0` |
 | `relayPort` | `45001` | port the relay binds on `0.0.0.0` |
 | `advertisedIp` | detected (`172.16.2.13`) | IP this container has on the Docker network (used in the status output) |
@@ -269,10 +302,11 @@ Everything lives in `~/.traefik-dev/` (a mounted volume, so it survives containe
 | `middlewareProvider` | `file` | provider that owns those shared middlewares |
 | `allowedCidrs` | `["172.16.2.0/24", "127.0.0.1/32", "::1/128"]` | sources allowed to use the `X-Dev-Target` header; the container's own IPv6 prefix is added automatically |
 | `secret` | `""` | optional shared secret (checked on the registry document and the relay dispatch) |
-| `stateDir` | `~/.traefik-dev` | state, pidfile and logs |
+| `stateDir` | the XDG state directory | the route store and the pidfile |
 | `documentFormat` | `yaml` | `yaml` or `json` for the dynamic configuration document |
 | `logMaxBytes` | `5242880` | rotate the log file above this size |
 | `logKeep` | `3` | rotated log files to keep |
+| `autostart` | `true` | whether `postinstall` may start the daemon |
 
 ## Self-healing
 
@@ -287,7 +321,7 @@ Optional host-side autostart (not applied by this repository — the container e
 
 ```bash
 # run the gateway when the container starts
-docker exec <container> sh -lc 'nohup node /home/node/projects/traefik-api/bin/traefik-devd.js >> /home/node/.traefik-dev/daemon.log 2>&1 &'
+docker exec <container> sh -lc 'nohup node /home/node/projects/traefik-api/bin/traefik-devd.js >> /home/node/.local/state/dev-gateway/daemon.log 2>&1 &'
 ```
 
 Lazy start makes this optional: the first `traefik-dev register` after a restart is enough.

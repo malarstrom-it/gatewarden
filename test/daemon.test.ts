@@ -62,6 +62,7 @@ async function setup(): Promise<{ dir: string; configPath: string; config: Confi
   const relayPort = await freePort();
   const configPath = path.join(dir, 'config.json');
   const config: Config = {
+    proxy: 'traefik',
     registryPort,
     relayPort,
     advertisedIp: '127.0.0.1',
@@ -80,6 +81,7 @@ async function setup(): Promise<{ dir: string; configPath: string; config: Confi
     documentFormat: 'yaml',
     logMaxBytes: 1024 * 1024,
     logKeep: 2,
+    autostart: true,
   };
   fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
   return { dir, configPath, config: loadConfig({ configPath, stateDir: dir }) };

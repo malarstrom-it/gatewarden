@@ -10,6 +10,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import type { Config } from './types.ts';
+import { resolveConfigPath } from './config.ts';
+import { logFileFor } from './core/paths.ts';
 import { siblingModulePath } from './util/module.ts';
 
 /**
@@ -36,7 +38,26 @@ export function pidFilePath(config: Config): string {
 
 /** Path of the log file. */
 export function logFilePath(config: Config): string {
-  return path.join(config.stateDir, 'daemon.log');
+  return logFileFor(config.stateDir);
+}
+
+/**
+ * Make sure the directory of the log file exists.
+ *
+ * The log does not always live in the state directory: on macOS and
+ * Windows it lives in the log directory of the platform, and that
+ * directory does not exist yet on a fresh installation.
+ */
+export function ensureLogDirectory(logFile: string): string {
+  const dir = path.dirname(logFile);
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+/** Open the log file for appending, creating the directory it lives in. */
+export function openLogFile(logFile: string): number {
+  ensureLogDirectory(logFile);
+  return fs.openSync(logFile, 'a');
 }
 
 /** Probe the registry health endpoint. */
@@ -93,14 +114,18 @@ export async function ensureDaemon(
 
   fs.mkdirSync(config.stateDir, { recursive: true });
   const logFile = logFilePath(config);
-  const out = fs.openSync(logFile, 'a');
+  const out = openLogFile(logFile);
 
-  const child = spawn(process.execPath, [DAEMON_PATH], {
+  const configPath = opts.configPath ?? resolveConfigPath();
+  const child = spawn(process.execPath, [DAEMON_PATH, '--config', configPath], {
     detached: true,
     stdio: ['ignore', out, out],
     env: {
       ...process.env,
-      TRAEFIK_DEV_CONFIG: opts.configPath ?? process.env['TRAEFIK_DEV_CONFIG'] ?? path.join(config.stateDir, 'config.json'),
+      DEV_GATEWAY_CONFIG: configPath,
+      DEV_GATEWAY_STATE_DIR: config.stateDir,
+      // The old names are still read by the daemon, so they travel with it.
+      TRAEFIK_DEV_CONFIG: configPath,
       TRAEFIK_DEV_STATE_DIR: config.stateDir,
     },
   });

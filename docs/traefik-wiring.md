@@ -125,7 +125,8 @@ Because `advertisedHost` defaults to `devbox`, the document the registry serves 
 ```
 
 To use the container IP instead, set `"advertisedHost": "172.16.2.13"` in
-`~/.traefik-dev/config.json` — the `endpoint` in the provider must then match.
+the configuration file (`~/.config/dev-gateway/config.json` on Linux) — the `endpoint` in the
+provider must then match.
 
 ### Reachability
 
@@ -141,7 +142,7 @@ header from `172.16.2.0/24`, the loopback and the container's own IPv6 prefix
 
 ### Shared secret (optional)
 
-If a secret is configured in the gateway (`"secret": "…"` in `~/.traefik-dev/config.json`), the
+If a secret is configured in the gateway (`"secret": "…"` in the configuration file), the
 registry document is only served to a request that carries the header `X-Registry-Secret`, and the
 relay only accepts requests that carry `X-Relay-Secret`. The relay header is added by the per-router
 middleware the gateway generates, so nothing has to be configured in Traefik for it. The registry
