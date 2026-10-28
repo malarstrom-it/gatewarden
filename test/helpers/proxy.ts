@@ -68,6 +68,8 @@ export interface FakeProxyOptions {
   entryPoint?: string;
   /** Serve plain HTTP instead of TLS. */
   plain?: boolean;
+  /** Refuse every public request with a 403 of its own. */
+  refuse?: boolean;
 }
 
 /** The host names a `Host(...)` rule matches. */
@@ -250,6 +252,15 @@ export class FakeTraefik {
   private async servePublic(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const host = (req.headers.host ?? '').split(':')[0];
     this.served.push(`${host} ${req.method ?? 'GET'} ${req.url ?? '/'}`);
+
+    if (this.options.refuse) {
+      // A proxy that refuses the request itself: an ipAllowList, a
+      // forwardAuth, a middleware of its own. The answer is not the one
+      // of the relay, and the wizard has to tell the two apart.
+      res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' });
+      res.end('Forbidden\n');
+      return;
+    }
 
     const router = this.apiRouters().find((candidate) => hostsOfRule(candidate.rule).includes(host));
     if (!router) {

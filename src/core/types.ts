@@ -13,6 +13,14 @@ export interface Registration {
   branchSlug: string;
   /** Fully qualified domain name served for this registration. */
   fqdn: string;
+  /**
+   * The DNS zone the route was registered with.
+   *
+   * A route keeps the zone it was named from: the certificate of the
+   * route is built from it, not from the zone of the configuration the
+   * daemon happens to run with.
+   */
+  zone: string;
   /** Port the dev server listens on inside this container (loopback). */
   devPort: number;
   /** Free-form extra label shown in the index. */
@@ -40,15 +48,15 @@ export interface Config {
   registryPort: number;
   /** Port the relay listener binds (0.0.0.0). */
   relayPort: number;
-  /** IP this container advertises to Traefik for the relay/registry services. */
+  /** IP this machine advertises to the proxy for the relay/registry services. */
   advertisedIp: string;
   /**
-   * Host name or IP this container is reachable under from the Traefik
-   * container (the Docker network `private`). Defaults to `advertisedIp`;
-   * set it to the stable container name once the user has one.
+   * Host name or IP this machine is reachable under from the proxy.
+   * Defaults to `advertisedIp`; the setup wizard asks for the name the
+   * proxy knows this machine by.
    */
   advertisedHost: string;
-  /** DNS zone the FQDNs are built from. */
+  /** DNS zone the FQDNs are built from. Empty until the wizard fills it in. */
   zone: string;
   /** Traefik entryPoint names the routers attach to. */
   entryPoints: string[];
@@ -56,11 +64,15 @@ export interface Config {
   certResolver: string;
   /** Certificate granularity: `wildcard` (one certificate per project) or `fqdn` (one per branch). */
   tlsMode: 'wildcard' | 'fqdn';
-  /** Reference the user's `default-security-headers` middleware (file provider) on dev routers. */
+  /** Reference the shared `default-security-headers` middleware on the dev routers. */
   securityHeaders: boolean;
-  /** Reference the user's `compress` middleware (file provider) on dev routers. */
+  /** Reference the shared `compress` middleware on the dev routers. */
   compressMiddleware: boolean;
-  /** Name of the Traefik provider that owns the shared middlewares (`file` in the user's setup). */
+  /**
+   * Name of the proxy provider that owns the shared middlewares.
+   * Empty means the shared middlewares are not referenced: a middleware
+   * of another provider cannot be named without its provider.
+   */
   middlewareProvider: string;
   /** CIDRs allowed to use the relay dispatch header. */
   allowedCidrs: string[];

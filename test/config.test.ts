@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { DEFAULT_CONFIG, configFileContent, loadConfig, resolveConfigPath, writeConfigFile } from '../src/core/config.ts';
+import { DEFAULT_CONFIG, configFileContent, loadConfig, requireZone, resolveConfigPath, writeConfigFile } from '../src/core/config.ts';
 import { resolvePaths } from '../src/core/paths.ts';
 
 function isolatedHome(): string {
@@ -150,12 +150,75 @@ test('the new layout has the keys of §3.2', () => {
     assert.equal(config.relayPort, 45001);
     assert.deepEqual(config.entryPoints, ['websecure']);
     assert.equal(config.tlsMode, 'wildcard');
-    assert.equal(config.middlewareProvider, 'file');
     assert.equal(config.securityHeaders, false);
     assert.equal(config.compressMiddleware, false);
     assert.equal(config.documentFormat, 'yaml');
     assert.equal(config.logMaxBytes, 5242880);
     assert.equal(config.logKeep, 3);
+    assert.equal(config.secret, '');
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('the built-in defaults carry no value of one installation', () => {
+  // The package is for anybody: the defaults name nobody's zone, nobody's
+  // certificate resolver, nobody's host name and nobody's network
+  // (§3.2). The setup wizard derives them or asks for them (§9.2).
+  assert.equal(DEFAULT_CONFIG.zone, '');
+  assert.equal(DEFAULT_CONFIG.certResolver, '');
+  assert.equal(DEFAULT_CONFIG.middlewareProvider, '');
+  assert.equal(DEFAULT_CONFIG.advertisedHost, '');
+  assert.equal(DEFAULT_CONFIG.advertisedIp, '');
+  assert.deepEqual(DEFAULT_CONFIG.allowedCidrs, ['127.0.0.1/32', '::1/128']);
+
+  // Nothing in the defaults names a host, a zone or a network that is
+  // not the loopback of every machine.
+  for (const value of Object.values(DEFAULT_CONFIG)) {
+    if (typeof value !== 'string') continue;
+    assert.doesNotMatch(value, /malarstrom|devbox|cloudflare|172\.16\./, `${value} is a value of one installation`);
+  }
+});
+
+test('a configuration without a zone says that the zone is missing', () => {
+  const home = isolatedHome();
+  try {
+    const config = loadConfig({ home, env: {} });
+
+    assert.equal(config.zone, '');
+    assert.throws(() => requireZone(config), /no DNS zone is configured/);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('a value of the wrong type falls back to the default', () => {
+  const home = isolatedHome();
+  try {
+    fs.mkdirSync(path.dirname(configPathIn(home)), { recursive: true });
+    fs.writeFileSync(
+      configPathIn(home),
+      JSON.stringify({
+        zone: null,
+        allowedCidrs: '127.0.0.1/32',
+        registryPort: '46002',
+        entryPoints: ['web', 5],
+        secret: 7,
+      }),
+    );
+
+    const config = loadConfig({ home, env: {} });
+
+    // A zone that is not a string is no zone.
+    assert.equal(config.zone, '');
+    assert.throws(() => requireZone(config), /no DNS zone is configured/);
+    // A list that is not a list is the default list.
+    assert.deepEqual(config.allowedCidrs.slice(0, 2), ['127.0.0.1/32', '::1/128']);
+    // A number written as a string is the number it names.
+    assert.equal(config.registryPort, 46002);
+    // A list holds the strings of it.
+    assert.deepEqual(config.entryPoints, ['web']);
+    // A secret that is not a string is no secret.
     assert.equal(config.secret, '');
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
@@ -204,6 +267,28 @@ test('the content of the configuration file keeps the auto-detected prefixes out
       if (!cidr.includes(':')) continue;
       assert.ok(DEFAULT_CONFIG.allowedCidrs.includes(cidr), `${cidr} is derived and must not be written`);
     }
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('the detected address is not written to the configuration file', () => {
+  const home = isolatedHome();
+  try {
+    const config = loadConfig({ home, env: {} });
+    const content = configFileContent(config) as { advertisedIp: string; advertisedHost: string };
+
+    // The address of this machine is derived on every run. A file that
+    // pins the address of the moment it was written keeps advertising an
+    // address the machine does not have any more.
+    assert.equal(content.advertisedIp, '', 'the detected address was written to the file');
+    assert.equal(content.advertisedHost, '', 'the derived host name was written to the file');
+
+    // A value that is not the detected address belongs to the
+    // installation, and it is written.
+    const own = configFileContent({ ...config, advertisedIp: '10.9.8.7', advertisedHost: 'myhost' });
+    assert.equal(own['advertisedIp'], '10.9.8.7');
+    assert.equal(own['advertisedHost'], 'myhost');
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

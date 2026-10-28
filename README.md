@@ -75,9 +75,13 @@ dev-gateway setup
 
 The wizard finds the proxy, writes the wiring the proxy needs (to
 `<state>/wiring/traefik.yml`), writes the configuration and starts the daemon.
-The one thing it cannot do is apply the wiring — the proxy's configuration
-belongs to you. It prints the snippet; you paste it into the proxy's static
-configuration and restart the proxy. See [`docs/traefik.md`](docs/traefik.md).
+The zone, the certificate resolver, the provider of the shared middlewares and
+the host name the proxy reaches this machine under are not built into the
+package: the wizard derives them from the proxy, and asks for the ones it
+cannot derive. The one thing it cannot do is apply the wiring — the proxy's
+configuration belongs to you. It prints the snippet; you paste it into the
+proxy's static configuration and restart the proxy. See
+[`docs/traefik.md`](docs/traefik.md).
 
 **3. Publish a dev server.** From the agent, with the MCP tool:
 
@@ -226,15 +230,14 @@ key:
 | `registryPort` | `45002` | port the registry binds on `0.0.0.0` |
 | `relayPort` | `45001` | port the relay binds on `0.0.0.0` |
 | `advertisedIp` | detected | IP this machine advertises to the proxy |
-| `advertisedHost` | `"devbox"` | host name the proxy reaches this machine under |
-| `zone` | `"home.malarstrom.com"` | DNS zone the host names are built from |
+| `advertisedHost` | detected | host name the proxy reaches this machine under || `zone` | `""` | DNS zone the host names are built from |
 | `entryPoints` | `["websecure"]` | proxy entry points the routers attach to |
-| `certResolver` | `"cloudflare"` | certificate resolver the routers ask for (empty = no TLS block) |
+| `certResolver` | `""` | certificate resolver the routers ask for (empty = no TLS block) |
 | `tlsMode` | `"wildcard"` | `wildcard` = one certificate per project, `fqdn` = one per address |
 | `securityHeaders` | `false` | also apply the shared security-headers middleware |
 | `compressMiddleware` | `false` | also apply the shared compress middleware |
-| `middlewareProvider` | `"file"` | provider that owns the shared middlewares |
-| `allowedCidrs` | `["172.16.2.0/24", "127.0.0.1/32", "::1/128"]` | sources allowed to send the `X-Dev-Target` header |
+| `middlewareProvider` | `""` | provider that owns the shared middlewares (empty = they are not used) |
+| `allowedCidrs` | `["127.0.0.1/32", "::1/128"]` | sources allowed to send the `X-Dev-Target` header |
 | `secret` | `""` | optional shared secret |
 | `stateDir` | the XDG state directory | the route store and the pidfile |
 | `documentFormat` | `"yaml"` | `yaml` or `json` for the configuration document |
@@ -245,6 +248,20 @@ key:
 The defaults are the built-in ones, not your values: `dev-gateway setup`
 derives them from the proxy and writes them, and asks for the ones it cannot
 derive.
+
+Not one value of one installation is in the defaults. The zone, the
+certificate resolver, the provider of the shared middlewares and the host name
+the proxy reaches this machine under are empty until the wizard fills them in,
+and the trust list holds the loopback addresses of every machine. A route needs
+a zone: `dev-gateway register` says so when there is none, and `dev-gateway
+setup` derives one from the proxy.
+
+The values that are derived at runtime are not written to the file either: the
+address of this machine, the host name that is the address, and the IPv6
+prefixes of the machine's own networks. They are derived again on every run,
+and a file that pins the address of the moment it was written keeps
+advertising an address the machine does not have any more. An empty value in
+the file means "derived".
 
 ## The files
 

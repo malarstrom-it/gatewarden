@@ -67,8 +67,10 @@ test('the loaded configuration accepts the container IPv6 prefix', () => {
   assert.ok(config.allowedCidrs.includes('::1/128'));
 });
 
-test('the default advertised host is the compose service name', () => {
+test('the advertised host is the detected address, not a name of another installation', () => {
   const config = loadConfig({ home: isolatedHome(), env: {}, overrides: { stateDir: '/tmp/traefik-dev-test' } });
-  assert.equal(config.advertisedHost, 'devbox');
+  // The built-in default names nothing: the host name of the machine is
+  // derived, and the setup wizard asks for the name the proxy uses.
+  assert.equal(config.advertisedHost, config.advertisedIp);
   assert.ok(config.advertisedIp.length > 0);
 });

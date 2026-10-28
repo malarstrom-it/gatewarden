@@ -369,14 +369,14 @@ needed, plus the ones the package needs:
 | `relayPort` | `45001` | port the relay binds |
 | `advertisedHost` | detected | host name the proxy reaches this machine under |
 | `advertisedIp` | detected | fallback for `advertisedHost` |
-| `zone` | prompted | DNS zone host names are built from |
-| `entryPoints` | `["websecure"]` | proxy entry points the routers attach to |
-| `certResolver` | prompted | proxy ACME resolver name; empty means no TLS block |
+| `zone` | `""` (prompted) | DNS zone host names are built from |
+| `entryPoints` | `["websecure"]` (prompted) | proxy entry points the routers attach to |
+| `certResolver` | `""` (prompted) | proxy ACME resolver name; empty means no TLS block |
 | `tlsMode` | `"wildcard"` | `wildcard` = one certificate per project, `fqdn` = per route |
-| `middlewareProvider` | `"file"` | proxy provider that owns the shared middlewares |
+| `middlewareProvider` | `""` (prompted) | proxy provider that owns the shared middlewares |
 | `securityHeaders` | `false` | apply the shared security-headers middleware |
 | `compressMiddleware` | `false` | apply the shared compress middleware |
-| `allowedCidrs` | `["127.0.0.1/32", "::1/128"]` | sources allowed to use the dispatch header |
+| `allowedCidrs` | `["127.0.0.1/32", "::1/128"]` (prompted) | sources allowed to use the dispatch header |
 | `secret` | `""` | optional shared secret |
 | `stateDir` | resolved | runtime state directory |
 | `documentFormat` | `"yaml"` | `yaml` or `json` for the configuration document |
@@ -386,7 +386,44 @@ needed, plus the ones the package needs:
 `indexHost` is removed (D8). The defaults are not the user's values: the
 setup wizard derives them and writes them (§9).
 
-### 3.3 Migration from the previous layout
+**The defaults are neutral.** Not one value of one installation is in the
+package. The values that name somebody's setup — the zone, the certificate
+resolver, the provider of the shared middlewares, the host name the proxy
+reaches this machine under — are empty, and the trust list holds the loopback
+addresses of every machine. "Empty" means *not set yet*: a route has no host
+name without a zone, so `register` refuses one and says that the setup
+wizard has to run.
+
+The wizard fills them in (§9.2). It **derives** the zone, the entry points,
+the certificate resolver, the middleware provider and the addresses of the
+proxy from the proxy itself, and it **asks** for everything it cannot derive:
+the zone, the entry points, the certificate resolver, the middleware
+provider, the trust list and the host name the proxy reaches this machine
+under. A value nobody confirmed is reported as unconfirmed, and a value that
+is the built-in default is not written to the file: the file holds what
+belongs to this installation.
+
+The values that are **derived at runtime** are not written to the file
+either: the address of this machine, the host name that is the address and
+the IPv6 prefixes of the machine's own networks. They are derived again on
+every run, and a file that pins the address of the moment it was written
+keeps advertising an address the machine does not have any more. An empty
+value in the file means "derived".
+
+### 3.3 The route store
+
+The routes live in `routes.json` in the state directory (§3.1), and they are
+the single source of truth: the CLI writes them, the daemon reads them.
+
+A route keeps the **zone it was registered with**. The certificate of a route
+is built from that zone, not from the zone of the configuration the daemon
+happens to run with: the certificate has to cover the name the route was
+given, and a route that was registered before the zone changed keeps its
+name. A route that was written before the store kept the zone has none in
+the file; the zone is then the tail of its host name, which is where it was
+put.
+
+### 3.4 Migration from the previous layout
 
 The current installation keeps everything in `~/.traefik-dev/`:
 `config.json`, `registrations.json`, `daemon.pid`, `daemon.log`.
@@ -643,6 +680,20 @@ and the middleware provider.
 
 When no proxy API answers, the wizard asks the user for these values. Nothing
 is hard-coded.
+
+Two more values are the machine's own, and the proxy's API does not say them:
+the host name the proxy reaches this machine under, and the trust list of the
+relay. The wizard asks for the host name, because the wiring is written with
+it. For the trust list it derives what it can: the proxy is the one that
+sends the dispatch header, and the addresses of the host the API answered on
+are therefore the sources the relay has to accept. The rest is asked for.
+
+An answer to the trust list **adds** to the list that was offered. The
+wizard never removes an address from it: a list of one's own that took the
+loopback away would leave the relay refusing the proxy's dispatch, and every
+route would break with a 403 that looks like a certificate problem. A refusal
+of the relay is reported as what it is: the address of the proxy is not in the
+trust list, or the secret is wrong.
 
 The wizard asks for every value it could not derive, whether the
 configuration file already holds one or not: the value in the file is the

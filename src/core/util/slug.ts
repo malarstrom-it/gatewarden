@@ -43,3 +43,17 @@ export function isValidLabel(label: string): boolean {
 export function buildFqdn(project: string, branch: string, zone: string): string {
   return `${slugify(branch)}.${slugify(project)}.${zone}`;
 }
+
+/**
+ * The zone of a host name that was built by `buildFqdn`.
+ *
+ * The inverse of `buildFqdn`: the zone is everything after the branch and
+ * the project. A host name that was built without a zone has none, and a
+ * host name that was not built by `buildFqdn` has none either.
+ */
+export function zoneOfFqdn(fqdn: string): string {
+  if (typeof fqdn !== 'string') return '';
+  const labels = fqdn.split('.');
+  if (labels.length < 3) return '';
+  return labels.slice(2).join('.');
+}

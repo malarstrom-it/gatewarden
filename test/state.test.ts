@@ -31,6 +31,48 @@ test('the routes live in routes.json in the state directory', (t) => {
   assert.equal(store.list().length, 1);
 });
 
+test('a route keeps the zone it was registered with', (t) => {
+  const dir = tempDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const store = new RegistrationStore(dir);
+  store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'gwtest.local' });
+
+  assert.equal(store.list()[0].zone, 'gwtest.local');
+  assert.equal(store.list()[0].fqdn, 'main.alpha.gwtest.local');
+});
+
+test('a route from a file without a zone gets the zone of its name', (t) => {
+  const dir = tempDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  // A file that was written before the store kept the zone: the zone is
+  // the tail of the host name, which is where buildFqdn put it.
+  fs.writeFileSync(
+    path.join(dir, 'routes.json'),
+    JSON.stringify({
+      version: 1,
+      registrations: [
+        {
+          id: 'alpha/main',
+          project: 'alpha',
+          branch: 'main',
+          projectSlug: 'alpha',
+          branchSlug: 'main',
+          fqdn: 'main.alpha.home.malarstrom.com',
+          devPort: 3000,
+          createdAt: '2024-01-01T00:00:00.000Z',
+          updatedAt: '2024-01-01T00:00:00.000Z',
+        },
+      ],
+    }),
+  );
+
+  const store = new RegistrationStore(dir);
+
+  assert.equal(store.list()[0].zone, 'home.malarstrom.com');
+});
+
 test('a state directory that still holds the old file name is read from it', (t) => {
   const dir = tempDir();
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));

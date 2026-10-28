@@ -44,7 +44,7 @@ interface Fixture {
  *
  * The server is started as a child process, the way a harness starts it.
  */
-async function makeMcpFixture(options: { connect?: boolean } = {}): Promise<Fixture> {
+async function makeMcpFixture(options: { connect?: boolean; zone?: string } = {}): Promise<Fixture> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-mcp-'));
   const registryPort = await freePort();
   const relayPort = await freePort();
@@ -58,7 +58,7 @@ async function makeMcpFixture(options: { connect?: boolean } = {}): Promise<Fixt
         relayPort,
         advertisedIp: '127.0.0.1',
         advertisedHost: '127.0.0.1',
-        zone: 'gwtest.local',
+        zone: options.zone ?? 'gwtest.local',
         entryPoints: ['websecure'],
         certResolver: 'testca',
         tlsMode: 'wildcard',
@@ -182,6 +182,25 @@ test('the server starts no daemon before a tool is called', async (t) => {
 
   const listening = await isPortListening(fixture.registryPort);
   assert.equal(listening, false, 'the registry is listening before a tool was called');
+});
+
+test('publishing without a zone says how to get one', async (t) => {
+  const fixture = await makeMcpFixture({ zone: '' });
+  t.after(() => fixture.cleanup());
+
+  // The host names are built from the zone. Without one the agent is
+  // told what to do instead of getting a route with a trailing dot.
+  const published = await fixture.client.callTool({
+    name: 'publish_dev_server',
+    arguments: { port: 3999, project: 'probe', branch: 'main' },
+  });
+  assert.equal(published.isError, true, JSON.stringify(published.content));
+  assert.match(JSON.stringify(published.content), /no DNS zone is configured/);
+  assert.match(JSON.stringify(published.content), /dev-gateway setup/);
+
+  const listed = await fixture.client.callTool({ name: 'list_dev_servers', arguments: {} });
+  const routes = (listed.structuredContent as { routes: unknown[] }).routes;
+  assert.equal(routes.length, 0, 'a route without a zone was registered');
 });
 
 test('a development server is published, listed and removed', async (t) => {

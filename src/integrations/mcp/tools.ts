@@ -13,7 +13,7 @@
  */
 
 import { discoverProxyStatus } from '../../adapters/index.ts';
-import { loadConfigWithReport } from '../../core/config.ts';
+import { loadConfigWithReport, requireZone } from '../../core/config.ts';
 import { gatewayStatus, routeJson } from '../../core/status.ts';
 import { RegistrationStore } from '../../core/state.ts';
 import { withRouteLock } from '../../core/lock.ts';
@@ -234,6 +234,11 @@ const publishDevServer: ToolDefinition = {
     const branch = optionalString(args['branch']) ?? inferBranch(context.cwd);
     const label = optionalString(args['label']);
 
+    // The host names are built from the zone. An installation that has
+    // none cannot name a route, and the agent is told how to get one
+    // instead of publishing a route with a trailing dot in its name.
+    const zone = requireZone(context.config);
+
     const store = new RegistrationStore(context.config.stateDir);
     // The write is a read-modify-write, and two agent sessions may publish
     // at the same time (D10): the lock keeps one of them from dropping
@@ -244,7 +249,7 @@ const publishDevServer: ToolDefinition = {
         branch,
         devPort: port,
         label,
-        zone: context.config.zone,
+        zone,
       }),
     );
 

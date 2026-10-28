@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import test from 'node:test';
-import { LEGACY_DAEMON, makeCliFixture } from './helpers/cli.ts';
+import { LEGACY_DAEMON, freePort, makeCliFixture } from './helpers/cli.ts';
 
 test('start starts the daemon and waits for it', async (t) => {
   const cli = await makeCliFixture();
@@ -147,6 +147,85 @@ test('doctor fails when the daemon is not running', async (t) => {
   assert.equal(parsed.ok, false);
   const daemon = parsed.checks.find((check) => check.name === 'daemon');
   assert.equal(daemon?.status, 'fail');
+});
+
+test('doctor says that the zone is missing', async (t) => {
+  const cli = await makeCliFixture({ config: { zone: '' } });
+  t.after(() => cli.cleanup());
+
+  const result = await cli.runFail(['doctor', '--json']);
+  const parsed = JSON.parse(result.stdout) as {
+    ok: boolean;
+    checks: Array<{ name: string; status: string; detail: string }>;
+  };
+  const zone = parsed.checks.find((check) => check.name === 'dns zone');
+  assert.equal(zone?.status, 'fail', 'the doctor does not say that the zone is missing');
+  assert.match(zone?.detail ?? '', /dev-gateway setup/);
+  assert.equal(parsed.ok, false);
+});
+
+test('doctor names the routes and the missing zone together', async (t) => {
+  // The routes and the zone are one state: an installation that has
+  // routes but no zone cannot name a new one, and the certificate of the
+  // routes has no zone to be built from.
+  const cli = await makeCliFixture({ config: { zone: '' } });
+  t.after(async () => {
+    await cli.stopDaemon();
+    cli.cleanup();
+  });
+
+  // A route in the store, the way the import of the old layout leaves
+  // one: the route has its own name, the configuration has no zone.
+  fs.writeFileSync(
+    path.join(cli.dir, 'routes.json'),
+    JSON.stringify({
+      version: 1,
+      registrations: [
+        {
+          id: 'demo/main',
+          project: 'demo',
+          branch: 'main',
+          projectSlug: 'demo',
+          branchSlug: 'main',
+          fqdn: 'main.demo.example.test',
+          zone: 'example.test',
+          devPort: 3000,
+          createdAt: '2024-01-01T00:00:00.000Z',
+          updatedAt: '2024-01-01T00:00:00.000Z',
+        },
+      ],
+    }),
+  );
+
+  const result = await cli.runFail(['doctor', '--json']);
+  const parsed = JSON.parse(result.stdout) as {
+    ok: boolean;
+    checks: Array<{ name: string; status: string; detail: string }>;
+  };
+
+  const routes = parsed.checks.find((check) => check.name === 'routes');
+  assert.match(routes?.detail ?? '', /1 registered/);
+  const together = parsed.checks.find((check) => check.name === 'routes and zone');
+  assert.ok(together, 'the doctor does not name the routes and the zone together');
+  assert.equal(together?.status, 'fail', 'the doctor does not say that the routes have no zone');
+  assert.match(together?.detail ?? '', /no zone/);
+});
+
+test('doctor does not crash on a configuration file with a zone that is not a string', async (t) => {
+  // A hand-written file may hold anything. A zone that is not a string is
+  // no zone: the doctor says so instead of failing on the type.
+  const cli = await makeCliFixture({ config: { zone: null } });
+  t.after(() => cli.cleanup());
+
+  const result = await cli.runFail(['doctor', '--json']);
+  assert.doesNotMatch(result.stderr, /TypeError/, 'the doctor died with a stack trace');
+  const parsed = JSON.parse(result.stdout) as {
+    ok: boolean;
+    checks: Array<{ name: string; status: string; detail: string }>;
+  };
+  const zone = parsed.checks.find((check) => check.name === 'dns zone');
+  assert.equal(zone?.status, 'fail', 'the doctor does not say that the zone is missing');
+  assert.match(zone?.detail ?? '', /dev-gateway setup/);
 });
 
 test('install-service writes the unit of the platform and enables it', async (t) => {

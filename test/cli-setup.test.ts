@@ -18,7 +18,11 @@ import path from 'node:path';
 import test from 'node:test';
 import { PassThrough } from 'node:stream';
 import { DEFAULT_CONFIG } from '../src/core/config.ts';
-import { runSetup } from '../src/cli/setup.ts';
+import { cidrOf, proxyAddresses, runSetup } from '../src/cli/setup.ts';
+import { createRelayServer } from '../src/core/relay.ts';
+import { DISPATCH_HEADER } from '../src/core/protocol.ts';
+import { RegistrationStore } from '../src/core/state.ts';
+import type { Config } from '../src/core/types.ts';
 import { freePort, makeCliFixture } from './helpers/cli.ts';
 import { makeCertificate } from './helpers/cert.ts';
 import { close, listen } from './helpers/fixtures.ts';
@@ -293,7 +297,7 @@ test('the wizard asks for the values it cannot derive', async (t) => {
   const registryPort = await freePort();
   const relayPort = await freePort();
   const deadPort = await freePort();
-  const answers = answering(['asked.local', 'web,websecure', 'myca', 'file', 'myhost']);
+  const answers = answering(['asked.local', 'web,websecure', 'myca', 'file', '10.0.0.0/8', 'myhost']);
 
   t.after(async () => {
     await stopDaemonIn(dir);
@@ -331,16 +335,18 @@ test('the wizard asks for the values it cannot derive', async (t) => {
 
   // Every value §9.2 names was asked for, and the host name the wiring is
   // written with.
-  assert.equal(answers.asked(), 5, 'the wizard did not ask for every value');
+  assert.equal(answers.asked(), 6, 'the wizard did not ask for every value');
   assert.equal(report.proxy.reachable, false);
   assert.equal(report.config.zone, 'asked.local');
   assert.deepEqual(report.config.entryPoints, ['web', 'websecure']);
   assert.equal(report.config.certResolver, 'myca');
   assert.equal(report.config.middlewareProvider, 'file');
+  assert.deepEqual(report.config.allowedCidrs, ['127.0.0.1/32', '::1/128', '10.0.0.0/8']);
   assert.equal(report.config.advertisedHost, 'myhost');
   assert.equal(report.config.sources['zone'], 'the user');
   assert.equal(report.config.sources['entryPoints'], 'the user');
   assert.equal(report.config.sources['certResolver'], 'the user');
+  assert.equal(report.config.sources['allowedCidrs'], 'the user');
   assert.deepEqual(report.config.unconfirmed, []);
 
   // The value the configuration file held was the default in the
@@ -348,6 +354,7 @@ test('the wizard asks for the values it cannot derive', async (t) => {
   assert.match(answers.said(), /\[kept\.local\]/, 'the question did not offer the value of the file');
   assert.match(answers.said(), /\[kept\]/, 'the question did not offer the entry points of the file');
   assert.match(answers.said(), /\[kepthost\]/, 'the question did not offer the host name of the file');
+  assert.match(answers.said(), /dispatch header/, 'the question did not ask for the trust list');
 
   // What the user answered is what the configuration file holds.
   const written = JSON.parse(fs.readFileSync(path.join(dir, 'config.json'), 'utf8')) as {
@@ -371,7 +378,7 @@ test('the wizard reports the values it could not confirm', async (t) => {
 
   // Nobody was there to answer: the values are kept, and the wizard says
   // that nobody confirmed them.
-  for (const name of ['zone', 'entryPoints', 'certResolver', 'middlewareProvider']) {
+  for (const name of ['zone', 'entryPoints', 'certResolver', 'middlewareProvider', 'allowedCidrs']) {
     assert.ok(report.config.unconfirmed.includes(name), `${name} was not reported as unconfirmed`);
   }
   assert.equal(report.config.sources['zone'], 'the configuration');
@@ -492,7 +499,7 @@ test('the wizard keeps the answers that arrive before their question', async (t)
   // line, the second the second, and none is lost.
   const input = new PassThrough();
   const output = new PassThrough();
-  input.write('pasted.local\nweb,websecure\nmyca\nfile\nmyhost\n');
+  input.write('pasted.local\nweb,websecure\nmyca\nfile\n10.0.0.0/8\nmyhost\n');
 
   const report = await runSetup({
     config: {
@@ -526,6 +533,7 @@ test('the wizard keeps the answers that arrive before their question', async (t)
   assert.deepEqual(report.config.entryPoints, ['web', 'websecure']);
   assert.equal(report.config.certResolver, 'myca');
   assert.equal(report.config.middlewareProvider, 'file');
+  assert.deepEqual(report.config.allowedCidrs, ['127.0.0.1/32', '::1/128', '10.0.0.0/8']);
   assert.equal(report.config.advertisedHost, 'myhost');
 });
 
@@ -832,11 +840,13 @@ test('the wizard restarts a daemon that runs with the old configuration', async 
   assert.notEqual(second.daemon.pid, first.daemon.pid, 'the daemon has the same pid as before');
 
   const document = await (await fetch(`http://127.0.0.1:${registryPort}/traefik`)).text();
-  // The host name of the route keeps the zone it was registered with; the
-  // certificate of the router is built from the zone of the configuration
-  // the daemon runs with.
-  assert.match(document, /\*\.demo\.second\.local/, 'the daemon serves the old configuration');
-  assert.doesNotMatch(document, /\*\.demo\.first\.local/, 'the daemon serves the old configuration');
+  // The route keeps the host name it was registered with, and the
+  // certificate covers that host name: both are built from the zone of
+  // the route, not from the zone of the configuration the daemon runs
+  // with (§9.6: a route keeps the host name it was registered with).
+  assert.match(document, /\*\.demo\.first\.local/, 'the certificate does not cover the name of the route');
+  assert.match(document, /Host\(`main\.demo\.first\.local`\)/, 'the route lost its name');
+  assert.doesNotMatch(document, /\*\.demo\.second\.local/, 'the certificate is built from the zone of the configuration');
 });
 
 test('the gateway does not write its own middleware provider into the configuration', async (t) => {
@@ -939,6 +949,250 @@ test('a proxy that says nothing about the middlewares leaves the value alone', a
   );
 });
 
+test('the trust list keeps what the wizard offered when the user answers with a list of their own', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-trust-'));
+  const registryPort = await freePort();
+  const relayPort = await freePort();
+  const deadPort = await freePort();
+  const answers = answering(['asked.local', 'web', 'myca', 'file', '10.0.0.0/8', 'myhost']);
+  const configPath = path.join(dir, 'config.json');
+
+  t.after(async () => {
+    await stopDaemonIn(dir);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  await runSetup({
+    config: {
+      ...DEFAULT_CONFIG,
+      registryPort,
+      relayPort,
+      stateDir: dir,
+      advertisedIp: '127.0.0.1',
+      advertisedHost: '127.0.0.1',
+    },
+    configPath,
+    paths: {
+      configFile: configPath,
+      stateDir: dir,
+      logFile: path.join(dir, 'daemon.log'),
+      cacheDir: path.join(dir, 'cache'),
+    },
+    cwd: dir,
+    interactive: true,
+    input: answers.input,
+    output: answers.output,
+    apiBaseUrl: `http://127.0.0.1:${deadPort}`,
+    promptTimeoutMs: 10_000,
+  });
+
+  const written = JSON.parse(fs.readFileSync(configPath, 'utf8')) as Config;
+
+  // The list of the user is in the trust list, and so is everything the
+  // wizard offered: an answer adds to the list, it does not replace it.
+  assert.ok(written.allowedCidrs.includes('10.0.0.0/8'), 'the list of the user was dropped');
+  assert.ok(written.allowedCidrs.includes('127.0.0.1/32'), 'the loopback was dropped');
+  assert.ok(written.allowedCidrs.includes('::1/128'), 'the loopback of IPv6 was dropped');
+
+  // The relay of that configuration accepts the request of the proxy:
+  // the loopback is in the trust list, so the dispatch is not refused.
+  const relay = createRelayServer(new RegistrationStore(dir), { ...written, relayPort: 0 });
+  const relayAnswerPort = await listen(relay);
+  t.after(async () => {
+    await close(relay);
+  });
+
+  const response = await fetch(`http://127.0.0.1:${relayAnswerPort}/`, {
+    headers: { [DISPATCH_HEADER]: 'nobody' },
+  });
+  assert.notEqual(response.status, 403, 'the relay refused the request of the proxy');
+});
+
+test('the addresses of the proxy are the ones the trust list needs', async () => {
+  // The proxy is the one that sends the dispatch header: its addresses
+  // are the sources the relay has to accept.
+  assert.deepEqual(await proxyAddresses(undefined), []);
+  assert.deepEqual(await proxyAddresses('not a url'), []);
+  assert.deepEqual(await proxyAddresses('http://127.0.0.1:8080'), [], 'the loopback is allowed already');
+  assert.deepEqual(await proxyAddresses('http://localhost:8080'), [], 'the loopback is allowed already');
+
+  assert.equal(cidrOf('10.0.0.5'), '10.0.0.5/32');
+  assert.equal(cidrOf('2001:db8::1'), '2001:db8::1/128');
+});
+
+test('the verification is skipped when there is no zone', async (t) => {
+  const cli = await makeCliFixture({ config: { zone: '' } });
+  t.after(async () => {
+    await cli.stopDaemon();
+    cli.cleanup();
+  });
+
+  // The proxy answers, but there is no zone: the host names cannot be
+  // built, so there is no public URL to fetch. The wizard says so
+  // instead of claiming a verification that did not happen.
+  const proxy = new FakeTraefik();
+  await proxy.start();
+  t.after(async () => {
+    await proxy.stop();
+  });
+
+  const report = await cli.runJson<SetupReport>([
+    'setup',
+    '--api-base-url',
+    `http://127.0.0.1:${proxy.apiPort}`,
+    '--json',
+  ]);
+
+  assert.equal(report.proxy.reachable, true);
+  assert.equal(report.verification.status, 'skipped');
+  assert.match(report.verification.reason ?? '', /no DNS zone is configured/);
+  assert.ok(
+    report.nextSteps.some((step) => step.includes('zone')),
+    'the wizard does not say that the zone has to be set',
+  );
+});
+
+test('the verification says that the relay refused the request', async (t) => {
+  const certificate = makeCertificate('*.dev-gateway-setup.localhost');
+  if (!certificate) {
+    t.skip('openssl is not there to make a certificate with');
+    return;
+  }
+
+  // The trust list of the installation does not hold the address of the
+  // proxy: the relay refuses its request, and the wizard has to say so.
+  // A refusal is not a certificate problem and not a proxy that does not
+  // know the route.
+  const cli = await makeCliFixture({
+    config: {
+      zone: 'localhost',
+      advertisedHost: '127.0.0.1',
+      advertisedIp: '127.0.0.1',
+      allowedCidrs: ['10.0.0.0/8'],
+    },
+    env: { NODE_EXTRA_CA_CERTS: certificate.certFile },
+  });
+  t.after(async () => {
+    await cli.stopDaemon();
+    cli.cleanup();
+    fs.rmSync(certificate.dir, { recursive: true, force: true });
+  });
+
+  const registryPort = (JSON.parse(fs.readFileSync(cli.configPath, 'utf8')) as { registryPort: number }).registryPort;
+
+  const proxy = new FakeTraefik({
+    tls: { key: certificate.key, cert: certificate.cert },
+    documentEndpoint: `http://127.0.0.1:${registryPort}/traefik`,
+    pollIntervalMs: 100,
+  });
+  await proxy.start();
+  t.after(async () => {
+    await proxy.stop();
+  });
+
+  const report = await cli.runJson<SetupReport>([
+    'setup',
+    '--api-base-url',
+    `http://127.0.0.1:${proxy.apiPort}`,
+    '--poll-interval',
+    '1000',
+    '--json',
+  ]);
+
+  assert.equal(report.verification.status, 'failed', report.verification.steps.map((s) => s.detail).join(' | '));
+  assert.match(report.verification.reason ?? '', /the relay refused the request/);
+  assert.match(report.verification.reason ?? '', /allowedCidrs/, 'the reason does not name the trust list');
+  assert.ok(
+    report.nextSteps.some((step) => step.includes('allowedCidrs')),
+    'the wizard does not say that the trust list has to hold the address of the proxy',
+  );
+});
+
+test('a 403 from the proxy is not the refusal of the relay', async (t) => {
+  const certificate = makeCertificate('*.dev-gateway-setup.localhost');
+  if (!certificate) {
+    t.skip('openssl is not there to make a certificate with');
+    return;
+  }
+
+  // The proxy refuses the request itself: an ipAllowList, a forwardAuth,
+  // a middleware of its own. The trust list of the relay has nothing to
+  // do with it, and the user must not be sent there.
+  const cli = await makeCliFixture({
+    config: {
+      zone: 'localhost',
+      advertisedHost: '127.0.0.1',
+      advertisedIp: '127.0.0.1',
+    },
+    env: { NODE_EXTRA_CA_CERTS: certificate.certFile },
+  });
+  t.after(async () => {
+    await cli.stopDaemon();
+    cli.cleanup();
+    fs.rmSync(certificate.dir, { recursive: true, force: true });
+  });
+
+  const registryPort = (JSON.parse(fs.readFileSync(cli.configPath, 'utf8')) as { registryPort: number }).registryPort;
+
+  const proxy = new FakeTraefik({
+    tls: { key: certificate.key, cert: certificate.cert },
+    documentEndpoint: `http://127.0.0.1:${registryPort}/traefik`,
+    pollIntervalMs: 100,
+    refuse: true,
+  });
+  await proxy.start();
+  t.after(async () => {
+    await proxy.stop();
+  });
+
+  const report = await cli.runJson<SetupReport>([
+    'setup',
+    '--api-base-url',
+    `http://127.0.0.1:${proxy.apiPort}`,
+    '--poll-interval',
+    '1000',
+    '--json',
+  ]);
+
+  assert.equal(report.verification.status, 'failed', report.verification.steps.map((s) => s.detail).join(' | '));
+  assert.match(report.verification.reason ?? '', /the proxy refused the request/);
+  assert.doesNotMatch(report.verification.reason ?? '', /allowedCidrs/, 'the trust list is not the cause here');
+  assert.ok(
+    !report.nextSteps.some((step) => step.includes('the address of the proxy has to be in the trust list')),
+    'the wizard sends the user to the trust list for a cause that is not there',
+  );
+  assert.ok(
+    report.nextSteps.some((step) => step.includes('the middleware of the proxy')),
+    'the wizard does not say that the middleware of the proxy refused the request',
+  );
+});
+
+test('the wizard does not crash on a configuration file with a zone that is not a string', async (t) => {
+  // A hand-written file may hold anything. A zone that is not a string is
+  // no zone: the wizard says so instead of failing on the type.
+  const cli = await makeCliFixture({ config: { zone: null } });
+  t.after(async () => {
+    await cli.stopDaemon();
+    cli.cleanup();
+  });
+
+  const report = await cli.runJson<SetupReport>(['setup', '--api-base-url', await deadApiUrl(), '--json']);
+
+  assert.equal(report.config.zone, '');
+  assert.ok(
+    ['skipped', 'failed'].includes(report.verification.status),
+    `the verification was ${report.verification.status}`,
+  );
+  assert.ok(
+    report.nextSteps.some((step) => step.includes('zone')),
+    'the wizard does not say that the zone has to be set',
+  );
+  assert.ok(
+    report.nextSteps.some((step) => step.includes('confirm')),
+    'the wizard does not say that the values have to be confirmed',
+  );
+});
+
 test('the setup tells a script that the verification failed', async (t) => {
   const cli = await makeCliFixture();
   t.after(async () => {
@@ -1016,7 +1270,7 @@ test('a new installation does not get the zone of another project', async (t) =>
   });
 
   const written = JSON.parse(fs.readFileSync(configPath, 'utf8')) as Record<string, unknown>;
-  for (const key of ['zone', 'certResolver', 'advertisedHost']) {
+  for (const key of ['zone', 'certResolver', 'advertisedHost', 'middlewareProvider', 'allowedCidrs']) {
     assert.ok(!(key in written), `the configuration file holds ${key}: ${String(written[key])}`);
     assert.ok(report.config.omitted.includes(key), `${key} is not reported as omitted`);
   }
@@ -1064,7 +1318,7 @@ test('a question nobody answers is a value nobody confirmed', async (t) => {
     promptTimeoutMs: 200,
   });
 
-  for (const name of ['zone', 'entryPoints', 'certResolver', 'middlewareProvider', 'advertisedHost']) {
+  for (const name of ['zone', 'entryPoints', 'certResolver', 'middlewareProvider', 'allowedCidrs', 'advertisedHost']) {
     assert.ok(report.config.unconfirmed.includes(name), `${name} was not reported as unconfirmed`);
   }
   assert.ok(

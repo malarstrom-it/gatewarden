@@ -51,6 +51,7 @@ function route(overrides: Partial<Registration> & Pick<Registration, 'id' | 'pro
     projectSlug: overrides.project.toLowerCase(),
     branchSlug: overrides.branch.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
     fqdn: 'example.home.malarstrom.com',
+    zone: 'home.malarstrom.com',
     devPort: 3000,
     createdAt: '2024-01-01T00:00:00.000Z',
     updatedAt: '2024-01-02T00:00:00.000Z',

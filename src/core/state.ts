@@ -2,7 +2,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { buildFqdn, slugify } from './util/slug.ts';
+import { buildFqdn, slugify, zoneOfFqdn } from './util/slug.ts';
 import type { Registration } from './types.ts';
 
 /** The name of the route store in the state directory (§3.1). */
@@ -22,6 +22,18 @@ export interface UpsertInput {
   devPort: number;
   label?: string;
   zone: string;
+}
+
+/**
+ * The route with its zone.
+ *
+ * A route that was written before the store kept the zone has none in the
+ * file: the zone is then the tail of its host name, which is where
+ * `buildFqdn` put it.
+ */
+function withZone(registration: Registration): Registration {
+  if (typeof registration.zone === 'string' && registration.zone.length > 0) return registration;
+  return { ...registration, zone: zoneOfFqdn(registration.fqdn) };
 }
 
 /**
@@ -94,7 +106,7 @@ export class RegistrationStore {
     try {
       const raw = JSON.parse(fs.readFileSync(source, 'utf8')) as StateFile;
       const registrations = Array.isArray(raw.registrations) ? raw.registrations : [];
-      this.cached = registrations;
+      this.cached = registrations.map(withZone);
       this.cachedMtimeMs = stat.mtimeMs;
       this.cachedSize = stat.size;
       this.cachedIno = stat.ino;
@@ -140,6 +152,7 @@ export class RegistrationStore {
       projectSlug,
       branchSlug,
       fqdn: buildFqdn(input.project, input.branch, input.zone),
+      zone: input.zone,
       devPort: input.devPort,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,

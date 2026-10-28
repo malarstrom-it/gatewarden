@@ -141,6 +141,40 @@ test('tlsMode fqdn asks for a per-branch certificate', () => {
   assert.deepEqual((router as { tls: unknown }).tls, { certResolver: 'cloudflare' });
 });
 
+test('the certificate of a route is built from the zone of the route', () => {
+  // The configuration may have another zone, or none at all: the
+  // certificate has to cover the name the route was given.
+  const { store } = tempStore();
+  store.upsert({ project: 'my-project', branch: 'main', devPort: 3000, zone: 'example.test' });
+
+  const doc = buildDynamicConfig(store.list(), makeConfig({ zone: '', certResolver: 'myca' }));
+  const router = Object.values(httpOf(doc).routers).find((r) => (r as { rule: string }).rule.includes('my-project')) as {
+    rule: string;
+    tls?: { certResolver?: string; domains?: Array<{ main: string }> };
+  };
+
+  assert.equal(router.rule, 'Host(`main.my-project.example.test`)');
+  assert.deepEqual(router.tls, {
+    certResolver: 'myca',
+    domains: [{ main: '*.my-project.example.test' }],
+  });
+});
+
+test('a route without a zone gets no certificate', () => {
+  // A route whose name has no zone cannot be given a certificate: the
+  // domain would be invalid, and the proxy would be asked for a
+  // certificate that cannot exist.
+  const { store } = tempStore();
+  store.upsert({ project: 'my-project', branch: 'main', devPort: 3000, zone: '' });
+
+  const doc = buildDynamicConfig(store.list(), makeConfig({ zone: '', certResolver: 'myca' }));
+  const router = Object.values(httpOf(doc).routers).find((r) => (r as { rule: string }).rule.includes('my-project')) as {
+    tls?: unknown;
+  };
+
+  assert.equal(router.tls, undefined, 'the route was given a certificate for an invalid domain');
+});
+
 test('the shared middlewares of the file provider are only referenced when asked for', () => {
   const { store } = tempStore();
   store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: ZONE });
@@ -153,13 +187,38 @@ test('the shared middlewares of the file provider are only referenced when asked
 
   const shared = buildDynamicConfig(
     store.list(),
-    makeConfig({ zone: ZONE, securityHeaders: true, compressMiddleware: true }),
+    makeConfig({
+      zone: ZONE,
+      middlewareProvider: 'file',
+      securityHeaders: true,
+      compressMiddleware: true,
+    }),
   );
   const sharedRouter = Object.values(httpOf(shared).routers).find((r) => (r as { rule: string }).rule.includes('alpha')) as {
     middlewares: string[];
   };
   assert.ok(sharedRouter.middlewares.includes('default-security-headers@file'));
   assert.ok(sharedRouter.middlewares.includes('compress@file'));
+});
+
+test('the shared middlewares are not referenced without a provider', () => {
+  // The built-in default names no provider (§3.2): a middleware of
+  // another provider cannot be referred to without its name, and a
+  // reference to nobody would break every route.
+  const { store } = tempStore();
+  store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: ZONE });
+
+  const doc = buildDynamicConfig(
+    store.list(),
+    makeConfig({ zone: ZONE, securityHeaders: true, compressMiddleware: true }),
+  );
+  const router = Object.values(httpOf(doc).routers).find((r) => (r as { rule: string }).rule.includes('alpha')) as {
+    middlewares: string[];
+  };
+  assert.deepEqual(router.middlewares.length, 1);
+  for (const middleware of router.middlewares) {
+    assert.doesNotMatch(middleware, /@$/, `${middleware} names no provider`);
+  }
 });
 
 test('the service URL uses the advertised host', () => {

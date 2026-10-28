@@ -48,6 +48,9 @@ export {
   loadConfigWithReport,
   resolveConfigPath,
   resolveStateDir,
+  normaliseConfig,
+  requireZone,
+  zoneOf,
   writeConfigFile,
   type LoadedConfig,
 } from './config.ts';

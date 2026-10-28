@@ -225,8 +225,9 @@ metrics:
 
 What follows from it:
 
-* the certificate resolver is named **`cloudflare`** (the default in the
-  gateway configuration);
+* the certificate resolver is named **`cloudflare`** (the gateway does not
+  carry the name: the setup wizard derives it from the proxy, or asks for
+  it);
 * the routers are attached to **`websecure` only** — `web` already redirects to
   `websecure`, so the client always ends up on HTTPS;
 * the `docker` provider runs on the Docker network **`private`**, which is the
@@ -259,6 +260,8 @@ The gateway's own ports are not published on the host, so they are not
 reachable from the LAN; only the proxy reaches them.
 
 The listeners are dual stack (`::` when the container has IPv6), and the relay
-accepts the dispatch header from `172.16.2.0/24`, the loopback and the
-container's own IPv6 prefix (`fdd0:0:0:2::/64`, derived at runtime) — so a
-connection over either stack is accepted.
+accepts the dispatch header from the CIDRs of the installation's own trust
+list — `172.16.2.0/24`, the loopback and the container's own IPv6 prefix
+(`fdd0:0:0:2::/64`, derived at runtime) — so a connection over either stack
+is accepted. The built-in default of the trust list is the loopback alone: the
+rest belongs to the installation, and the setup wizard asks for it.

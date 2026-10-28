@@ -17,6 +17,7 @@ import dns from 'node:dns/promises';
 import type { Config, Route } from '../core/types.ts';
 import { DISPATCH_HEADER, RELAY_SECRET_HEADER } from '../core/protocol.ts';
 import { toYaml } from '../core/util/yaml.ts';
+import { zoneOfFqdn } from '../core/util/slug.ts';
 import type { DiscoverOptions, ProxyAdapter, ProxyInfo } from './types.ts';
 
 /** Prefix of every router and service this registry serves (avoids collisions with other providers). */
@@ -44,6 +45,23 @@ export function hostRule(fqdn: string): string {
 /** Wildcard certificate domain for a project (one certificate per project). */
 export function projectWildcard(registration: Route, zone: string): string {
   return `*.${registration.projectSlug}.${zone}`;
+}
+
+/**
+ * The DNS zone of a route.
+ *
+ * A route keeps the zone it was registered with, and the certificate of
+ * the route is built from it. The zone of the configuration the daemon
+ * runs with is a different thing: a route that was registered before the
+ * zone changed keeps the name it was given.
+ *
+ * A route from a file that was written before the store kept the zone has
+ * none: the zone is then the tail of its host name, which is where
+ * `buildFqdn` put it.
+ */
+export function routeZone(route: Route): string {
+  if (typeof route.zone === 'string' && route.zone.length > 0) return route.zone;
+  return zoneOfFqdn(route.fqdn);
 }
 
 export interface DynamicConfig {
@@ -127,11 +145,15 @@ export function buildDynamicConfig(registrations: Route[], config: Config): Dyna
   const host = config.advertisedHost || config.advertisedIp;
   const relayUrl = `http://${host}:${config.relayPort}`;
 
-  // Middlewares that live in another provider (the user's file provider) are
-  // referenced with the `@provider` suffix.
+  // Middlewares that live in another provider (a file provider, say) are
+  // referenced with the `@provider` suffix. Without a provider there is
+  // nothing to reference: the shared middlewares stay off until the setup
+  // wizard names the provider that owns them.
   const shared: string[] = [];
-  if (config.compressMiddleware) shared.push(`compress@${config.middlewareProvider}`);
-  if (config.securityHeaders) shared.push(`default-security-headers@${config.middlewareProvider}`);
+  if (config.middlewareProvider) {
+    if (config.compressMiddleware) shared.push(`compress@${config.middlewareProvider}`);
+    if (config.securityHeaders) shared.push(`default-security-headers@${config.middlewareProvider}`);
+  }
 
   for (const registration of registrations) {
     const name = objectName(registration);
@@ -144,10 +166,10 @@ export function buildDynamicConfig(registrations: Route[], config: Config): Dyna
       middlewares: [dispatchMiddleware, ...shared],
     };
 
-    if (config.certResolver) {
+    if (config.certResolver && routeZone(registration)) {
       const tls: Record<string, unknown> = { certResolver: config.certResolver };
       if (config.tlsMode === 'wildcard') {
-        tls['domains'] = [{ main: projectWildcard(registration, config.zone) }];
+        tls['domains'] = [{ main: projectWildcard(registration, routeZone(registration)) }];
       }
       router['tls'] = tls;
     }
@@ -419,7 +441,7 @@ function hostPortOf(url: string): { host: string; port: string } | undefined {
  *
  * A name and an address are the same machine when the name resolves to the
  * address. The proxy may reach the gateway by its IP while the
- * configuration advertises its host name (`devbox`), and the wizard must
+ * configuration advertises its host name, and the wizard must
  * not call that "not wired" (§9.3).
  */
 async function sameMachine(a: string, b: string): Promise<boolean> {

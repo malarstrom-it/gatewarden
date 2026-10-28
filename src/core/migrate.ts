@@ -1,5 +1,5 @@
 /**
- * The migration from the pre-package layout (§3.3).
+ * The migration from the pre-package layout (§3.4).
  *
  * The old installation kept everything in `~/.traefik-dev/`:
  * `config.json`, `registrations.json`, `daemon.pid` and `daemon.log`.

@@ -17,20 +17,34 @@ import {
 } from './paths.ts';
 import { migrateLegacyLayout, type MigrationReport } from './migrate.ts';
 
+/**
+ * The built-in defaults.
+ *
+ * They are neutral: not one value of one installation is in here (§3.2).
+ * The values that name somebody's own setup — the DNS zone, the
+ * certificate resolver, the provider of the shared middlewares and the
+ * host name the proxy reaches this machine under — are empty, and the
+ * setup wizard derives them or asks for them (§9.2).
+ *
+ * What is left is what the package itself decides: the adapter, the
+ * ports, the entry point name Traefik uses by convention, the log
+ * rotation and the loopback addresses, which are the loopback addresses
+ * of every machine.
+ */
 export const DEFAULT_CONFIG: Config = {
   proxy: 'traefik',
   registryPort: 45002,
   relayPort: 45001,
   advertisedIp: '',
-  advertisedHost: 'devbox',
-  zone: 'home.malarstrom.com',
+  advertisedHost: '',
+  zone: '',
   entryPoints: ['websecure'],
-  certResolver: 'cloudflare',
+  certResolver: '',
   tlsMode: 'wildcard',
   securityHeaders: false,
   compressMiddleware: false,
-  middlewareProvider: 'file',
-  allowedCidrs: ['172.16.2.0/24', '127.0.0.1/32', '::1/128'],
+  middlewareProvider: '',
+  allowedCidrs: ['127.0.0.1/32', '::1/128'],
   secret: '',
   stateDir: '',
   documentFormat: 'yaml',
@@ -44,17 +58,17 @@ export const CONFIG_KEYS: Record<string, string> = {
   proxy: 'Which proxy adapter writes the dynamic configuration ("traefik").',
   registryPort: 'Port the registry listener binds on 0.0.0.0 (the dynamic configuration document).',
   relayPort: 'Port the relay listener binds on 0.0.0.0 (dispatches to 127.0.0.1:<devPort>).',
-  advertisedIp: 'IP this container advertises to Traefik for the service URLs (default: first non-loopback IPv4).',
+  advertisedIp: 'IP this machine advertises to the proxy for the service URLs (empty = the first non-loopback IPv4).',
   advertisedHost:
-    'Host name the Traefik container reaches this container under (Docker network "private"). Default: "devbox", the compose service name. Use the container IP if the name is not resolvable.',
-  zone: 'DNS zone the FQDNs are built from.',
+    'Host name the proxy reaches this machine under (empty = the advertised IP). Use a name that the proxy can resolve.',
+  zone: 'DNS zone the FQDNs are built from (empty until the setup wizard derives or asks for it).',
   entryPoints: 'Traefik entryPoint names the generated routers attach to.',
-  certResolver: 'Name of the Traefik ACME certificate resolver (the user\'s is "cloudflare"; empty = no tls block).',
+  certResolver: 'Name of the Traefik ACME certificate resolver (empty = no tls block).',
   tlsMode: 'Certificate granularity: "wildcard" = one certificate per project, "fqdn" = one certificate per branch.',
   securityHeaders:
-    'Also apply the user\'s "default-security-headers" middleware to the dev routers (default false: frameDeny/stsPreload can break previews).',
-  compressMiddleware: 'Also apply the user\'s "compress" middleware to the dev routers (default false).',
-  middlewareProvider: 'Name of the Traefik provider that owns the shared middlewares ("file" in the user\'s setup).',
+    'Also apply the "default-security-headers" middleware of the shared middlewares to the dev routers (default false: frameDeny/stsPreload can break previews).',
+  compressMiddleware: 'Also apply the "compress" middleware of the shared middlewares to the dev routers (default false).',
+  middlewareProvider: 'Name of the Traefik provider that owns the shared middlewares (empty = the shared middlewares are not used).',
   allowedCidrs: 'CIDRs allowed to send the X-Dev-Target dispatch header to the relay.',
   secret: 'Optional shared secret, checked on the registry document and the relay dispatch.',
   stateDir: 'Directory holding the route store and the pidfile.',
@@ -210,7 +224,7 @@ export interface LoadedConfig {
  *
  * Precedence: built-in defaults < configuration file < explicit overrides.
  *
- * On the first run the old layout (`~/.traefik-dev/`) is picked up (§3.3):
+ * On the first run the old layout (`~/.traefik-dev/`) is picked up (§3.4):
  * when the new configuration file does not exist and the old one does, the
  * old values become the new configuration and the old route store is
  * imported. The old directory is left in place.
@@ -251,12 +265,12 @@ export function loadConfigWithReport(opts: LoadConfigOptions = {}): LoadedConfig
   // what the configuration is built from.
   const source = Object.keys(fileConfig).length > 0 ? fileConfig : (legacyRaw as Partial<Config> | undefined) ?? {};
 
-  const merged: Config = {
+  const merged: Config = normaliseConfig({
     ...DEFAULT_CONFIG,
     ...pickKnown(source),
     ...(opts.overrides ?? {}),
     stateDir,
-  };
+  });
 
   if (!merged.advertisedIp) merged.advertisedIp = detectIpv4();
   if (!merged.advertisedHost) merged.advertisedHost = merged.advertisedIp;
@@ -267,12 +281,8 @@ export function loadConfigWithReport(opts: LoadConfigOptions = {}): LoadedConfig
       merged.allowedCidrs = [...merged.allowedCidrs, prefix];
     }
   }
-  merged.registryPort = Number(merged.registryPort);
-  merged.relayPort = Number(merged.relayPort);
-  if (!Array.isArray(merged.entryPoints) || merged.entryPoints.length === 0) merged.entryPoints = ['websecure'];
-  if (merged.documentFormat !== 'json') merged.documentFormat = 'yaml';
 
-  // The first run: move the old layout to the new one (§3.3).
+  // The first run: move the old layout to the new one (§3.4).
   let migration: MigrationReport | undefined;
   if (mayMigrate && (legacyRaw !== undefined || fs.existsSync(legacyRoutesFile))) {
     migration = migrateLegacyLayout({
@@ -346,11 +356,118 @@ function pickKnown(fileConfig: Partial<Config>): Partial<Config> {
   return out as Partial<Config>;
 }
 
+/** Is the value a string? */
+function isString(value: unknown): value is string {
+  return typeof value === 'string';
+}
+
+/** Is the value a boolean? */
+function isBoolean(value: unknown): value is boolean {
+  return typeof value === 'boolean';
+}
+
+/**
+ * The value of a number, or the fallback.
+ *
+ * A number in the file may be written as a string ("45002"): it is read
+ * as the number it names. A value that is not a number at all is not a
+ * value: the built-in default is used instead.
+ */
+function numberOr(value: unknown, fallback: number): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+/**
+ * The strings of a list, or the fallback when the value is not a list.
+ *
+ * An empty list is a list: the trust list may be empty on purpose, and
+ * the fallback is only for a value that is not a list at all.
+ */
+function stringListOr(value: unknown, fallback: string[]): string[] {
+  if (!Array.isArray(value)) return [...fallback];
+  return value.filter((entry): entry is string => typeof entry === 'string');
+}
+
+/**
+ * The configuration, with every value of the type its key needs.
+ *
+ * The configuration file is written by hand as often as by the wizard,
+ * and a hand-written file may hold anything: a number where a string
+ * belongs, a null where a list belongs. A value of the wrong type is not
+ * a value: the built-in default is used instead. A file like that is
+ * wrong, but it cannot crash the process.
+ */
+export function normaliseConfig(config: Config): Config {
+  const entryPoints = stringListOr(config.entryPoints, DEFAULT_CONFIG.entryPoints);
+  return {
+    ...config,
+    proxy: isString(config.proxy) ? config.proxy : DEFAULT_CONFIG.proxy,
+    registryPort: numberOr(config.registryPort, DEFAULT_CONFIG.registryPort),
+    relayPort: numberOr(config.relayPort, DEFAULT_CONFIG.relayPort),
+    advertisedIp: isString(config.advertisedIp) ? config.advertisedIp : DEFAULT_CONFIG.advertisedIp,
+    advertisedHost: isString(config.advertisedHost) ? config.advertisedHost : DEFAULT_CONFIG.advertisedHost,
+    zone: isString(config.zone) ? config.zone : DEFAULT_CONFIG.zone,
+    entryPoints: entryPoints.length > 0 ? entryPoints : [...DEFAULT_CONFIG.entryPoints],
+    certResolver: isString(config.certResolver) ? config.certResolver : DEFAULT_CONFIG.certResolver,
+    tlsMode: config.tlsMode === 'fqdn' ? 'fqdn' : DEFAULT_CONFIG.tlsMode,
+    securityHeaders: isBoolean(config.securityHeaders) ? config.securityHeaders : DEFAULT_CONFIG.securityHeaders,
+    compressMiddleware: isBoolean(config.compressMiddleware)
+      ? config.compressMiddleware
+      : DEFAULT_CONFIG.compressMiddleware,
+    middlewareProvider: isString(config.middlewareProvider)
+      ? config.middlewareProvider
+      : DEFAULT_CONFIG.middlewareProvider,
+    allowedCidrs: stringListOr(config.allowedCidrs, DEFAULT_CONFIG.allowedCidrs),
+    secret: isString(config.secret) ? config.secret : DEFAULT_CONFIG.secret,
+    stateDir: isString(config.stateDir) ? config.stateDir : DEFAULT_CONFIG.stateDir,
+    documentFormat: config.documentFormat === 'json' ? 'json' : DEFAULT_CONFIG.documentFormat,
+    logMaxBytes: numberOr(config.logMaxBytes, DEFAULT_CONFIG.logMaxBytes),
+    logKeep: numberOr(config.logKeep, DEFAULT_CONFIG.logKeep),
+    autostart: isBoolean(config.autostart) ? config.autostart : DEFAULT_CONFIG.autostart,
+  };
+}
+
+/**
+ * The DNS zone of the installation, as a string.
+ *
+ * The configuration file is written by hand as often as by the wizard, and
+ * a hand-written file may hold a zone that is not a string. Such a zone is
+ * no zone: the value is empty, and the code that needs a zone says that it
+ * has none instead of failing on the type.
+ */
+export function zoneOf(config: Pick<Config, 'zone'>): string {
+  return isString(config.zone) ? config.zone.trim() : '';
+}
+
+/**
+ * The DNS zone of the installation.
+ *
+ * The host names of the routes are built from the zone, so an
+ * installation that has none cannot name a route. The error says how to
+ * get one instead of building a host name with a trailing dot.
+ */
+export function requireZone(config: Pick<Config, 'zone'>): string {
+  const zone = zoneOf(config);
+  if (!zone) {
+    throw new Error('no DNS zone is configured: run "dev-gateway setup" to derive one, or write it in the configuration file');
+  }
+  return zone;
+}
+
 /**
  * The content of the configuration file: the known keys, in a stable order.
  *
- * The auto-detected IPv6 prefixes stay out of the file: they are derived at
- * runtime and would go stale.
+ * The values that are derived at runtime stay out of the file: the
+ * auto-detected IPv6 prefixes, the address of this machine and the host
+ * name that is the address. They are derived again on every run, and a
+ * file that pins the address of the moment it was written keeps
+ * advertising an address the machine does not have any more. An empty
+ * value means "derived", the same way an empty zone means "not set yet".
  */
 export function configFileContent(config: Config): Record<string, unknown> {
   const data: Record<string, unknown> = {};
@@ -360,6 +477,16 @@ export function configFileContent(config: Config): Record<string, unknown> {
       data[key] = value.filter(
         (cidr) => !String(cidr).includes(':') || DEFAULT_CONFIG.allowedCidrs.includes(String(cidr)),
       );
+      continue;
+    }
+    // The address of this machine is detected, and the host name that is
+    // the address is derived from it.
+    if (key === 'advertisedIp' && value === detectIpv4()) {
+      data[key] = '';
+      continue;
+    }
+    if (key === 'advertisedHost' && value === config.advertisedIp) {
+      data[key] = '';
       continue;
     }
     data[key] = value;

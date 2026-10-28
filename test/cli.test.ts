@@ -69,6 +69,20 @@ test('list and status report the state, unregister removes it', async (t) => {
   assert.match(after, /no registrations/);
 });
 
+test('register refuses when no zone is configured', async (t) => {
+  const cli = await makeCliFixture({ config: { zone: '' } });
+  t.after(() => cli.cleanup());
+
+  const result = await cli.runFail(['register', '--project', 'probe', '--branch', 'main', '--port', '3999']);
+  assert.equal(result.code, 1, `${result.stdout}${result.stderr}`);
+  assert.match(result.stderr, /no DNS zone is configured/);
+  assert.match(result.stderr, /dev-gateway setup/, 'the error does not say how to get a zone');
+
+  // Nothing was registered: a route without a zone has no name.
+  const store = new RegistrationStore(cli.dir);
+  assert.equal(store.list().length, 0);
+});
+
 test('register rejects invalid input', async (t) => {
   const cli = await makeCliFixture();
   t.after(() => cli.cleanup());

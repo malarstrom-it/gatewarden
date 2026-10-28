@@ -29,8 +29,10 @@ import { fileURLToPath } from 'node:url';
 import {
   configFileContent,
   loadConfigWithReport,
+  requireZone,
   writeConfigFile,
   listenHost,
+  zoneOf,
   CONFIG_KEYS,
 } from '../core/config.ts';
 import { legacyDir, type GatewayPaths } from '../core/paths.ts';
@@ -202,6 +204,17 @@ async function commandRegister(flags: Record<string, string | boolean>): Promise
   const { config, configPath } = resolveConfig(flags);
   fs.mkdirSync(config.stateDir, { recursive: true });
 
+  // The host names are built from the zone. An installation that has
+  // none cannot name a route, and the error says how to get one instead
+  // of registering a route with a trailing dot in its name.
+  let zone: string;
+  try {
+    zone = requireZone(config);
+  } catch (error) {
+    process.stderr.write(`error: ${(error as Error).message}\n`);
+    return 1;
+  }
+
   const started = await ensureDaemon(config, { configPath });
   if (started.error) {
     process.stderr.write(`error: ${started.error}\n`);
@@ -213,7 +226,7 @@ async function commandRegister(flags: Record<string, string | boolean>): Promise
   // same time (D10): the lock keeps the second one from dropping the
   // route of the first.
   const registration = await withRouteLock(config.stateDir, () =>
-    store.upsert({ project, branch, devPort, label, zone: config.zone }),
+    store.upsert({ project, branch, devPort, label, zone }),
   );
   const up = await isPortListening(devPort);
 
@@ -350,7 +363,7 @@ async function commandStatus(flags: Record<string, string | boolean>): Promise<n
       `registry:     ${listenHost()}:${config.registryPort}`,
       `relay:        ${listenHost()}:${config.relayPort}`,
       `advertised:   ${config.advertisedHost || config.advertisedIp} (ip ${config.advertisedIp})`,
-      `zone:         ${config.zone}`,
+      `zone:         ${zoneOf(config) || '(not configured)'}`,
       `entryPoints:  ${config.entryPoints.join(', ')}`,
       `certResolver: ${config.certResolver || '(none)'}`,
       `secret:       ${config.secret ? 'configured' : 'not configured'}`,
@@ -384,7 +397,7 @@ function commandConfig(flags: Record<string, string | boolean>): number {
 }
 
 /**
- * Move the old layout (`~/.traefik-dev/`) to the new one (§3.3).
+ * Move the old layout (`~/.traefik-dev/`) to the new one (§3.4).
  *
  * The report says what moved and what stayed where it was. Nothing is ever
  * deleted: the old directory is left in place.
@@ -580,6 +593,29 @@ async function commandDoctor(flags: Record<string, string | boolean>): Promise<n
       : `not running (pidfile ${status.pidFile})`,
   });
 
+  // The host names are built from the zone. Without one the gateway
+  // serves a document whose routers have no name. The zone of a file
+  // that was written by hand may be of any type: it is a zone when it is
+  // a string, and nothing else.
+  const zone = zoneOf(config);
+  checks.push({
+    name: 'dns zone',
+    status: zone ? 'ok' : 'fail',
+    detail: zone ? zone : 'not configured: the host names are built from it (run "dev-gateway setup")',
+  });
+
+  // The shared middlewares live in another provider. Without the name of
+  // that provider they cannot be referenced.
+  if (config.compressMiddleware || config.securityHeaders) {
+    checks.push({
+      name: 'shared middlewares',
+      status: config.middlewareProvider ? 'ok' : 'fail',
+      detail: config.middlewareProvider
+        ? config.middlewareProvider
+        : 'the shared middlewares are on, but no provider owns them (run "dev-gateway setup")',
+    });
+  }
+
   const registryUp = await isPortListening(config.registryPort);
   checks.push({
     name: 'registry port',
@@ -601,6 +637,19 @@ async function commandDoctor(flags: Record<string, string | boolean>): Promise<n
     status: 'ok',
     detail: `${registrations.length} registered`,
   });
+
+  // The routes and the zone together: a route is named from the zone,
+  // and an installation that has routes but no zone cannot name a new
+  // one. The two are one state, and the doctor says so.
+  if (registrations.length > 0) {
+    checks.push({
+      name: 'routes and zone',
+      status: zone ? 'ok' : 'fail',
+      detail: zone
+        ? `${registrations.length} registered, the zone is ${zone}`
+        : `${registrations.length} registered, but the configuration has no zone: the host names of the routes are built from it (run "dev-gateway setup")`,
+    });
+  }
 
   let proxy: DoctorCheck = {
     name: 'proxy',

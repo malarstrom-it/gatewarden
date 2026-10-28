@@ -24,9 +24,10 @@ import fs from 'node:fs';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
+import dns from 'node:dns/promises';
 import { createInterface, type Interface } from 'node:readline';
 import { requireAdapter } from '../adapters/index.ts';
-import { DEFAULT_CONFIG, writeConfigFile } from '../core/config.ts';
+import { DEFAULT_CONFIG, writeConfigFile, zoneOf } from '../core/config.ts';
 import { daemonStatus, ensureDaemon, stopDaemon } from '../core/daemonControl.ts';
 import { RegistrationStore } from '../core/state.ts';
 import { withRouteLock } from '../core/lock.ts';
@@ -39,6 +40,46 @@ export type VerificationStatus = 'verified' | 'failed' | 'skipped';
 
 /** Why the verification was skipped when no proxy answers. */
 export const NO_PROXY_REASON = 'no proxy answers, so there is no public URL to fetch';
+
+/**
+ * Why the verification was skipped when there is no zone.
+ *
+ * The host names are built from the zone. Without one there is no public
+ * URL to fetch, and a route with an empty zone would be a host name with
+ * a trailing dot.
+ */
+export const NO_ZONE_REASON = 'no DNS zone is configured, so there is no public URL to fetch';
+
+/**
+ * Why the verification failed when the relay refused the request.
+ *
+ * The relay only serves the addresses in the trust list (`allowedCidrs`)
+ * — and the secret, when there is one. A refusal is neither a missing
+ * certificate nor a proxy that does not know the route, and saying so
+ * saves the user from looking in the wrong place.
+ */
+export const FORBIDDEN_REASON =
+  'the relay refused the request: the address of the proxy is not in the trust list (allowedCidrs), or the secret is wrong';
+
+/**
+ * Why the verification failed when the proxy refused the request.
+ *
+ * The proxy may refuse a request itself: an `ipAllowList`, a
+ * `forwardAuth`, a middleware of its own. That has nothing to do with the
+ * trust list of the relay, and sending the user there would send them to
+ * the wrong place.
+ */
+export const PROXY_REFUSED_REASON =
+  'the proxy refused the request (403): the middleware of the proxy did not let it through (an ipAllowList, a forwardAuth)';
+
+/**
+ * The bodies the relay refuses with.
+ *
+ * The relay says who it is when it refuses: the trust list or the secret.
+ * A proxy that refuses in front of it says something else, and the two
+ * ask different things of the user.
+ */
+const RELAY_REFUSALS = ['forbidden: source address not allowed', 'forbidden: relay secret missing or wrong'];
 
 /**
  * Why the verification was skipped when the proxy does not serve the
@@ -103,13 +144,18 @@ export interface SetupReport {
   config: {
     path: string;
     written: boolean;
-    /** The values that were not written: nobody confirmed them. */
+    /**
+     * The values that were not written: they are the built-in defaults,
+     * and the defaults belong to the package (§3.2).
+     */
     omitted: string[];
     zone: string;
     entryPoints: string[];
     certResolver: string;
     middlewareProvider: string;
     advertisedHost: string;
+    /** The sources that may send the dispatch header to the relay. */
+    allowedCidrs: string[];
     /**
      * Where every value came from: `the proxy`, `the user`,
      * `the configuration` or `the default` (§9.2).
@@ -213,6 +259,66 @@ export function wiringDir(stateDir: string): string {
   return path.join(stateDir, 'wiring');
 }
 
+/** Is the address a loopback address? */
+function isLoopbackAddress(address: string): boolean {
+  const normalized = address.toLowerCase();
+  if (normalized === '::1' || normalized === '0:0:0:0:0:0:0:1') return true;
+  if (normalized.startsWith('::ffff:')) return isLoopbackAddress(normalized.slice('::ffff:'.length));
+  return normalized.startsWith('127.');
+}
+
+/**
+ * The value of a promise, or nothing when it takes too long.
+ *
+ * A name that does not resolve can keep a lookup busy for a long time.
+ * The wizard asks a question about it, and a wizard that hangs is a
+ * wizard that hangs.
+ */
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(new Error(`the lookup took more than ${ms} ms`)), ms);
+        timer.unref?.();
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/**
+ * The addresses of the proxy, as far as the wizard can tell.
+ *
+ * The wizard talks to the proxy's API at a URL, and the host of that URL
+ * is the proxy. The proxy is the one that sends the dispatch header to
+ * the relay, so the relay has to accept its addresses. A proxy on the
+ * loopback address needs nothing: the loopback is allowed already.
+ */
+export async function proxyAddresses(apiBaseUrl: string | undefined): Promise<string[]> {
+  if (!apiBaseUrl) return [];
+  let host: string;
+  try {
+    host = new URL(apiBaseUrl).hostname;
+  } catch {
+    return [];
+  }
+  if (!host || host === 'localhost') return [];
+  try {
+    const found = await withTimeout(dns.lookup(host, { all: true }), 2000);
+    return found.map((entry) => entry.address).filter((address) => !isLoopbackAddress(address));
+  } catch {
+    return [];
+  }
+}
+
+/** The CIDR that holds exactly one address. */
+export function cidrOf(address: string): string {
+  return address.includes(':') ? `${address}/128` : `${address}/32`;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -257,7 +363,9 @@ class Prompter {
    * nobody confirmed.
    */
   async ask(question: string, fallback: string, timeoutMs: number): Promise<{ answer: string; timedOut: boolean }> {
-    this.rl.setPrompt(`${question} [${fallback}]: `);
+    // A value that is not set has no name in the question: "(none)" says
+    // that there is nothing to keep, where an empty bracket says nothing.
+    this.rl.setPrompt(`${question} [${fallback || 'none'}]: `);
     this.rl.prompt();
 
     const line = await this.readLine(timeoutMs);
@@ -385,6 +493,36 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
     JSON.stringify(value) === JSON.stringify(fallback) ? 'the default' : 'the configuration';
 
   /**
+   * Where the advertised host comes from.
+   *
+   * The address that was detected is not a value the user configured: it
+   * is derived from the network interfaces of this machine, and it goes
+   * stale when the machine gets another address. It is therefore not
+   * written to the configuration file: the file holds an empty value,
+   * which means "derived" (§3.2).
+   */
+  const advertisedOrigin = (value: string): string => {
+    if (!value) return 'the default';
+    if (value === config.advertisedIp) return 'the default';
+    return origin(value, DEFAULT_CONFIG.advertisedHost);
+  };
+
+  /**
+   * The string of a value, or the empty string.
+   *
+   * The configuration file is written by hand as often as by the wizard,
+   * and a hand-written file may hold a value of any type. The wizard
+   * asks about strings and lists: a value of another type is no value.
+   */
+  const text = (value: unknown): string => (typeof value === 'string' ? value : '');
+
+  /**
+   * The strings of a list, or the empty list.
+   */
+  const texts = (value: unknown): string[] =>
+    Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
+
+  /**
    * Settle one value: the proxy's, or the user's, or the one there is.
    */
   const settle = async (
@@ -418,7 +556,7 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
   config.zone = await settle(
     'zone',
     '   the DNS zone the host names are built from',
-    proxy.zone ?? config.zone,
+    proxy.zone ?? zoneOf(config),
     DEFAULT_CONFIG.zone,
     proxy.zone !== undefined,
   );
@@ -427,12 +565,12 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
     config.entryPoints = proxy.entryPoints;
     sources['entryPoints'] = 'the proxy';
   } else if (interactive && prompter) {
-    const current = config.entryPoints.join(', ');
+    const current = texts(config.entryPoints).join(', ');
     const answer = await prompter.ask('   the entry points the routers attach to (comma separated)', current, promptTimeoutMs);
     if (answer.timedOut) {
       // Nobody answered: the value that is kept is a value nobody
       // confirmed (§9.2).
-      sources['entryPoints'] = origin(config.entryPoints, DEFAULT_CONFIG.entryPoints);
+      sources['entryPoints'] = origin(texts(config.entryPoints), DEFAULT_CONFIG.entryPoints);
       unconfirmed.push('entryPoints');
     } else {
       const parsed = answer.answer
@@ -440,17 +578,17 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
         .map((entry) => entry.trim())
         .filter((entry) => entry.length > 0);
       if (parsed.length > 0) config.entryPoints = parsed;
-      sources['entryPoints'] = answer.answer === current ? origin(config.entryPoints, DEFAULT_CONFIG.entryPoints) : 'the user';
+      sources['entryPoints'] = answer.answer === current ? origin(texts(config.entryPoints), DEFAULT_CONFIG.entryPoints) : 'the user';
     }
   } else {
-    sources['entryPoints'] = origin(config.entryPoints, DEFAULT_CONFIG.entryPoints);
+    sources['entryPoints'] = origin(texts(config.entryPoints), DEFAULT_CONFIG.entryPoints);
     unconfirmed.push('entryPoints');
   }
 
   config.certResolver = await settle(
     'certResolver',
     '   the certificate resolver (empty means no TLS block)',
-    proxy.certResolver ?? config.certResolver,
+    proxy.certResolver ?? text(config.certResolver),
     DEFAULT_CONFIG.certResolver,
     proxy.certResolver !== undefined,
   );
@@ -458,33 +596,110 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
   config.middlewareProvider = await settle(
     'middlewareProvider',
     '   the proxy provider that owns the shared middlewares',
-    proxy.middlewareProvider ?? config.middlewareProvider,
+    proxy.middlewareProvider ?? text(config.middlewareProvider),
     DEFAULT_CONFIG.middlewareProvider,
     proxy.middlewareProvider !== undefined,
   );
+
+  // The trust list: the sources that may send the dispatch header to the
+  // relay (§9.2). The proxy is the one that sends it, and the wizard
+  // knows where the proxy is: its API answered there. The addresses of
+  // the proxy are therefore part of the list; the user may add more.
+  const proxyCidrs = (await proxyAddresses(apiBaseUrl)).map(cidrOf);
+  // The IPv6 prefixes of this machine's own networks are derived at
+  // runtime: they are not part of the list the user is asked about, and
+  // they do not go stale in the configuration file.
+  const allowed = texts(config.allowedCidrs);
+  const derivedIpv6 = allowed.filter(
+    (cidr) => cidr.includes(':') && !DEFAULT_CONFIG.allowedCidrs.includes(cidr),
+  );
+  const currentCidrs = allowed.filter(
+    (cidr) => !cidr.includes(':') || DEFAULT_CONFIG.allowedCidrs.includes(cidr),
+  );
+  const suggestedCidrs = [...new Set([...currentCidrs, ...proxyCidrs])];
+
+  /**
+   * Where the trust list came from.
+   *
+   * The list that is written holds the offered list and the answer: the
+   * addresses of the proxy are in it, and so is everything the user
+   * added. The label names the source that has something to show.
+   */
+  const trustSource = (answer: string): string => {
+    const parsed = answer
+      .split(',')
+      .map((cidr) => cidr.trim())
+      .filter((cidr) => cidr.length > 0);
+    if (parsed.some((cidr) => !suggestedCidrs.includes(cidr))) return 'the user';
+    if (proxyCidrs.length > 0) return 'the proxy';
+    return origin(currentCidrs, DEFAULT_CONFIG.allowedCidrs);
+  };
+
+  if (interactive && prompter) {
+    const answer = await prompter.ask(
+      '   the addresses that may send the dispatch header (comma separated CIDRs, added to the ones already allowed)',
+      suggestedCidrs.join(', '),
+      promptTimeoutMs,
+    );
+    if (answer.timedOut) {
+      // Nobody answered: the value that is kept is a value nobody
+      // confirmed (§9.2).
+      sources['allowedCidrs'] = origin(currentCidrs, DEFAULT_CONFIG.allowedCidrs);
+      unconfirmed.push('allowedCidrs');
+    } else {
+      const parsed = answer.answer
+        .split(',')
+        .map((cidr) => cidr.trim())
+        .filter((cidr) => cidr.length > 0);
+      // The answer adds to the list that was offered. A wizard that
+      // replaced what it offered would take the loopback away from
+      // somebody who typed a list of their own, and the relay would
+      // answer 403 to every request of the proxy: the routes would break
+      // without a word about the trust list.
+      config.allowedCidrs = [...new Set([...suggestedCidrs, ...parsed, ...derivedIpv6])];
+      sources['allowedCidrs'] = trustSource(answer.answer);
+    }
+  } else if (proxyCidrs.length > 0) {
+    // Nobody to ask, but the proxy answered at an address of its own:
+    // that address is a source of the dispatch header.
+    config.allowedCidrs = [...new Set([...suggestedCidrs, ...derivedIpv6])];
+    sources['allowedCidrs'] = 'the proxy';
+  } else {
+    sources['allowedCidrs'] = origin(currentCidrs, DEFAULT_CONFIG.allowedCidrs);
+    unconfirmed.push('allowedCidrs');
+  }
 
   // The host name the proxy reaches this machine under is not something the
   // proxy's API says: it is this machine's own name. It is asked for when
   // there is somebody to ask, because the wiring is written with it, and
   // it is reported as unconfirmed when there is not (§9.2).
-  const advertisedIsDefault = origin(config.advertisedHost, DEFAULT_CONFIG.advertisedHost) === 'the default';
   if (interactive && prompter) {
     const current = config.advertisedHost || config.advertisedIp;
     const answer = await prompter.ask('   the host name the proxy reaches this machine under', current, promptTimeoutMs);
     if (answer.timedOut) {
       // Nobody answered: the value that is kept is a value nobody
       // confirmed (§9.2).
-      sources['advertisedHost'] = origin(current, DEFAULT_CONFIG.advertisedHost);
+      sources['advertisedHost'] = advertisedOrigin(current);
       unconfirmed.push('advertisedHost');
     } else {
       config.advertisedHost = answer.answer;
-      sources['advertisedHost'] = answer.answer === current ? origin(current, DEFAULT_CONFIG.advertisedHost) : 'the user';
+      sources['advertisedHost'] = answer.answer === current ? advertisedOrigin(current) : 'the user';
     }
   } else {
-    sources['advertisedHost'] = advertisedIsDefault ? 'the default' : 'the configuration';
+    sources['advertisedHost'] = advertisedOrigin(config.advertisedHost || config.advertisedIp);
     unconfirmed.push('advertisedHost');
   }
   prompter?.close();
+
+  // The values the configuration gets, and where every one of them came
+  // from. The user reads this before the daemon serves anything.
+  log('   the values');
+  log(`   zone:           ${zoneOf(config) || '(none)'}`);
+  log(`   entry points:   ${texts(config.entryPoints).join(', ') || '(none)'}`);
+  log(`   cert resolver:  ${text(config.certResolver) || '(none)'}`);
+  log(`   middleware:     ${text(config.middlewareProvider) || '(none)'}`);
+  log(`   allowed cidrs:  ${texts(config.allowedCidrs).join(', ') || '(none)'}`);
+  log(`   advertised host:${text(config.advertisedHost) || '(none)'}`);
 
   // Step three: is the proxy already wired? (§9.3).
   const wired = discovered?.wired === true;
@@ -515,10 +730,11 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
   // configuration. The daemon is therefore restarted. The routes live in
   // the route store, not in the daemon, so a restart does not lose them.
   //
-  // The values nobody confirmed are not written when they are the
-  // built-in default: a new installation would otherwise get the zone of
-  // another project in its configuration file.
-  const omitted = unconfirmed.filter((name) => sources[name] === 'the default');
+  // The values that are the built-in default are not written: the file
+  // holds what belongs to this installation, and the default belongs to
+  // the package (§3.2). A new installation would otherwise get the zone
+  // of another project in its configuration file.
+  const omitted = Object.keys(sources).filter((name) => sources[name] === 'the default');
   writeConfigFile(opts.configPath, config, { omit: omitted });
   const daemon = await startDaemonWith(config, opts.configPath);
   if (daemon.error) {
@@ -559,6 +775,12 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
   );
 
   const nextSteps: string[] = [];
+  if (!zoneOf(config)) {
+    // Without a zone there is no host name: no route, no public URL.
+    nextSteps.push(
+      `set the DNS zone in ${opts.configPath}, or run the setup again where the proxy answers: the host names are built from it`,
+    );
+  }
   if (!wired && wiring) {
     // The wiring may already be in the proxy: a proxy that polls the
     // gateway has no route of ours to show before the first one is
@@ -579,6 +801,14 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
     nextSteps.push(
       'the proxy does not serve the route: add the wiring, and check that the entry points of the proxy are the ones the routes attach to',
     );
+  } else if (verification.status === 'failed' && verification.reason === FORBIDDEN_REASON) {
+    nextSteps.push(
+      'the relay refused the request: the address of the proxy has to be in the trust list (allowedCidrs) of the configuration file',
+    );
+  } else if (verification.status === 'failed' && verification.reason === PROXY_REFUSED_REASON) {
+    nextSteps.push(
+      'the proxy refused the request: the middleware of the proxy (an ipAllowList, a forwardAuth) did not let the request through',
+    );
   } else if (verification.status === 'failed') {
     nextSteps.push(
       'the public URL did not answer: the proxy has to route the route, and the certificate of the public URL has to be trusted by this machine',
@@ -596,11 +826,12 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
       path: opts.configPath,
       written: true,
       omitted,
-      zone: config.zone,
-      entryPoints: config.entryPoints,
-      certResolver: config.certResolver,
-      middlewareProvider: config.middlewareProvider,
-      advertisedHost: config.advertisedHost,
+      zone: zoneOf(config),
+      entryPoints: texts(config.entryPoints),
+      certResolver: text(config.certResolver),
+      middlewareProvider: text(config.middlewareProvider),
+      advertisedHost: text(config.advertisedHost),
+      allowedCidrs: texts(config.allowedCidrs),
       sources,
       unconfirmed,
     },
@@ -680,10 +911,17 @@ async function verifyEndToEnd(opts: VerifyOptions): Promise<SetupReport['verific
   if (!opts.proxyReachable) {
     return { status: 'skipped', reason: NO_PROXY_REASON, steps };
   }
+  if (!zoneOf(opts.config)) {
+    // The host names are built from the zone. Without one there is no
+    // public URL to fetch, and the throwaway route would be a host name
+    // with a trailing dot.
+    return { status: 'skipped', reason: NO_ZONE_REASON, steps };
+  }
 
   const project = 'dev-gateway-setup';
   const branch = 'check';
-  const fqdn = buildFqdn(project, branch, opts.config.zone);
+  const zone = zoneOf(opts.config);
+  const fqdn = buildFqdn(project, branch, zone);
   const store = new RegistrationStore(opts.config.stateDir);
   // A route of the user may have the same name: it is put back when the
   // verification is done.
@@ -705,7 +943,7 @@ async function verifyEndToEnd(opts: VerifyOptions): Promise<SetupReport['verific
     record({ name: 'throwaway server', ok: true, detail: `127.0.0.1:${port}` });
 
     await withRouteLock(opts.config.stateDir, () =>
-      store.upsert({ project, branch, devPort: port, zone: opts.config.zone }),
+      store.upsert({ project, branch, devPort: port, zone }),
     );
     record({ name: 'route registered', ok: true, detail: fqdn });
 
@@ -730,6 +968,26 @@ async function verifyEndToEnd(opts: VerifyOptions): Promise<SetupReport['verific
     record({ name: 'public URL', ok: fetched.ok, detail: fetched.detail });
 
     if (fetched.ok) return { status: 'verified', steps };
+    if (fetched.forbidden) {
+      // The relay refused the request. The address of the proxy is not
+      // in the trust list, or the secret is wrong. The trust list is the
+      // usual reason, and the refusal is not a certificate problem.
+      return {
+        status: 'failed',
+        reason: FORBIDDEN_REASON,
+        steps,
+      };
+    }
+    if (fetched.refusedByProxy) {
+      // The proxy refused the request itself: an ipAllowList, a
+      // forwardAuth, a middleware of its own. The trust list of the
+      // relay has nothing to do with it.
+      return {
+        status: 'failed',
+        reason: PROXY_REFUSED_REASON,
+        steps,
+      };
+    }
     if (fetched.notFound) {
       // The proxy knows the URL and does not serve it. Does it know the
       // route? A proxy that does not know it has not picked up the
@@ -761,7 +1019,7 @@ async function verifyEndToEnd(opts: VerifyOptions): Promise<SetupReport['verific
           branch: previous.branch,
           devPort: previous.devPort,
           label: previous.label,
-          zone: opts.config.zone,
+          zone,
         }),
       );
     }
@@ -804,7 +1062,7 @@ function publicUrlPorts(opts: VerifyOptions): number[] {
 async function fetchPublicUrl(
   fqdn: string,
   ports: number[] = [],
-): Promise<{ ok: boolean; detail: string; notFound: boolean }> {
+): Promise<{ ok: boolean; detail: string; notFound: boolean; forbidden: boolean; refusedByProxy: boolean }> {
   const details: string[] = [];
   const candidates: string[] = [];
 
@@ -817,6 +1075,10 @@ async function fetchPublicUrl(
   let certificateFailure: string | undefined;
   /** Did the proxy answer that it does not know the host name? */
   let notFound = false;
+  /** Did the relay refuse the request? */
+  let forbidden = false;
+  /** Did the proxy refuse the request itself? */
+  let refusedByProxy = false;
 
   for (const url of candidates) {
     try {
@@ -826,6 +1088,21 @@ async function fetchPublicUrl(
         // The proxy knows the URL and does not serve it.
         notFound = true;
         details.push(`${url} — ${status}`);
+        continue;
+      }
+      if (response.status === 403) {
+        // Who refused? The relay refuses with a body of its own, and it
+        // says why: the trust list or the secret. A proxy that refuses in
+        // front of it has a body of its own, and the cause is somewhere
+        // else entirely.
+        const body = await response.text().catch(() => '');
+        if (RELAY_REFUSALS.some((refusal) => body.includes(refusal))) {
+          forbidden = true;
+          details.push(`${url} — ${status}: the relay refused the request`);
+        } else {
+          refusedByProxy = true;
+          details.push(`${url} — ${status}: the proxy refused the request`);
+        }
         continue;
       }
       if (!response.ok) {
@@ -844,17 +1121,17 @@ async function fetchPublicUrl(
         // trusted. A plain HTTP answer does not make it usable, and the
         // verification of it would prove nothing.
         details.push(`${url} — ${status}, but ${certificateFailure}`);
-        return { ok: false, detail: details.join('; '), notFound };
+        return { ok: false, detail: details.join('; '), notFound, forbidden, refusedByProxy };
       }
       details.push(`${url} — ${status}`);
-      return { ok: true, detail: details.join('; '), notFound };
+      return { ok: true, detail: details.join('; '), notFound, forbidden, refusedByProxy };
     } catch (error) {
       const reason = describeFetchError(error);
       if (url.startsWith('https://') && reason.includes('certificate')) certificateFailure = reason;
       details.push(`${url} — ${reason}`);
     }
   }
-  return { ok: false, detail: details.join('; ') || 'no URL was tried', notFound };
+  return { ok: false, detail: details.join('; ') || 'no URL was tried', notFound, forbidden, refusedByProxy };
 }
 
 /**

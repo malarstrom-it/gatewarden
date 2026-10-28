@@ -1,5 +1,5 @@
 /**
- * The migration from the old layout (§3.3).
+ * The migration from the old layout (§3.4).
  *
  * The old installation kept everything in `~/.traefik-dev/`. The migration
  * moves the configuration and the route store to the layout of §3.1, and it
