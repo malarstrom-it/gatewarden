@@ -69,6 +69,7 @@ jobs:
           - service.test.ts
           - slug.test.ts
           - state.test.ts
+          - testenv.test.ts
           - websocket.test.ts
     steps:
       - uses: actions/checkout@v4

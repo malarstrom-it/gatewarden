@@ -1,3 +1,6 @@
 node_modules/
 *.log
 dist/
+
+# The Traefik binary the test environment downloads (tools/testenv).
+tools/testenv/.cache/

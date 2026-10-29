@@ -34,6 +34,8 @@
     "clean": "node scripts/clean-dist.mjs",
     "build": "npm run clean && tsc -p tsconfig.build.json",
     "test": "node --test --test-concurrency=1 test/*.test.ts",
+    "test:e2e": "node tools/testenv/run.ts",
+    "test:e2e:stop": "node tools/testenv/stop.ts",
     "typecheck": "tsc --noEmit",
     "prepare": "npm run build",
     "prepublishOnly": "npm run build && npm test",
