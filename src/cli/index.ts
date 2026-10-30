@@ -354,7 +354,7 @@ async function commandStatus(flags: Record<string, string | boolean>): Promise<n
 
   process.stdout.write(
     [
-      `daemon:       ${status.healthy ? 'running' : 'not running'} (pid ${status.pid ?? '-'})`,
+      `daemon:       ${status.running ? (status.healthy ? 'running' : 'running, but not serving yet') : 'not running'} (pid ${status.pid ?? '-'})`,
       `pidfile:      ${status.pidFile}`,
       `logfile:      ${paths.logFile}`,
       `config file:  ${configPath}${fs.existsSync(configPath) ? '' : ' (missing, defaults are used)'}`,
@@ -441,13 +441,28 @@ function commandMigrate(flags: Record<string, string | boolean>): number {
 async function commandStart(flags: Record<string, string | boolean>): Promise<number> {
   const { config, configPath } = resolveConfig(flags);
   const before = await daemonStatus(config);
-  if (before.healthy) {
+  if (before.running || before.healthy) {
+    // The daemon of this installation is not started a second time. It
+    // writes its pidfile before it binds its port, so it can be running
+    // for a moment before it serves; a second daemon would fight for the
+    // same port.
+    const ready = await ensureDaemon(config, { configPath });
+    if (ready.error) {
+      if (wantsJson(flags)) {
+        emitJson({ started: false, alreadyRunning: true, pid: before.pid, error: ready.error });
+        return 1;
+      }
+      process.stderr.write(`error: ${ready.error}\n`);
+      return 1;
+    }
     // A gateway answers on the port, but this installation has no pidfile:
     // the daemon that answers is not this installation's daemon.
     const detail =
       before.pid === null
         ? `a gateway answers on port ${config.registryPort}, but it is not this installation's daemon: there is no pidfile`
-        : `the daemon is already running (pid ${before.pid})`;
+        : before.healthy
+          ? `the daemon is already running (pid ${before.pid})`
+          : `the daemon is running (pid ${before.pid})`;
     if (wantsJson(flags)) {
       emitJson({
         started: false,
@@ -585,12 +600,14 @@ async function commandDoctor(flags: Record<string, string | boolean>): Promise<n
   const status = await daemonStatus(config);
   checks.push({
     name: 'daemon',
-    status: status.healthy ? 'ok' : 'fail',
+    status: status.healthy ? 'ok' : status.running ? 'warn' : 'fail',
     detail: status.healthy
       ? status.pid === null
         ? `a gateway answers on port ${config.registryPort}, but this installation has no pidfile`
         : `running (pid ${status.pid})`
-      : `not running (pidfile ${status.pidFile})`,
+      : status.running
+        ? `running (pid ${status.pid}), but it does not answer /healthz`
+        : `not running (pidfile ${status.pidFile})`,
   });
 
   // The host names are built from the zone. Without one the gateway

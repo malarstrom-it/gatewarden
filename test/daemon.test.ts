@@ -4,17 +4,24 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { loadConfig } from '../src/core/config.ts';
+import { loadConfig, listenHost } from '../src/core/config.ts';
 import { ensureDaemon, isHealthy, daemonStatus } from '../src/core/daemonControl.ts';
 import { RegistrationStore } from '../src/core/state.ts';
 import type { Config } from '../src/core/types.ts';
 
 /** Ask the OS for a free TCP port. */
+/**
+ * Ask the OS for a free TCP port.
+ *
+ * The port is asked for on the address the daemon binds: the daemon
+ * listens on every address of the machine, and a port that is free on
+ * the loopback address alone is not free for it.
+ */
 export function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
     server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => {
+    server.listen(0, listenHost(), () => {
       const address = server.address() as net.AddressInfo;
       const { port } = address;
       server.close(() => resolve(port));

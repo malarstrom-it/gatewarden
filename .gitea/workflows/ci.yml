@@ -53,17 +53,21 @@ jobs:
           - config.test.ts
           - core-isolation.test.ts
           - daemon-config.test.ts
+          - daemon-control.test.ts
           - daemon.test.ts
           - docs.test.ts
           - document.test.ts
           - golden.test.ts
+          - lock.test.ts
           - mcp-conformance.test.ts
           - mcp-server.test.ts
           - migrate.test.ts
           - net.test.ts
+          - packaging.test.ts
           - paths.test.ts
           - pi-extension.test.ts
           - postinstall.test.ts
+          - published-identifiers.test.ts
           - registry.test.ts
           - relay.test.ts
           - service.test.ts

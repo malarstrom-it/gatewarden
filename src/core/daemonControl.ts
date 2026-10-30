@@ -8,7 +8,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, execFileSync } from 'node:child_process';
 import type { Config } from './types.ts';
 import { resolveConfigPath } from './config.ts';
 import { logFileFor } from './paths.ts';
@@ -27,8 +27,30 @@ import { relativeModulePath } from './util/module.ts';
 const DAEMON_PATH = relativeModulePath(import.meta.url, '../daemon');
 
 export interface DaemonStatus {
+  /**
+   * The pid of the daemon, when its pidfile points at a process that runs.
+   *
+   * A pidfile that points at a process that has terminated is stale: the
+   * file is removed and the pid is null.
+   */
   pid: number | null;
+  /**
+   * Does the daemon run?
+   *
+   * The pidfile points at a process that runs. The daemon writes the
+   * pidfile when it starts and removes it when it stops, so this is the
+   * answer to "does the daemon run".
+   */
+  running: boolean;
+  /**
+   * Does the daemon serve?
+   *
+   * The health probe answers. The daemon writes its pidfile before it
+   * binds its port, so a daemon that runs but does not serve yet runs:
+   * the health probe alone would say that it does not.
+   */
   healthy: boolean;
+  /** Path of the pidfile. */
   pidFile: string;
   error?: string;
 }
@@ -74,32 +96,51 @@ export async function isHealthy(config: Config, timeoutMs = 1000): Promise<boole
   }
 }
 
-/** Current daemon status. */
+/**
+ * The state of the daemon.
+ *
+ * Two questions, two answers. The pidfile says whether the daemon runs:
+ * the daemon writes it when it starts and removes it when it stops. The
+ * health probe says whether it serves.
+ *
+ * The two are not the same, and the difference matters: the daemon
+ * writes its pidfile before it binds its port, so a daemon that has
+ * just started runs but does not serve yet. A command that stops the
+ * daemon must not answer "there was nothing to stop" for such a
+ * daemon.
+ */
 export async function daemonStatus(config: Config): Promise<DaemonStatus> {
   const pidFile = pidFilePath(config);
-  let pid: number | null = null;
-  try {
-    const raw = fs.readFileSync(pidFile, 'utf8').trim();
-    pid = Number.parseInt(raw, 10);
-    if (!Number.isFinite(pid)) pid = null;
-  } catch {
-    pid = null;
-  }
+  const pid = readPidFile(pidFile);
+  // The pidfile points at a process that runs *and* that is the gateway's
+  // daemon. A pidfile that points at some other live process is stale:
+  // the daemon that wrote it is gone, and the machine has handed its pid
+  // to somebody else. Such a pidfile must not lock the installation
+  // out: the daemon has to be able to start again.
+  const running = pid !== null && isProcessAlive(pid) && isGatewayDaemon(pid);
   const healthy = await isHealthy(config);
-  if (!healthy && pid !== null) {
-    // The pidfile is stale when the process is gone. A daemon that is
-    // still starting is not stale: it answers /healthz in a moment, and
-    // its pidfile is its own.
-    if (!isProcessAlive(pid)) {
-      try {
-        fs.rmSync(pidFile, { force: true });
-      } catch {
-        // ignore
-      }
-      pid = null;
+
+  if (pid !== null && !running) {
+    // The pidfile points at a process that is gone, or at one that is
+    // not ours: it is stale.
+    try {
+      fs.rmSync(pidFile, { force: true });
+    } catch {
+      // ignore
     }
   }
-  return { pid, healthy, pidFile };
+
+  return { pid: running ? pid : null, running, healthy, pidFile };
+}
+
+/** The pid in the pidfile, when the file holds one. */
+function readPidFile(pidFile: string): number | null {
+  try {
+    const pid = Number.parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
+    return Number.isFinite(pid) ? pid : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -113,9 +154,27 @@ export async function ensureDaemon(
 ): Promise<{ started: boolean; pid: number | null; error?: string }> {
   const timeoutMs = opts.timeoutMs ?? 20_000;
 
-  if (await isHealthy(config)) {
-    const status = await daemonStatus(config);
+  const status = await daemonStatus(config);
+  if (status.healthy) {
     return { started: false, pid: status.pid };
+  }
+
+  if (status.running) {
+    // The daemon runs but does not serve yet: it writes its pidfile
+    // before it binds its port. A second daemon would fight for the same
+    // port, so the one that runs is given the time to answer.
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      if (await isHealthy(config)) {
+        return { started: false, pid: status.pid };
+      }
+    }
+    return {
+      started: false,
+      pid: status.pid,
+      error: `the daemon (pid ${status.pid}) did not answer /healthz within ${timeoutMs} ms`,
+    };
   }
 
   fs.mkdirSync(config.stateDir, { recursive: true });
@@ -150,13 +209,57 @@ export async function ensureDaemon(
   return { started: true, pid: null, error: `daemon did not answer /healthz within ${timeoutMs} ms (see ${logFile})` };
 }
 
-/** Is the process alive? */
+/**
+ * Is the process alive?
+ *
+ * A process that has terminated but has not been reaped yet — a zombie —
+ * is not alive: it runs nothing and holds nothing but its place in the
+ * process table. `kill(pid, 0)` cannot tell the two apart, so the state
+ * of the process is read from the system.
+ *
+ * It matters where the init does not reap. In a container whose PID 1 is
+ * not an init, every orphaned process stays behind as a zombie: the
+ * daemon of the gateway is orphaned when the command that started it
+ * exits, and the gateway would go on believing that its daemon runs.
+ */
 export function isProcessAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
-    return true;
   } catch (error) {
+    // The process is not ours, but it is there.
     return (error as NodeJS.ErrnoException).code === 'EPERM';
+  }
+  return processState(pid) !== 'Z';
+}
+
+/**
+ * The state of a process: `R`, `S`, `Z` and so on.
+ *
+ * Linux keeps it in `/proc/<pid>/stat`; the other systems ask `ps`. The
+ * state is null when it cannot be read.
+ */
+export function processState(pid: number): string | null {
+  if (process.platform === 'linux') {
+    try {
+      const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
+      // The name of the executable sits in parentheses and may contain
+      // spaces, so the state is the field after the last one of them.
+      const fields = stat.slice(stat.lastIndexOf(')') + 1).trim().split(/\s+/);
+      return fields[0] ?? null;
+    } catch {
+      return null;
+    }
+  }
+  // Windows has no zombies: a process that has terminated is gone.
+  if (process.platform === 'win32') return null;
+  try {
+    const state = execFileSync('ps', ['-o', 'state=', '-p', String(pid)], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    return state.trim().charAt(0) || null;
+  } catch {
+    return null;
   }
 }
 
@@ -185,8 +288,12 @@ export function isGatewayDaemon(pid: number): boolean {
     // nothing about what the process does.
     const name = path.basename(script);
     return /daemon|devd/.test(name) && !/cli/.test(name);
-  } catch {
-    return false;
+  } catch (error) {
+    // The process is gone, or its command line cannot be read: a process
+    // that belongs to another user cannot be read. A process the machine
+    // cannot tell us about is not one we may stop either, so it is
+    // treated as ours: the pidfile of it is left alone.
+    return (error as NodeJS.ErrnoException).code === 'EACCES';
   }
 }
 
@@ -196,6 +303,11 @@ export function isGatewayDaemon(pid: number): boolean {
  * The daemon removes its own pidfile when it stops; the file is removed
  * here as well, for a daemon that did not get that far. A process that
  * is not the gateway's daemon is never stopped.
+ *
+ * "Was running" is answered from the pidfile and the liveness of the
+ * process, not from the health probe: a daemon that has just started
+ * writes its pidfile before it binds its port, and it is running even
+ * though it does not serve yet.
  */
 export async function stopDaemon(
   config: Config,
@@ -205,6 +317,8 @@ export async function stopDaemon(
   const pidFile = pidFilePath(config);
 
   if (status.pid === null) {
+    // Nothing runs: there is no pidfile, or it points at a process that
+    // has terminated.
     return { stopped: false, wasRunning: false, pid: null };
   }
 
@@ -232,6 +346,9 @@ export async function stopDaemon(
   while (Date.now() < deadline && isProcessAlive(status.pid)) {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
+  // The daemon has stopped when its process is gone. A process that has
+  // terminated but has not been reaped yet has stopped as well: it only
+  // waits for its parent to collect it.
   const stopped = !isProcessAlive(status.pid);
   if (stopped) {
     try {

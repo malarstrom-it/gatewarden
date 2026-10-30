@@ -27,6 +27,7 @@ import { fileURLToPath } from 'node:url';
 
 import { copyDependencyClosure } from './helpers/install.ts';
 import { promisify } from 'node:util';
+import { listenHost } from '../src/core/config.ts';
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -88,11 +89,18 @@ function parseFrontMatter(content: string): { fields: Record<string, string>; bo
 }
 
 /** Ask the OS for a free TCP port. */
+/**
+ * Ask the OS for a free TCP port.
+ *
+ * The port is asked for on the address the daemon binds: the daemon
+ * listens on every address of the machine, and a port that is free on
+ * the loopback address alone is not free for it.
+ */
 async function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
     server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => {
+    server.listen(0, listenHost(), () => {
       const address = server.address() as net.AddressInfo;
       server.close(() => resolve(address.port));
     });

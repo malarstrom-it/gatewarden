@@ -14,7 +14,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { loadConfig } from '../../src/core/config.ts';
+import { loadConfig, listenHost } from '../../src/core/config.ts';
 import { isHealthy } from '../../src/core/daemonControl.ts';
 
 const execFileAsync = promisify(execFile);
@@ -30,12 +30,22 @@ export const LEGACY_CLI = path.join(REPO_ROOT, 'bin', 'traefik-dev.js');
 /** The daemon under its old name. */
 export const LEGACY_DAEMON = path.join(REPO_ROOT, 'bin', 'traefik-devd.js');
 
-/** Ask the OS for a free TCP port. */
+/**
+ * Ask the OS for a free TCP port.
+ *
+ * The port is asked for on the address the daemon binds: the daemon
+ * listens on every address of the machine, because the proxy of the
+ * user reaches it from another container. A port that is free on the
+ * loopback address alone is not free for the daemon: the machine may
+ * hold it on another address — the runner of the CI holds a few, on the
+ * address it talks to the server over — and the daemon would then fail
+ * to bind it, over and over, and never answer.
+ */
 export function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
     server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => {
+    server.listen(0, listenHost(), () => {
       const { port } = server.address() as net.AddressInfo;
       server.close(() => resolve(port));
     });

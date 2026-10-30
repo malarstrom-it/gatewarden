@@ -99,7 +99,7 @@ export async function gatewayStatus(
     daemon: {
       pid: status.pid,
       healthy: status.healthy,
-      running: status.healthy,
+      running: status.running,
       pidFile: status.pidFile,
     },
     proxy,

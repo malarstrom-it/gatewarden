@@ -33,6 +33,7 @@ import path from 'node:path';
 import test, { after, before, describe } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
+import { listenHost } from '../src/core/config.ts';
 
 import { copyDependencyClosure, linkBinaries, unpackTarball } from './helpers/install.ts';
 
@@ -62,11 +63,18 @@ const MCP_TOOLS = ['dev_gateway_status', 'list_dev_servers', 'publish_dev_server
 const PI_TOOLS = ['list_dev_servers', 'publish_dev_server', 'remove_dev_server'];
 
 /** Ask the OS for a free TCP port. */
+/**
+ * Ask the OS for a free TCP port.
+ *
+ * The port is asked for on the address the daemon binds: the daemon
+ * listens on every address of the machine, and a port that is free on
+ * the loopback address alone is not free for it.
+ */
 async function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
     server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => {
+    server.listen(0, listenHost(), () => {
       const address = server.address() as net.AddressInfo;
       server.close(() => resolve(address.port));
     });
@@ -125,12 +133,17 @@ async function tarballContents(tarball: string): Promise<string[]> {
  * `npm_config_dry_run`, and a nested npm that inherits it packs and
  * installs nothing. npm reads its own configuration from the rc files
  * anyway, so the variables are dropped and the nested npm starts clean.
+ *
+ * The variable `CI` is dropped as well: the install script of the
+ * package does nothing in a CI, on purpose, and the test is about the
+ * daemon it starts when the install is not one.
  */
 function npmEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (key.startsWith('npm_config_')) continue;
     if (key.startsWith('npm_lifecycle_') || key === 'npm_command' || key === 'npm_execpath') continue;
+    if (key === 'CI') continue;
     if (value !== undefined) env[key] = value;
   }
   return { ...env, ...extra };
@@ -369,7 +382,15 @@ describe('the published package', () => {
     assert.ok(actual.includes('docs/AGENTS.md'), 'the agent instructions are not in the tarball');
   });
 
-  test('the install starts the daemon of the installation', async () => {
+  test('the install starts the daemon of the installation', async (t) => {
+    // The install script does not start a daemon when it runs as root:
+    // a global install as root must not start a daemon for one user.
+    // The runner of the CI is root, and there is no daemon to wait for.
+    if (process.getuid?.() === 0) {
+      t.skip('the install script does not start a daemon as root');
+      return;
+    }
+
     const deadline = Date.now() + 30_000;
     let healthy = false;
 

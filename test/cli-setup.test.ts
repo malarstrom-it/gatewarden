@@ -1229,6 +1229,24 @@ test('a configuration file that cannot be written is a clear error', async (t) =
 
   // The configuration file of the installation cannot be written.
   fs.chmodSync(cli.configPath, 0o444);
+  // The permissions of a file are not a thing for a process that runs as
+  // root: it writes the file anyway, and there is no error for the
+  // wizard to report. The test cannot be done on such a machine.
+  const probe = path.join(path.dirname(cli.configPath), 'probe.json');
+  fs.copyFileSync(cli.configPath, probe);
+  fs.chmodSync(probe, 0o444);
+  let writable = false;
+  try {
+    const handle = fs.openSync(probe, 'w');
+    fs.closeSync(handle);
+    writable = true;
+  } catch {
+    // The file cannot be written: the test can be done.
+  }
+  if (writable) {
+    t.skip('this process writes a file it has no permission for');
+    return;
+  }
 
   const result = await cli.runFail(['setup', '--api-base-url', await deadApiUrl()]);
   assert.equal(result.code, 1, `the exit code was ${result.code}: ${result.stdout}${result.stderr}`);

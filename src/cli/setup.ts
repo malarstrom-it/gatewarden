@@ -436,7 +436,7 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
     cwd: opts.cwd,
     stateDir: config.stateDir,
     configPath: opts.configPath,
-    daemonRunning: status.healthy,
+    daemonRunning: status.running,
     daemonPid: status.pid,
   };
   log('1. environment');
@@ -853,7 +853,7 @@ async function startDaemonWith(
   configPath: string,
 ): Promise<{ running: boolean; pid: number | null; restarted: boolean; error?: string }> {
   const before = await daemonStatus(config);
-  if (before.healthy && before.pid !== null) {
+  if (before.running && before.pid !== null) {
     const stopped = await stopDaemon(config);
     if (!stopped.stopped) {
       return {
@@ -868,7 +868,7 @@ async function startDaemonWith(
   return {
     running: !started.error,
     pid: started.pid,
-    restarted: before.healthy,
+    restarted: before.running,
     error: started.error,
   };
 }
