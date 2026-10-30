@@ -166,6 +166,31 @@ published route then returns 502.
 *Consequence*: the daemon is always a separate, detached process. The
 agent-facing integrations are clients of it, never hosts of it.
 
+### D13 — The installation is written out; the wizard is the optional extra step
+
+The installation is described as something the user does: install the
+package, add the `http` provider to the proxy's static configuration and
+restart the proxy, write the configuration file, start the daemon (§9.1).
+The setup wizard stays, and it writes the same values — but it is the extra
+step, not the way an installation is made (D13, §9.2).
+
+*Reason*: the wizard can only derive what the proxy's API answers. On a
+machine where the proxy is not reachable from the gateway, where the API is
+switched off, or where the user does not want to answer questions, the
+wizard produces an installation that is half filled in and reported as
+unconfirmed. A user who has to read a report to find out what to write is
+worse off than one who is told, in order, what to write.
+
+*Rejected*: removing the wizard (it is a real convenience where it works);
+making the wizard the only way in (the installation would depend on the
+proxy's API being reachable and on a terminal being attached).
+
+*Consequence*: every value the wizard writes is documented — the zone, the
+entry points, the certificate resolver, the middleware provider, the
+advertised host name and the trust list — in this specification, in
+`README.md` and in `docs/setup.md`, and the wizard is described as the
+optional extra step in all three.
+
 ---
 
 ## 1. Problem statement
@@ -313,7 +338,7 @@ traefik-api/                          # the repository (name unchanged, D1)
 │   │   └── pi/extension.ts           # pi extension
 │   └── cli/
 │       ├── index.ts
-│       ├── setup.ts                  # the setup wizard (§9)
+│       ├── setup.ts                  # the setup wizard (§9.2)
 │       └── service.ts                # systemd / launchd / schtasks (D7)
 ├── skills/dev-gateway/SKILL.md
 ├── docs/
@@ -369,14 +394,14 @@ needed, plus the ones the package needs:
 | `relayPort` | `45001` | port the relay binds |
 | `advertisedHost` | detected | host name the proxy reaches this machine under |
 | `advertisedIp` | detected | fallback for `advertisedHost` |
-| `zone` | `""` (prompted) | DNS zone host names are built from |
-| `entryPoints` | `["websecure"]` (prompted) | proxy entry points the routers attach to |
-| `certResolver` | `""` (prompted) | proxy ACME resolver name; empty means no TLS block |
+| `zone` | `""` (to be set) | DNS zone host names are built from |
+| `entryPoints` | `["websecure"]` (to be set) | proxy entry points the routers attach to |
+| `certResolver` | `""` (to be set) | proxy ACME resolver name; empty means no TLS block |
 | `tlsMode` | `"wildcard"` | `wildcard` = one certificate per project, `fqdn` = per route |
-| `middlewareProvider` | `""` (prompted) | proxy provider that owns the shared middlewares |
+| `middlewareProvider` | `""` (to be set) | proxy provider that owns the shared middlewares |
 | `securityHeaders` | `false` | apply the shared security-headers middleware |
 | `compressMiddleware` | `false` | apply the shared compress middleware |
-| `allowedCidrs` | `["127.0.0.1/32", "::1/128"]` (prompted) | sources allowed to use the dispatch header |
+| `allowedCidrs` | `["127.0.0.1/32", "::1/128"]` (to be set) | sources allowed to use the dispatch header |
 | `secret` | `""` | optional shared secret |
 | `stateDir` | resolved | runtime state directory |
 | `documentFormat` | `"yaml"` | `yaml` or `json` for the configuration document |
@@ -384,24 +409,32 @@ needed, plus the ones the package needs:
 | `autostart` | `true` | may `postinstall` start the daemon (D7) |
 
 `indexHost` is removed (D8). The defaults are not the user's values: the
-setup wizard derives them and writes them (§9).
+user writes them (§9.1), or the setup wizard derives them and writes them
+(§9.2).
+
+**To be set** means *not set yet*: the value is empty in the built-in
+defaults, and the user writes it in the configuration file (§9.1). The
+wizard may ask for it instead (§9.4), but it is not the only way to get it
+there (D13).
 
 **The defaults are neutral.** Not one value of one installation is in the
 package. The values that name somebody's setup — the zone, the certificate
 resolver, the provider of the shared middlewares, the host name the proxy
 reaches this machine under — are empty, and the trust list holds the loopback
 addresses of every machine. "Empty" means *not set yet*: a route has no host
-name without a zone, so `register` refuses one and says that the setup
-wizard has to run.
+name without a zone, so `register` refuses one and says that the zone has to
+be written in the configuration file.
 
-The wizard fills them in (§9.2). It **derives** the zone, the entry points,
-the certificate resolver, the middleware provider and the addresses of the
-proxy from the proxy itself, and it **asks** for everything it cannot derive:
-the zone, the entry points, the certificate resolver, the middleware
-provider, the trust list and the host name the proxy reaches this machine
-under. A value nobody confirmed is reported as unconfirmed, and a value that
-is the built-in default is not written to the file: the file holds what
-belongs to this installation.
+The user fills them in (§9.1): every one of them is a line in the
+configuration file, and the README holds the whole file with a line about
+every field. The wizard can fill them in instead (§9.4). It **derives** the
+zone, the entry points, the certificate resolver, the middleware provider
+and the addresses of the proxy from the proxy itself, and it **asks** for
+everything it cannot derive: the zone, the entry points, the certificate
+resolver, the middleware provider, the trust list and the host name the proxy
+reaches this machine under. A value nobody confirmed is reported as
+unconfirmed, and a value that is the built-in default is not written to the
+file: the file holds what belongs to this installation.
 
 The values that are **derived at runtime** are not written to the file
 either: the address of this machine, the host name that is the address and
@@ -492,7 +525,7 @@ export interface ProxyInfo {
 }
 ```
 
-`discover()` is what makes the setup wizard automatic (§9.2): for Traefik it
+`discover()` is what makes the setup wizard automatic (§9.4): for Traefik it
 reads `/api/version` and `/api/http/routers`, and the router list yields the
 zone, the entry points, the certificate resolver and the middleware provider
 without the user typing them.
@@ -662,16 +695,70 @@ A short, portable block:
 
 ---
 
-## 9. The setup wizard
+## 9. The installation and the setup wizard
 
-`dev-gateway setup`. Six steps, five of them automatic.
+### 9.1 The installation, by hand
 
-### 9.1 Step one — read the environment
+This is the primary way to install the gateway (D13). Four steps, in this
+order, and every one of them is a thing the user does.
+
+1. **Install the package.** `npm install -g @malarstrom/agent-dev-gateway`,
+   on the machine that runs the development servers. Node 20.11 or later.
+2. **Wire the proxy.** On the machine the proxy runs on, add the `http`
+   provider to the `providers:` block of the static configuration:
+
+   ```yaml
+   providers:
+     http:
+       endpoint: "http://<host>:45002/traefik"
+       pollInterval: 2s
+   ```
+
+   `<host>` is the name the proxy reaches this machine under — the
+   `advertisedHost` of the configuration file. Then restart the proxy: the
+   static configuration is only read at start-up. The gateway cannot make
+   this change: the proxy's configuration lives on another machine.
+3. **Write the configuration file.** `~/.config/dev-gateway/config.json` on
+   Linux (`~/Library/Preferences/dev-gateway/config.json` on macOS,
+   `%APPDATA%\dev-gateway\Config\config.json` on Windows). The file holds
+   the values of §3.2; the README holds the whole file with a line about
+   every field. The one that is required is the `zone`: without it a route
+   has no host name, and `register` refuses one. The `advertisedHost` (the
+   name the wiring points at) and the `certResolver` (the name of the
+   resolver of the proxy) are the values of the proxy — without them the
+   gateway still works, but the address is not the one the user can open.
+   The rest have working defaults.
+4. **Start the daemon.** `dev-gateway start`. The daemon also starts by
+   itself the first time a route is registered, so this step is not
+   strictly necessary — it is there so that the user learns at once that the
+   daemon works.
+
+The installation is then **verified**: `dev-gateway doctor` checks the
+configuration file, the state directory, the daemon, the two ports, the
+routes, the proxy and the service unit, and names every check it made;
+`curl http://<host>:45002/healthz` answers `ok`; a registered route opens
+in a browser.
+
+The three documents that carry this are the README (the section
+"Vad som krävs"), `docs/setup.md` (the same, with the commands and their
+flags, and what every check of `dev-gateway doctor` means) and
+`docs/traefik.md` (what the proxy side must have: the `http` provider, the
+file provider of the shared middlewares, the routers the gateway adds and
+the reachability).
+
+### 9.2 The setup wizard — the optional extra step
+
+`dev-gateway setup`. Six steps, five of them automatic. The wizard writes
+the same values as §9.1 writes by hand, and derives them from the proxy
+where it can. It is optional: it is the extra step, not a requirement for a
+working installation (D13).
+
+### 9.3 Step one — read the environment
 
 Container or not, platform, reachable addresses, the working directory, the
 state directory, whether a daemon is already running.
 
-### 9.2 Step two — discover the proxy
+### 9.4 Step two — discover the proxy
 
 `ProxyAdapter.discover()` (§4.2). For Traefik: `GET /api/version` and
 `GET /api/http/routers`. From the router list the wizard derives the zone
@@ -702,7 +789,7 @@ non-interactive run, a machine without a terminal — the value is kept and
 the wizard reports it as unconfirmed, together with where every value came
 from: the proxy, the user, the configuration file or the built-in default.
 
-### 9.3 Step three — is it already wired?
+### 9.5 Step three — is it already wired?
 
 Whether the proxy already has a provider pointing at this machine. For
 Traefik: is there a router whose provider is the HTTP provider and whose
@@ -714,7 +801,7 @@ that resolves to an address is the same machine as that address.
 
 If it is already wired, the wizard skips to step five and verifies.
 
-### 9.4 Step four — emit the wiring
+### 9.6 Step four — emit the wiring
 
 The wizard prints the exact static configuration to add, with the values
 filled in for this machine, and writes it to
@@ -724,7 +811,7 @@ The wizard cannot apply it itself. The proxy's configuration lives on another
 machine, and the gateway process runs without the privileges to write it.
 The wizard says so plainly rather than pretending.
 
-### 9.5 Step five — verify end to end
+### 9.7 Step five — verify end to end
 
 1. Start a throwaway server on a free port.
 2. Register it.
@@ -742,13 +829,13 @@ route. The configuration is therefore written and the daemon started
 that is not up yet verifies nothing. Step six reports what the
 verification needed.
 
-### 9.6 Step six — write the configuration and start
+### 9.8 Step six — write the configuration and start
 
 The derived values are written to the configuration file, the daemon is
 started, and the wizard recommends `dev-gateway install-service` for
 surviving a reboot.
 
-Both happen before the verification of §9.5, because the verification
+Both happen before the verification of §9.7, because the verification
 needs them; the step reports them, it does not introduce them.
 
 ---
@@ -917,7 +1004,7 @@ dependencies are gone from `package.json`.
 The new binary names, the new commands (`setup`, `start`, `stop`, `doctor`,
 `install-service`, `migrate`) and the JSON output.
 
-*Satisfies*: §5, §9.
+*Satisfies*: §5, §9.2.
 *Acceptance*: `dev-gateway list --json` is machine-readable; every command
 has a test; the old command names still work as aliases.
 
@@ -952,9 +1039,9 @@ specification; the README's quick start works from a clean install.
 
 ### S8 — The setup wizard
 
-`src/cli/setup.ts`: the six steps of §9.
+`src/cli/setup.ts`: the six steps of §9.3–§9.8.
 
-*Satisfies*: §9.
+*Satisfies*: §9.2.
 *Acceptance*: against the test proxy the wizard detects the zone, the entry
 points and the resolver without being told them; it emits a wiring snippet
 that the test proxy accepts; the end-to-end verification passes.
@@ -978,6 +1065,26 @@ The published `package.json`, the `pi` manifest, the licence, the
 *Acceptance*: `npm pack` contents are exactly the allow-list; installing the
 tarball into a temporary directory gives a working `dev-gateway` binary, a
 working MCP server and a pi extension pi can load.
+
+### S16 — The installation, written out for the user
+
+`README.md`, `docs/setup.md` and `docs/traefik.md`: the prerequisites, the
+steps in the order the user does them, a configuration file with every field
+explained, a verification checklist and a symptom → cause → fix table.
+
+*Satisfies*: D13, §9.1.
+*Acceptance*: the README holds a "what you need" section before the quick
+start, and it names the prerequisites (must and can), the steps in order, a
+complete configuration file with a line about every field, a verification
+checklist (the command, and what the answer is) and a troubleshooting table
+(symptom, cause, fix); the setup guide holds the same in detail, with the
+commands, their flags, and what every check of `dev-gateway doctor` means;
+the Traefik guide holds the wiring snippet and what the proxy side must have
+(the `http` provider, the file provider of the shared middlewares, the
+routers the gateway adds); the quick start is short — install, wire,
+publish; and the specification describes the hand-written installation as
+the primary way (D13, §9.1) with the wizard as the optional extra step
+(§9.2).
 
 ---
 

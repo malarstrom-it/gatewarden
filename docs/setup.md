@@ -1,4 +1,346 @@
-# The setup wizard
+# Setting the gateway up
+
+There are two ways to a working installation:
+
+1. **By hand.** Four steps: install the package, wire the proxy, write the
+   configuration file, start the daemon. This is the way that works
+   everywhere, and it is the way this guide describes first.
+2. **With the wizard.** `dev-gateway setup` reads your proxy, derives the
+   values it can derive, asks for the ones it cannot, writes the
+   configuration file and starts the daemon.
+
+**The wizard is optional.** It is a shortcut, not a requirement. Every value
+it writes can be written by hand, and the manual path is the one that works
+on a machine where the proxy does not answer on its API, where the wizard
+cannot ask a question, or where you simply want to see what the file holds.
+Nothing in this guide needs the wizard to have succeeded.
+
+The short version is in the README: [Vad som krävs](../README.md#vad-som-krävs-what-you-need).
+
+---
+
+## 1. What you need
+
+**Must**
+
+| What | Why |
+| --- | --- |
+| Node 20.11 or later on the machine that runs the dev servers | the package is plain JavaScript; nothing is built at install time |
+| a Traefik proxy (v2 or v3) on another machine | the proxy terminates TLS and forwards the request |
+| a DNS zone the proxy already serves (`example.com`) | the host name of a route is `<branch>.<project>.<zone>` |
+| TLS for that zone: a certificate resolver in the proxy | the address the user opens is `https://` |
+| a machine the proxy can reach, and an address the proxy knows it by | the proxy polls the configuration document on `45002` and sends the requests to the relay on `45001` |
+
+**Can**
+
+| What | What it gives |
+| --- | --- |
+| `dev-gateway setup` | writes the configuration file for you |
+| a shared secret (`"secret"`) | the proxy has to present it to the registry and to the relay |
+| the shared middlewares of your proxy | the dev routers get them too, when you name the provider that owns them |
+| `dev-gateway install-service` | the daemon starts again after a reboot |
+
+---
+
+## 2. Step one — install the package
+
+On the machine that runs the dev servers:
+
+```bash
+npm install -g @malarstrom/agent-dev-gateway
+```
+
+Check that it arrived:
+
+```bash
+dev-gateway --version
+```
+
+It prints the version of the package. The same package is a pi
+package, and pi installs it like any other:
+
+```bash
+pi install npm:@malarstrom/agent-dev-gateway
+```
+
+---
+
+## 3. Step two — wire the proxy
+
+This step happens **on the machine the proxy runs on**, once.
+
+Add the `http` provider to the `providers:` block of the static configuration
+of Traefik:
+
+```yaml
+providers:
+  http:
+    endpoint: "http://<the address the proxy reaches the machine on>:45002/traefik"
+    pollInterval: 2s
+```
+
+* `<the address the proxy reaches the machine on>` is the host name or the IP
+  that the proxy resolves to the machine the dev servers run on. It has to be
+  the same value as `advertisedHost` in the configuration file (step three).
+* `45002` is `registryPort` — the port the configuration document is served
+  on. The path `/traefik` is the path the adapter serves the document under.
+* `pollInterval: 2s` is how often the proxy asks for the document. A route
+  that was registered is therefore live on the proxy up to two seconds later.
+
+Then **restart the proxy**: the static configuration is only read at start-up.
+
+```bash
+docker restart <the traefik container>
+```
+
+The gateway process cannot make this change for you: the proxy's
+configuration lives on another machine, and the gateway runs without the
+privileges to write it. `dev-gateway setup` prints the same snippet with your
+values filled in and writes it to `<state>/wiring/traefik.yml`, so that you
+can copy it. `dev-gateway status` prints the state directory it uses.
+
+**Reachability.** From the proxy's machine, the two ports of the gateway have
+to be reachable:
+
+| Port | What goes through it |
+| --- | --- |
+| `45002` | the proxy polls the configuration document on it |
+| `45001` | the requests of the user go to the relay on it |
+
+Both listeners bind on every interface of the machine. The relay accepts the
+dispatch header (`X-Dev-Target`) only from the addresses in `allowedCidrs`,
+so the address of the proxy has to be in that list (step three).
+
+Check that the proxy reaches the gateway — from the proxy's machine:
+
+```bash
+curl -sS http://<the address the proxy reaches the machine on>:45002/healthz
+```
+
+It answers `ok`. The registry answers two paths and nothing else: the
+configuration document (`/traefik`) and the health probe (`/healthz`).
+
+More about the proxy side: [`docs/traefik.md`](traefik.md).
+
+---
+
+## 4. Step three — write the configuration file
+
+The file is:
+
+| Platform | Path |
+| --- | --- |
+| Linux | `~/.config/dev-gateway/config.json` |
+| macOS | `~/Library/Preferences/dev-gateway/config.json` |
+| Windows | `%APPDATA%\dev-gateway\Config\config.json` |
+
+Three environment variables move it: `DEV_GATEWAY_HOME` (everything in one
+directory), `DEV_GATEWAY_CONFIG` (the configuration file only) and
+`DEV_GATEWAY_STATE_DIR` (the state directory only).
+
+The commands below use the file the installation actually has:
+
+```bash
+dev-gateway config          # the path, and every key with its value and a line about it
+dev-gateway config --write  # writes the file with the values of this moment
+```
+
+`--write` is a starting point, not the answer: it writes the built-in
+defaults, and the defaults are neutral (no zone, no resolver, no provider).
+What you write on top of it is step four's example.
+
+### The example
+
+```json
+{
+  "proxy": "traefik",
+  "registryPort": 45002,
+  "relayPort": 45001,
+  "advertisedIp": "",
+  "advertisedHost": "gateway.example.com",
+  "zone": "example.com",
+  "entryPoints": ["websecure"],
+  "certResolver": "example",
+  "tlsMode": "wildcard",
+  "securityHeaders": false,
+  "compressMiddleware": false,
+  "middlewareProvider": "",
+  "allowedCidrs": ["127.0.0.1/32", "::1/128", "192.0.2.0/24"],
+  "secret": "",
+  "stateDir": "",
+  "documentFormat": "yaml",
+  "logMaxBytes": 5242880,
+  "logKeep": 3,
+  "autostart": true
+}
+```
+
+### Every field
+
+| Field | Default | What it means | Where the value comes from |
+| --- | --- | --- | --- |
+| `proxy` | `"traefik"` | which proxy adapter writes the configuration document | the only adapter is Traefik |
+| `registryPort` | `45002` | the port the configuration document is served on; the proxy polls it | free on the machine; it has to be open to the proxy |
+| `relayPort` | `45001` | the port the requests of the user arrive on | free on the machine; it has to be open to the proxy |
+| `advertisedIp` | detected | the IP the proxy reaches this machine on | empty = detected from the network interfaces on every run |
+| `advertisedHost` | detected | the host name the proxy reaches this machine on | the name the proxy can resolve — **must** agree with the `endpoint` of the provider in step two |
+| `zone` | `""` | the DNS zone the host names are built from: `<branch>.<project>.<zone>` | **must** — the zone your proxy already serves; without it there is no host name and `dev-gateway register` refuses |
+| `entryPoints` | `["websecure"]` | the entry points of the proxy the dev routers attach to | the entry points your own routers use |
+| `certResolver` | `""` | the name of the certificate resolver of your proxy | the name in the `tls` blocks of your own routers; empty = no TLS block, and the address is plain HTTP |
+| `tlsMode` | `"wildcard"` | `wildcard` = one certificate per project (`*.<project>.<zone>`), `fqdn` = one per address | `wildcard` covers every branch of a project with one certificate |
+| `securityHeaders` | `false` | also apply the shared `default-security-headers` middleware | `false` — the frame-deny of that middleware can break a preview |
+| `compressMiddleware` | `false` | also apply the shared `compress` middleware | `false` |
+| `middlewareProvider` | `""` | the provider that owns the shared middlewares | the name of your file provider (`file`), when you want the two middlewares above; empty = they are not used |
+| `allowedCidrs` | `["127.0.0.1/32", "::1/128"]` | the addresses allowed to send the dispatch header to the relay | the address of your proxy, and the loopback; the relay answers `403` to everything else |
+| `secret` | `""` | a shared secret between the gateway and the proxy | your own; when it is set, the provider has to send it as a header |
+| `stateDir` | the XDG state directory | the directory with the routes and the pid file | empty = the state directory of the platform |
+| `documentFormat` | `"yaml"` | `yaml` or `json` for the configuration document | `yaml` |
+| `logMaxBytes` | `5242880` | the log is rotated above this size | 5 MB |
+| `logKeep` | `3` | how many rotated log files to keep | 3 |
+| `autostart` | `true` | whether the install may start the daemon | `true` |
+
+**An empty value means "derived", not "forgotten".** The address of the
+machine, the host name that is the address and the IPv6 prefixes of the
+machine's own networks are derived on every run. A file that pins the address
+of the moment it was written keeps advertising an address the machine does
+not have any more.
+
+---
+
+## 5. Step four — start the daemon
+
+```bash
+dev-gateway start
+```
+
+It prints `started the daemon (pid 12345)` and returns. The daemon is
+detached: it outlives the command, and it serves the configuration document
+and the relay.
+
+The daemon starts by itself the first time a route is registered, so this
+step is not strictly necessary — doing it by hand tells you at once that the
+daemon works, before a route depends on it.
+
+The other commands of the lifecycle:
+
+| Command | What it does |
+| --- | --- |
+| `dev-gateway start` | starts the daemon and waits for it to answer |
+| `dev-gateway stop` | stops the daemon; it removes its own pid file |
+| `dev-gateway status` | the daemon, the ports, the files and the values of the configuration |
+| `dev-gateway install-service` | writes the unit of the platform and enables it, so the daemon survives a reboot (`--no-enable` writes the unit without enabling it) |
+| `dev-gateway migrate` | moves the old layout (`~/.traefik-dev/`) to the new one (`--dry-run` only reports) |
+
+The log of the daemon is `daemon.log` in the state directory; the routes live
+in `routes.json` next to it. `dev-gateway status` prints both paths.
+
+### The options every command takes
+
+| Option | What it does |
+| --- | --- |
+| `--config <path>` | the configuration file to use, instead of the one of the platform |
+| `--state-dir <path>` | the state directory to use, instead of the one of the platform |
+| `--json` | machine-readable output: one JSON object on the standard output and nothing else |
+
+They are global: they work before the command and after it.
+`dev-gateway --json doctor` and `dev-gateway doctor --json` are the same
+command.
+
+---
+
+## 6. Verifying the installation
+
+Run these in the order below. The first one is the one to start with.
+
+| # | Command | A working installation answers |
+| --- | --- | --- |
+| 1 | `dev-gateway doctor` | `nothing is broken`, and the exit code is 0 |
+| 2 | `dev-gateway status` | `daemon: running (pid …)`, `zone: example.com` |
+| 3 | `curl -sS http://<the machine>:45002/healthz` | `ok` |
+| 4 | `curl -sS http://<the machine>:45002/traefik` | the configuration document, in YAML — the same thing the proxy polls |
+| 5 | from the proxy's machine: `curl -sS http://<the machine>:45002/healthz` | `ok` — the proxy reaches the machine |
+| 6 | `dev-gateway register --project probe --branch main --port 3999` | `url: https://main.probe.example.com` |
+| 7 | open that address | the dev server that listens on `3999` |
+
+For step 6, run a server first — otherwise the route is registered and the
+address answers `502`, which is the route working and the dev server missing:
+
+```bash
+node -e 'require("http").createServer((q,s)=>s.end("probe-ok")).listen(3999,"127.0.0.1")' &
+```
+
+Wait one poll interval (two seconds by default) after registering, so that
+the proxy has picked the route up.
+
+Remove the probe again:
+
+```bash
+dev-gateway unregister --project probe --branch main
+```
+
+---
+
+## 7. What `dev-gateway doctor` checks
+
+The doctor reads the installation and writes one line per check:
+
+```text
+ok    config file      /home/user/.config/dev-gateway/config.json
+ok    state directory  /home/user/.local/state/dev-gateway
+ok    daemon           running (pid 4711)
+ok    dns zone         example.com
+ok    registry port    :::45002
+ok    relay port       :::45001
+ok    routes           1 registered
+ok    routes and zone  1 registered, the zone is example.com
+warn  proxy            no traefik API answered
+warn  service          not installed: run "dev-gateway install-service" to survive a reboot
+nothing is broken
+```
+
+The columns are the status, the name of the check and what it saw.
+
+| Check | What it looks at | `ok` | `warn` | `fail` |
+| --- | --- | --- | --- | --- |
+| `config file` | the configuration file of this installation | the file exists | the file does not exist yet — the built-in defaults are used | — |
+| `state directory` | the state directory | it exists and is writable | it does not exist yet — it is created when the first route is written | it exists and is not writable — the routes cannot be written |
+| `daemon` | the daemon of this installation, by its pid file and the health probe | it answers | — | it does not answer: `dev-gateway start` |
+| `dns zone` | the `zone` of the configuration | a zone is configured | — | no zone: the host names are built from it, so no route can be named |
+| `shared middlewares` | the `middlewareProvider` — only when `securityHeaders` or `compressMiddleware` is on | a provider is named | — | the middlewares are on, but no provider owns them: the routers would point at middlewares that do not exist |
+| `registry port` | something listening on the registry port | something listens | — | nothing listens: the proxy cannot poll the document |
+| `relay port` | something listening on the relay port | something listens | — | nothing listens: the requests of the user have nowhere to go |
+| `routes` | the route store | always `ok`; the detail says how many routes there are | — | — |
+| `routes and zone` | the routes and the zone together — only when there is at least one route | the zone is there | — | there are routes but no zone: a new route cannot be named |
+| `proxy` | the API of the proxy (`/api/version` and `/api/http/routers`) | the API answered | no API answered — the gateway works without it, but the proxy is not reachable from here | the adapter failed: the detail says why |
+| `legacy layout` | the old directory `~/.traefik-dev/` | — | it is still there: `dev-gateway migrate` moves it | — |
+| `service` | the unit of the platform | it is installed | it is not installed: `dev-gateway install-service` makes the daemon survive a reboot | — |
+
+The exit code is 1 when a check failed, and 0 otherwise. A `warn` does not
+fail the doctor: the installation can work with a warning (no service unit,
+no proxy API in reach).
+
+`dev-gateway doctor --json` writes the same report as one JSON object:
+
+```json
+{
+  "ok": true,
+  "checks": [{ "name": "daemon", "status": "ok", "detail": "running (pid 4711)" }],
+  "paths": { "configPath": "…", "stateDir": "…", "logFile": "…" }
+}
+```
+
+---
+
+## 8. When it does not work
+
+The README has a table of symptom → cause → fix for the common failures:
+[Vad som krävs](../README.md#vad-som-krävs-what-you-need). The skill's
+[troubleshooting reference](../skills/dev-gateway/references/troubleshooting.md)
+has the rest, with the reason each failure happens.
+
+---
+
+## 9. The setup wizard (optional)
 
 ```bash
 dev-gateway setup
@@ -8,7 +350,7 @@ Six steps, five of them automatic. The wizard never pretends: when it cannot
 verify something, it says so. A setup that half worked and says so is worth
 more than a setup that claims everything is fine.
 
-## The flags
+### The flags
 
 | Flag | What it does |
 | --- | --- |
@@ -25,15 +367,15 @@ Without a terminal (no TTY on the standard input) the wizard never asks: it
 keeps the values the configuration file holds and reports them as
 unconfirmed.
 
-## The six steps
+### The six steps
 
-### 1. Read the environment
+#### 1. Read the environment
 
 Whether this is a container, the platform, the addresses a proxy could reach,
 the working directory, the state directory, the configuration file and whether
 a daemon is already running.
 
-### 2. Discover the proxy
+#### 2. Discover the proxy
 
 The proxy adapter is asked what the proxy is: for Traefik it reads
 `/api/version` and `/api/http/routers`. From the routers it derives the zone
@@ -70,19 +412,19 @@ provider of the shared middlewares and the host name are empty, and the trust
 list holds the loopback addresses of every machine. Nothing of one
 installation is in the package.
 
-### 3. Is the proxy already wired?
+#### 3. Is the proxy already wired?
 
 Whether the proxy already has a provider pointing at this machine: a router
 whose provider is the HTTP provider and whose service points at this host and
 port.
 
 The machine is known by more than one name — the advertised host name and the
-advertised IP. The proxy may reach it by either, and a name that resolves to an
-address is the same machine as that address.
+advertised IP. The proxy may reach it by either, and a name that resolves to
+an address is the same machine as that address.
 
 When the proxy is already wired, the wizard skips to step five and verifies.
 
-### 4. Emit the wiring
+#### 4. Emit the wiring
 
 The wizard prints the exact static configuration to add, with the values
 filled in for this machine, and writes it to `<state>/wiring/<proxy>.yml` so
@@ -90,9 +432,10 @@ that it can be copied.
 
 **The wizard cannot apply it.** The proxy's configuration lives on another
 machine, and the gateway process runs without the privileges to write it. The
-wizard says so plainly instead of pretending.
+wizard says so plainly instead of pretending. This is step two of the manual
+path, with the values filled in.
 
-### 5. Verify end to end
+#### 5. Verify end to end
 
 1. Start a throwaway server on a free port (`throwaway server`).
 2. Register it (`route registered`).
@@ -119,7 +462,7 @@ wizard says so plainly instead of pretending.
 
 When the proxy knows the URL but does not serve the route, the verification
 is **skipped**: the wiring has to be added to the proxy first, and the
-wizard cannot apply it (§9.4). That is not a failed setup, and the exit
+wizard cannot apply it (§9.6). That is not a failed setup, and the exit
 code says so.
 
 When the relay **refuses** the request (403), the verification **fails** and
@@ -140,7 +483,7 @@ verification — a verification against a gateway that is not up yet verifies
 nothing. Step six reports what the verification needed; it does not introduce
 it.
 
-### 6. Write the configuration and start
+#### 6. Write the configuration and start
 
 The derived values are written to the configuration file, the daemon is
 started, and the wizard recommends `dev-gateway install-service` for
@@ -162,7 +505,7 @@ The values nobody confirmed are not written when they are the built-in
 default: a new installation would otherwise get the zone of another project
 in its configuration file. They are listed in `config.omitted`.
 
-## The report
+### The report
 
 `dev-gateway setup --json` writes one object with:
 
@@ -185,7 +528,7 @@ With `--json` the report is written as one object and nothing else. In the
 text output the steps are written as they happen, and the verdict is in the
 report and in the exit code.
 
-## The values the wizard writes
+### The values the wizard writes
 
 | Key | Meaning |
 | --- | --- |
