@@ -191,6 +191,53 @@ advertised host name and the trust list — in this specification, in
 `README.md` and in `docs/setup.md`, and the wizard is described as the
 optional extra step in all three.
 
+### D14 — The healthcheck reports where the installation stands; it fails only on a broken thing
+
+The healthcheck of the package is `dev-gateway doctor`. It has to run
+everywhere: in a container that has no proxy, no zone, no daemon and no
+public URL, and on a machine with an installation that is broken. The rule
+it follows:
+
+* A thing that is **not there** is not an error. No configuration file, no
+  daemon, no zone, no proxy, no installed service: these are reported
+  with their reason — `skipped` when the installation is not on the
+  machine at all, `warn` when it is but is not complete — and the exit
+  code stays 0.
+* An installation that has **declared itself** is checked as one. A
+  configuration file that declares a zone — the field the host names are
+  built from, and the one field the installation cannot do without
+  (§9.1) — has said what it is: its zone has to be usable and its daemon
+  has to run. A configuration file that says nothing about the zone
+  belongs to an installation that is not set up here: everything about it
+  is a warning.
+* A thing that is **there and broken** is an error (`fail`): a
+  configuration file that cannot be read, a state directory that cannot be
+  written to, a daemon that runs but does not answer, a proxy that answers
+  but is not the one the configuration names.
+
+The exit code of the doctor is 0 unless a check failed. `--strict` makes
+the warnings errors as well, for the one who wants the whole installation
+to be complete. `dev-gateway status` never fails: it is a report, not a
+check.
+
+The verification of the setup wizard (§9.7) follows the same rule: a
+verification that **could not run** is `skipped` with a reason (no proxy,
+no zone, a public URL that cannot be fetched, a proxy that does not serve
+the route yet), and only a chain that **answered with an error** is
+`failed`.
+
+*Reason*: the package is about to be published, and a healthcheck that
+fails in a CI runner — because there is no proxy, no zone and no daemon
+there — is a healthcheck nobody trusts. The report has to say where it
+stands and why; the error has to mean that something is broken.
+
+*Rejected*: keeping the old doctor (a missing daemon, a missing zone and
+a closed port were three failures in a clean container); failing on every
+warning (the doctor would fail in every clean environment there is).
+
+*Consequence*: the doctor exits 0 in an empty environment, and the checks
+it reports are the ones of §9.9.
+
 ---
 
 ## 1. Problem statement
@@ -734,10 +781,15 @@ order, and every one of them is a thing the user does.
    daemon works.
 
 The installation is then **verified**: `dev-gateway doctor` checks the
-configuration file, the state directory, the daemon, the two ports, the
-routes, the proxy and the service unit, and names every check it made;
-`curl http://<host>:45002/healthz` answers `ok`; a registered route opens
-in a browser.
+configuration file, the state directory, the daemon, the zone, the shared
+middlewares, the two ports, the routes, the proxy, the service unit and
+the old layout, and names every check it made with the reason for it
+(§9.9, D14); `curl http://<host>:45002/healthz` answers `ok`; a
+registered route opens in a browser.
+
+The doctor never fails because of the machine it runs on: a missing
+daemon, a missing zone, a proxy that does not answer and a service that
+is not installed are warnings. Only a broken thing is a failure.
 
 The three documents that carry this are the README (the section
 "Vad som krävs"), `docs/setup.md` (the same, with the commands and their
@@ -822,6 +874,21 @@ The wizard says so plainly rather than pretending.
 The wizard reports each step as it goes, and reports what it could not
 verify.
 
+The verification tells two things apart (D14):
+
+* **It could not run.** There is no proxy to fetch the public URL from,
+  there is no zone to build it from, the name does not resolve, nothing
+  listens on the port, or the proxy does not serve the route yet. The
+  status is `skipped`, the reason says which, and the exit code of
+  `dev-gateway setup` is 0.
+* **It ran, and the chain answered with an error.** The relay refused
+  the request (the trust list), the proxy refused it (its own
+  middleware), the certificate of the public URL is not trusted, or the
+  proxy knows the route and does not serve it. The status is `failed`, the
+  reason says which, and the exit code is 1.
+
+The wizard writes the next steps in clear text, in every mode.
+
 The verification needs a gateway that serves the dynamic document: the
 proxy polls the document, and the document has to carry the throwaway
 route. The configuration is therefore written and the daemon started
@@ -837,6 +904,52 @@ surviving a reboot.
 
 Both happen before the verification of §9.7, because the verification
 needs them; the step reports them, it does not introduce them.
+
+### 9.9 The healthcheck — `dev-gateway doctor`
+
+`dev-gateway doctor` is the healthcheck of the package (D14). It reads
+the installation and reports every check it made, with the reason for it.
+It changes nothing: it does not migrate the old layout and it does not
+start a daemon.
+
+Every check has a name, a status and a reason:
+
+| Status | What it means |
+| --- | --- |
+| `ok` | the thing is there and it works |
+| `warn` | the thing is not there, or it is not complete — the reason says what to do about it |
+| `fail` | the thing is there and it is broken |
+| `skipped` | there is nothing to check here: the installation is not on this machine |
+
+The checks are the configuration file, the state directory, the daemon,
+the DNS zone, the shared middlewares, the two ports the gateway serves on
+(the registry and the relay), the routes, the routes and the zone
+together, the proxy, the service unit, and the old layout.
+
+Two of them are worth naming:
+
+* **The daemon is lazy.** The daemon starts by itself with the first route
+  (D7), so a daemon that does not run is the normal state of an
+  installation that is not set up: a warning, not an error. A daemon that
+  runs and does not answer `/healthz` is broken, and so is a gateway that
+  answers on the port when it is not this installation's daemon.
+* **The zone says whether the installation is set up.** A configuration
+  file that declares a zone and leaves it empty is a file that is wrong:
+  the host names of the routes cannot be built from it, and that is a
+  failure. A configuration file that says nothing about the zone belongs
+  to an installation that is not set up here: the zone is one of the
+  things to do, with the reason and the way to get one, and the doctor
+  exits 0.
+
+The exit code is 0 unless a check failed. `--strict` makes the warnings
+errors as well — for the one who wants the whole installation to be
+complete, not only unbroken. `--json` writes the same report as one JSON
+object, with a top-level `ok` that is `false` when a check failed.
+
+`dev-gateway status` is a report and not a check: it runs everywhere, on
+a machine with an installation and on one without, and its exit code is 0
+in both cases. A script that wants to know whether the gateway serves
+reads `daemon.healthy` of the JSON form.
 
 ---
 
@@ -1085,6 +1198,28 @@ routers the gateway adds); the quick start is short — install, wire,
 publish; and the specification describes the hand-written installation as
 the primary way (D13, §9.1) with the wizard as the optional extra step
 (§9.2).
+
+### S17 — The healthcheck reports and does not fail on the environment
+
+`src/cli/healthcheck.ts`: the doctor as the healthcheck of the package.
+The statuses `ok`, `warn`, `fail` and `skipped`, a reason for every check,
+the exit code 0 unless a check failed, `--strict`, the JSON form with a
+top-level `ok`; `src/cli/setup.ts`: the verification tells "could not run"
+from "answered with an error"; `src/cli/index.ts`: `status` runs
+everywhere.
+
+*Satisfies*: D14, §9.7, §9.9.
+*Acceptance*: the doctor exits 0 in an empty environment — no
+configuration file, no daemon, no zone, no proxy — and every check it
+reports carries a reason; the JSON form holds one post per check and a
+top-level `ok`; `--strict` exits 1 when a check really fails; a
+configuration file that cannot be read is a failure and not a crash; a
+configuration file that declares no zone is an installation that is not
+set up, and everything about it is a warning; a configuration file that
+declares a zone and leaves it empty is a file that is wrong, and that is
+a failure; the verification of the setup is `skipped` when the public URL
+cannot be fetched and `failed` only when the chain answered with an
+error — and the reason then is the answer that came.
 
 ---
 

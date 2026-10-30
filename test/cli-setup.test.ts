@@ -287,7 +287,11 @@ test('the gateway serves the document while the wizard verifies', async (t) => {
 
   // Without a real proxy in front, the public URL cannot be fetched. The
   // wizard says so instead of claiming a verification that did not happen.
-  assert.equal(report.verification.status, 'failed');
+  //
+  // A chain that could not be reached is not a chain that answered with
+  // an error: the verification is skipped (S17), and the exit code is 0.
+  assert.equal(report.verification.status, 'skipped');
+  assert.match(report.verification.reason ?? '', /could not be fetched/);
   const publicUrl = report.verification.steps.find((step) => step.name === 'public URL');
   assert.equal(publicUrl?.ok, false);
 });
@@ -1193,15 +1197,18 @@ test('the wizard does not crash on a configuration file with a zone that is not 
   );
 });
 
-test('the setup tells a script that the verification failed', async (t) => {
+test('the setup does not fail when the verification could not run', async (t) => {
   const cli = await makeCliFixture();
   t.after(async () => {
     await cli.stopDaemon();
     cli.cleanup();
   });
 
-  // A proxy that answers, and a public URL that does not: the
-  // verification fails, and the exit code says so in every mode.
+  // A proxy that answers, and a public URL that cannot be fetched: the
+  // verification could not run, and the wizard says so instead of
+  // claiming a verification that did not happen. The exit code is 0 — a
+  // chain that answered with an error is the thing that fails (S17; the
+  // case where it does is in test/healthcheck.test.ts).
   const proxy = new FakeTraefik();
   await proxy.start();
   t.after(async () => {
@@ -1209,10 +1216,10 @@ test('the setup tells a script that the verification failed', async (t) => {
   });
 
   const text = await cli.runFail(['setup', '--api-base-url', `http://127.0.0.1:${proxy.apiPort}`]);
-  assert.equal(text.code, 1, `the exit code was ${text.code}: ${text.stdout}${text.stderr}`);
+  assert.equal(text.code, 0, `the exit code was ${text.code}: ${text.stdout}${text.stderr}`);
 
   const json = await cli.runFail(['setup', '--api-base-url', `http://127.0.0.1:${proxy.apiPort}`, '--json']);
-  assert.equal(json.code, 1, `the exit code was ${json.code}: ${json.stdout}${json.stderr}`);
+  assert.equal(json.code, 0, `the exit code was ${json.code}: ${json.stdout}${json.stderr}`);
 });
 
 test('a configuration file that cannot be written is a clear error', async (t) => {

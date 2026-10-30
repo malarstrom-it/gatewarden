@@ -9,7 +9,7 @@
  *   dev-gateway setup [--json]
  *   dev-gateway start [--json]
  *   dev-gateway stop [--json]
- *   dev-gateway doctor [--json]
+ *   dev-gateway doctor [--json] [--strict]
  *   dev-gateway install-service [--no-enable] [--json]
  *   dev-gateway migrate [--dry-run] [--json]
  *
@@ -32,23 +32,33 @@ import {
   requireZone,
   writeConfigFile,
   listenHost,
+  resolveConfigPath,
+  resolveStateDir,
   zoneOf,
   CONFIG_KEYS,
 } from '../core/config.ts';
-import { legacyDir, type GatewayPaths } from '../core/paths.ts';
+import { legacyDir, logFileFor, resolvePaths, type GatewayPaths } from '../core/paths.ts';
 import { migrateLegacyLayout } from '../core/migrate.ts';
 import { RegistrationStore } from '../core/state.ts';
 import { withRouteLock } from '../core/lock.ts';
 import { ensureDaemon, daemonStatus, isGatewayDaemon, isProcessAlive, pidFilePath, stopDaemon } from '../core/daemonControl.ts';
 import { isPortListening } from '../core/util/net.ts';
 import { slugify } from '../core/util/slug.ts';
-import { moduleDirectory, packageVersion } from '../core/util/module.ts';
+import { packageVersion } from '../core/util/module.ts';
 import { discoverProxyStatus, requireAdapter } from '../adapters/index.ts';
 import { gatewayStatus, routeJson } from '../core/status.ts';
 import type { RouteJson } from '../core/status.ts';
 import type { Config } from '../core/types.ts';
 import { runSetup, type SetupReport } from './setup.ts';
-import { installService, manualEnableCommand, serviceUnitFor, type ServiceUnit } from './service.ts';
+import { installService, manualEnableCommand } from './service.ts';
+import {
+  daemonLauncherPath,
+  healthExitCode,
+  healthSummary,
+  runHealthCheck,
+  serviceUnitInstalled,
+  type HealthCheck,
+} from './healthcheck.ts';
 
 interface ParsedArgs {
   command: string;
@@ -71,6 +81,7 @@ const BOOLEAN_FLAGS = new Set([
   'no-verify',
   'yes',
   'non-interactive',
+  'strict',
 ]);
 
 export function parseArgs(argv: string[]): ParsedArgs {
@@ -123,6 +134,18 @@ function emitJson(value: unknown): void {
  */
 export { packageVersion };
 
+/**
+ * The healthcheck of the package (§9.9).
+ *
+ * The doctor, the launcher path of the daemon and the check of the
+ * service unit live in their own module: the healthcheck is a thing of
+ * its own, and the CLI only calls it.
+ */
+export { daemonLauncherPath, serviceUnitInstalled };
+export type { HealthCheck };
+/** One check of the doctor. The name the older code used. */
+export type DoctorCheck = HealthCheck;
+
 function usage(): string {
   return `dev-gateway — expose a dev server running on this machine through the proxy
 
@@ -135,7 +158,7 @@ Usage:
   dev-gateway setup
   dev-gateway start
   dev-gateway stop
-  dev-gateway doctor
+  dev-gateway doctor [--strict]
   dev-gateway install-service
   dev-gateway migrate [--dry-run]
   dev-gateway version
@@ -149,9 +172,19 @@ Global options:
 The lifecycle:
   start                start the daemon and wait for it
   stop                 stop the daemon
-  doctor               report what is wrong, if anything
+  doctor               the healthcheck: report where the installation stands
   install-service      install the daemon as a service, so it survives a reboot
-  setup                walk a new installation through the six steps
+  setup                walk a new installation through the six steps (optional)
+
+The healthcheck:
+  doctor               reports every check it made, with the reason for it
+  doctor --strict      the warnings are errors as well (for a CI that wants
+                       the whole installation to be complete)
+  doctor --json        the same report as one JSON object
+
+  A thing that is not there is not an error: a missing daemon, a missing
+  zone, a proxy that does not answer and a service that is not installed
+  are reported as warnings. Only a thing that is there and broken fails.
 
 Environment:
   DEV_GATEWAY_HOME         everything in one directory
@@ -342,14 +375,71 @@ export async function statusOf(
 }
 
 async function commandStatus(flags: Record<string, string | boolean>): Promise<number> {
-  const { config, configPath, paths } = resolveConfig(flags);
+  // The status is a report, not a check: it has to run everywhere, on a
+  // machine with an installation and on a machine without one. A
+  // configuration file that cannot be read is reported, not thrown.
+  let loaded: { config: Config; configPath: string; paths: GatewayPaths };
+  try {
+    loaded = resolveConfig(flags);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const configPath = resolveConfigPath({
+      configPath: flagString(flags, 'config'),
+    });
+    const stateDir = resolveStateDir({ stateDir: flagString(flags, 'state-dir') });
+    const paths = resolvePaths();
+    const logFile = logFileFor(stateDir);
+    if (wantsJson(flags)) {
+      // The same shape as the form that works: a script that reads
+      // `config.cacheDir` or `config.logFile` finds them in both.
+      emitJson({
+        daemon: { pid: null, healthy: false, running: false, pidFile: path.join(stateDir, 'daemon.pid') },
+        proxy: { id: '', reachable: false },
+        config: {
+          path: configPath,
+          exists: fs.existsSync(configPath),
+          stateDir,
+          logFile,
+          cacheDir: paths.cacheDir,
+          registryPort: 0,
+          relayPort: 0,
+          advertisedHost: '',
+          advertisedIp: '',
+          zone: '',
+          entryPoints: [],
+          certResolver: '',
+          secretConfigured: false,
+        },
+        reachable: false,
+        configPath,
+        stateDir,
+        logFile,
+        cacheDir: paths.cacheDir,
+        registryPort: 0,
+        relayPort: 0,
+        advertisedIp: '',
+        zone: '',
+        entryPoints: [],
+        certResolver: '',
+        secretConfigured: false,
+        registrations: 0,
+        routes: 0,
+        error: message,
+      });
+      return 0;
+    }
+    process.stdout.write(`config file:  ${configPath} (cannot be read: ${message})\n`);
+    return 0;
+  }
+
+  const { config, configPath, paths } = loaded;
   const status = await daemonStatus(config);
   const store = new RegistrationStore(config.stateDir);
   const registrations = store.list();
 
   if (wantsJson(flags)) {
     emitJson(await statusOf(config, configPath, paths));
-    return status.healthy ? 0 : 1;
+    return 0;
   }
 
   process.stdout.write(
@@ -370,7 +460,11 @@ async function commandStatus(flags: Record<string, string | boolean>): Promise<n
       `registrations: ${registrations.length}`,
     ].join('\n') + '\n',
   );
-  return status.healthy ? 0 : 1;
+  // The status never fails: it reports where the installation stands,
+  // and a machine without an installation is not an error of the command.
+  // A script that wants to know whether the gateway serves reads
+  // `daemon.healthy` of the JSON form.
+  return 0;
 }
 
 function commandConfig(flags: Record<string, string | boolean>): number {
@@ -536,192 +630,31 @@ async function commandStop(flags: Record<string, string | boolean>): Promise<num
   return 0;
 }
 
-/** One check of the doctor. */
-export interface DoctorCheck {
-  name: string;
-  status: 'ok' | 'warn' | 'fail';
-  detail: string;
-}
-
-/** The path of the launcher that runs the daemon. */
-export function daemonLauncherPath(): string {
-  // `src/cli/index.ts` (or `dist/cli/index.js`) sits two levels under the
-  // package root, next to `bin/`.
-  const root = path.resolve(moduleDirectory(import.meta.url), '..', '..');
-  return path.join(root, 'bin', 'dev-gateway-daemon.js');
-}
-
-/** Is a service unit installed for this platform? */
-export function serviceUnitInstalled(unit: ServiceUnit): boolean {
-  if (!unit.path) return false;
-  try {
-    return fs.existsSync(unit.path);
-  } catch {
-    return false;
-  }
-}
-
 /**
- * Report what is wrong, if anything (§5).
+ * The healthcheck: `dev-gateway doctor` (§9.9).
  *
- * Every check says what it looked at, so the report can be read without
- * the source.
+ * The doctor reports where the installation stands. It fails only when
+ * something is broken — never because the machine it runs on is a CI
+ * runner without a proxy, a zone, a daemon or a public URL.
  */
 async function commandDoctor(flags: Record<string, string | boolean>): Promise<number> {
-  const { config, configPath, paths } = resolveConfig(flags);
-  const checks: DoctorCheck[] = [];
-
-  const configExists = fs.existsSync(configPath);
-  checks.push({
-    name: 'config file',
-    status: configExists ? 'ok' : 'warn',
-    detail: configExists ? configPath : `${configPath} (not written yet, the defaults are used)`,
+  const strict = flags['strict'] === true;
+  const report = await runHealthCheck({
+    configPath: flagString(flags, 'config'),
+    stateDir: flagString(flags, 'state-dir'),
   });
-
-  let stateWritable = false;
-  if (fs.existsSync(config.stateDir)) {
-    try {
-      fs.accessSync(config.stateDir, fs.constants.W_OK);
-      stateWritable = true;
-    } catch {
-      stateWritable = false;
-    }
-  }
-  checks.push({
-    name: 'state directory',
-    status: stateWritable ? 'ok' : fs.existsSync(config.stateDir) ? 'fail' : 'warn',
-    detail: stateWritable
-      ? config.stateDir
-      : fs.existsSync(config.stateDir)
-        ? `${config.stateDir} (not writable)`
-        : `${config.stateDir} (does not exist yet)`,
-  });
-
-  const status = await daemonStatus(config);
-  checks.push({
-    name: 'daemon',
-    status: status.healthy ? 'ok' : status.running ? 'warn' : 'fail',
-    detail: status.healthy
-      ? status.pid === null
-        ? `a gateway answers on port ${config.registryPort}, but this installation has no pidfile`
-        : `running (pid ${status.pid})`
-      : status.running
-        ? `running (pid ${status.pid}), but it does not answer /healthz`
-        : `not running (pidfile ${status.pidFile})`,
-  });
-
-  // The host names are built from the zone. Without one the gateway
-  // serves a document whose routers have no name. The zone of a file
-  // that was written by hand may be of any type: it is a zone when it is
-  // a string, and nothing else.
-  const zone = zoneOf(config);
-  checks.push({
-    name: 'dns zone',
-    status: zone ? 'ok' : 'fail',
-    detail: zone ? zone : 'not configured: the host names are built from it (run "dev-gateway setup")',
-  });
-
-  // The shared middlewares live in another provider. Without the name of
-  // that provider they cannot be referenced.
-  if (config.compressMiddleware || config.securityHeaders) {
-    checks.push({
-      name: 'shared middlewares',
-      status: config.middlewareProvider ? 'ok' : 'fail',
-      detail: config.middlewareProvider
-        ? config.middlewareProvider
-        : 'the shared middlewares are on, but no provider owns them (run "dev-gateway setup")',
-    });
-  }
-
-  const registryUp = await isPortListening(config.registryPort);
-  checks.push({
-    name: 'registry port',
-    status: registryUp ? 'ok' : 'fail',
-    detail: `${listenHost()}:${config.registryPort}`,
-  });
-
-  const relayUp = await isPortListening(config.relayPort);
-  checks.push({
-    name: 'relay port',
-    status: relayUp ? 'ok' : 'fail',
-    detail: `${listenHost()}:${config.relayPort}`,
-  });
-
-  const store = new RegistrationStore(config.stateDir);
-  const registrations = store.list();
-  checks.push({
-    name: 'routes',
-    status: 'ok',
-    detail: `${registrations.length} registered`,
-  });
-
-  // The routes and the zone together: a route is named from the zone,
-  // and an installation that has routes but no zone cannot name a new
-  // one. The two are one state, and the doctor says so.
-  if (registrations.length > 0) {
-    checks.push({
-      name: 'routes and zone',
-      status: zone ? 'ok' : 'fail',
-      detail: zone
-        ? `${registrations.length} registered, the zone is ${zone}`
-        : `${registrations.length} registered, but the configuration has no zone: the host names of the routes are built from it (run "dev-gateway setup")`,
-    });
-  }
-
-  let proxy: DoctorCheck = {
-    name: 'proxy',
-    status: 'warn',
-    detail: `no ${config.proxy} API answered`,
-  };
-  try {
-    const adapter = requireAdapter(config.proxy);
-    const discovered = await adapter.discover({ timeoutMs: 1000 });
-    if (discovered) {
-      proxy = {
-        name: 'proxy',
-        status: 'ok',
-        detail: `${discovered.id}${discovered.version ? ` ${discovered.version}` : ''} (${discovered.derived.zone ?? 'no zone derived'})`,
-      };
-    }
-  } catch (error) {
-    proxy = { name: 'proxy', status: 'fail', detail: (error as Error).message };
-  }
-  checks.push(proxy);
-
-  const legacy = legacyDir();
-  if (fs.existsSync(legacy)) {
-    checks.push({
-      name: 'legacy layout',
-      status: 'warn',
-      detail: `${legacy} is still there: run "dev-gateway migrate"`,
-    });
-  }
-
-  const unit = serviceUnitFor({
-    daemonPath: daemonLauncherPath(),
-    configPath,
-    stateDir: config.stateDir,
-  });
-  checks.push({
-    name: 'service',
-    status: serviceUnitInstalled(unit) ? 'ok' : 'warn',
-    detail: serviceUnitInstalled(unit)
-      ? `${unit.path ?? unit.name} (installed)`
-      : 'not installed: run "dev-gateway install-service" to survive a reboot',
-  });
-
-  const ok = !checks.some((check) => check.status === 'fail');
+  const code = healthExitCode(report.checks, strict);
 
   if (wantsJson(flags)) {
-    emitJson({ ok, checks, paths: { configPath, stateDir: config.stateDir, logFile: paths.logFile } });
-    return ok ? 0 : 1;
+    emitJson({ ok: report.ok, strict, checks: report.checks, paths: report.paths });
+    return code;
   }
 
-  for (const check of checks) {
-    process.stdout.write(`${check.status.padEnd(4)}  ${check.name.padEnd(16)}  ${check.detail}\n`);
+  for (const check of report.checks) {
+    process.stdout.write(`${check.status.padEnd(8)}  ${check.name.padEnd(18)}  ${check.detail}\n`);
   }
-  process.stdout.write(ok ? 'nothing is broken\n' : 'some checks failed\n');
-  return ok ? 0 : 1;
+  process.stdout.write(healthSummary(report.checks) + '\n');
+  return code;
 }
 
 /**
@@ -812,12 +745,17 @@ async function commandSetup(flags: Record<string, string | boolean>): Promise<nu
   }
 
   // A failed verification is a failed setup: the exit code says so, in
-  // every mode, so that a script can see it.
+  // every mode, so that a script can see it. A verification that could
+  // not run — no proxy, no zone, no public URL to fetch — is `skipped`,
+  // and a skipped verification is not a failure: the exit code is 0.
   const failed = report.verification.status === 'failed';
   if (json) {
     emitJson(report);
     return failed ? 1 : 0;
   }
+  process.stdout.write(
+    `verification: ${report.verification.status}${report.verification.reason ? ` — ${report.verification.reason}` : ''}\n`,
+  );
   for (const step of report.nextSteps) process.stdout.write(`next: ${step}\n`);
   return failed ? 1 : 0;
 }

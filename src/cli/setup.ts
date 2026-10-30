@@ -51,6 +51,28 @@ export const NO_PROXY_REASON = 'no proxy answers, so there is no public URL to f
 export const NO_ZONE_REASON = 'no DNS zone is configured, so there is no public URL to fetch';
 
 /**
+ * Why the verification was skipped when the public URL could not be
+ * fetched at all.
+ *
+ * The chain was never reached: the name of the public URL does not
+ * resolve, or nothing listens on the port. That is the shape of a
+ * machine without a public URL — a CI runner, a laptop with no DNS for
+ * the zone — and not a broken installation. A chain that answered with an
+ * error is a different thing, and it is a `failed` (§9.7).
+ */
+export const NOT_FETCHABLE_REASON =
+  'the public URL could not be fetched: nothing answered there (the zone does not resolve, or nothing listens on the port)';
+
+/**
+ * Why the verification failed when the public URL answered with an error.
+ *
+ * The chain answered — a 500, a 502, anything that is not a 404 and not a
+ * 403. The answer is the reason, and it is not the certificate: a port
+ * that speaks plain HTTP and not TLS says something else entirely.
+ */
+export const HTTP_ERROR_REASON = 'the public URL answered with an error';
+
+/**
  * Why the verification failed when the relay refused the request.
  *
  * The relay only serves the addresses in the trust list (`allowedCidrs`)
@@ -801,6 +823,10 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
     nextSteps.push(
       'the proxy does not serve the route: add the wiring, and check that the entry points of the proxy are the ones the routes attach to',
     );
+  } else if (verification.status === 'skipped' && verification.reason === NOT_FETCHABLE_REASON) {
+    nextSteps.push(
+      'the public URL could not be fetched: check that the zone of the installation resolves, and that the proxy serves it',
+    );
   } else if (verification.status === 'failed' && verification.reason === FORBIDDEN_REASON) {
     nextSteps.push(
       'the relay refused the request: the address of the proxy has to be in the trust list (allowedCidrs) of the configuration file',
@@ -808,6 +834,10 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
   } else if (verification.status === 'failed' && verification.reason === PROXY_REFUSED_REASON) {
     nextSteps.push(
       'the proxy refused the request: the middleware of the proxy (an ipAllowList, a forwardAuth) did not let the request through',
+    );
+  } else if (verification.status === 'failed' && verification.reason?.startsWith(HTTP_ERROR_REASON)) {
+    nextSteps.push(
+      'the public URL answered with an error: the proxy has to serve the route, and the answer it gave has to be looked at',
     );
   } else if (verification.status === 'failed') {
     nextSteps.push(
@@ -988,6 +1018,16 @@ async function verifyEndToEnd(opts: VerifyOptions): Promise<SetupReport['verific
         steps,
       };
     }
+    if (fetched.httpError) {
+      // The chain answered, and the answer was an error. The answer is
+      // the reason: a port that speaks plain HTTP is not a certificate
+      // the machine does not trust.
+      return {
+        status: 'failed',
+        reason: `${HTTP_ERROR_REASON}: ${fetched.httpError}`,
+        steps,
+      };
+    }
     if (fetched.notFound) {
       // The proxy knows the URL and does not serve it. Does it know the
       // route? A proxy that does not know it has not picked up the
@@ -1004,6 +1044,22 @@ async function verifyEndToEnd(opts: VerifyOptions): Promise<SetupReport['verific
         };
       }
       return { status: 'skipped', reason: NOT_SERVED_REASON, steps };
+    }
+    if (fetched.certificateFailure) {
+      // The chain answered, and its certificate is not one this machine
+      // trusts. That is an error of the installation: the certificate
+      // has to be trusted before the route can be opened.
+      return {
+        status: 'failed',
+        reason: fetched.certificateFailure,
+        steps,
+      };
+    }
+    if (!fetched.answered) {
+      // Nothing answered at all: the name does not resolve, or nothing
+      // listens on the port. The verification could not run — it is not
+      // a chain that answered with an error.
+      return { status: 'skipped', reason: NOT_FETCHABLE_REASON, steps };
     }
     return { status: 'failed', steps };
   } catch (error) {
@@ -1058,11 +1114,26 @@ function publicUrlPorts(opts: VerifyOptions): number[] {
  *
  * Every attempt is reported: a URL that did not answer is a fact the
  * user needs, not something to hide behind a verdict.
+ *
+ * The report says whether the chain answered at all (`answered`) and
+ * whether the certificate was the problem (`certificateFailure`). The
+ * verification needs both: a chain that answered with an error is a
+ * failed setup, and a chain that was never reached is a verification that
+ * could not run.
  */
 async function fetchPublicUrl(
   fqdn: string,
   ports: number[] = [],
-): Promise<{ ok: boolean; detail: string; notFound: boolean; forbidden: boolean; refusedByProxy: boolean }> {
+): Promise<{
+  ok: boolean;
+  detail: string;
+  notFound: boolean;
+  forbidden: boolean;
+  refusedByProxy: boolean;
+  answered: boolean;
+  certificateFailure?: string;
+  httpError?: string;
+}> {
   const details: string[] = [];
   const candidates: string[] = [];
 
@@ -1079,10 +1150,15 @@ async function fetchPublicUrl(
   let forbidden = false;
   /** Did the proxy refuse the request itself? */
   let refusedByProxy = false;
+  /** Did anything answer at all? */
+  let answered = false;
+  /** The answer of a request that got an error, when there was one. */
+  let httpError: string | undefined;
 
   for (const url of candidates) {
     try {
       const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+      answered = true;
       const status = `${response.status} ${response.statusText}`.trim();
       if (response.status === 404) {
         // The proxy knows the URL and does not serve it.
@@ -1106,6 +1182,10 @@ async function fetchPublicUrl(
         continue;
       }
       if (!response.ok) {
+        // The chain answered, and the answer was an error. That is the
+        // reason — not the certificate of the attempts that never got
+        // that far.
+        httpError = httpError ?? status;
         details.push(`${url} — ${status}`);
         continue;
       }
@@ -1121,17 +1201,35 @@ async function fetchPublicUrl(
         // trusted. A plain HTTP answer does not make it usable, and the
         // verification of it would prove nothing.
         details.push(`${url} — ${status}, but ${certificateFailure}`);
-        return { ok: false, detail: details.join('; '), notFound, forbidden, refusedByProxy };
+        return {
+          ok: false,
+          detail: details.join('; '),
+          notFound,
+          forbidden,
+          refusedByProxy,
+          answered,
+          certificateFailure,
+          httpError,
+        };
       }
       details.push(`${url} — ${status}`);
-      return { ok: true, detail: details.join('; '), notFound, forbidden, refusedByProxy };
+      return { ok: true, detail: details.join('; '), notFound, forbidden, refusedByProxy, answered, httpError };
     } catch (error) {
       const reason = describeFetchError(error);
       if (url.startsWith('https://') && reason.includes('certificate')) certificateFailure = reason;
       details.push(`${url} — ${reason}`);
     }
   }
-  return { ok: false, detail: details.join('; ') || 'no URL was tried', notFound, forbidden, refusedByProxy };
+  return {
+    ok: false,
+    detail: details.join('; ') || 'no URL was tried',
+    notFound,
+    forbidden,
+    refusedByProxy,
+    answered,
+    certificateFailure,
+    httpError,
+  };
 }
 
 /**
@@ -1147,6 +1245,12 @@ export function describeFetchError(error: unknown): string {
   const code = cause?.code ?? '';
   const detail = (cause?.message ?? message).replace(/\s+/g, ' ').trim();
 
+  // The port speaks another protocol than the one that was asked for:
+  // an HTTPS request to a plain HTTP port. That is not a certificate the
+  // machine does not trust — the certificate was never seen.
+  if (code === 'ERR_SSL_WRONG_VERSION_NUMBER' || /wrong version number/i.test(detail)) {
+    return `the port does not speak TLS: ${detail}`;
+  }
   if (/certificate|self.signed|self signed|SSL|TLS|trust/i.test(detail) || /CERT_|SELF_SIGNED|UNABLE_TO_VERIFY/i.test(code)) {
     return `the certificate of the public URL is not trusted: ${detail}`;
   }

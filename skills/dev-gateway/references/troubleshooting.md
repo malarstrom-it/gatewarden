@@ -85,6 +85,8 @@ died right after registering, the route will fail — check the port with
 dev-gateway doctor
 ```
 
-It checks the configuration file, the state directory, the daemon, the two
-ports, the routes, the proxy and the service unit, and it names every check it
-made. It exits 1 when a check fails.
+It checks the configuration file, the state directory, the daemon, the DNS zone,
+the shared middlewares, the two ports, the routes, the proxy and the service
+unit, and it names every check it made with the reason for it. It exits 1 when
+a check fails. A thing that is not there — no daemon, no zone, no proxy — is a
+warning, not a failure.
