@@ -9,6 +9,27 @@
 #   NPM_TOKEN      the token that publishes. Use an npm *automation* token
 #                  (`npm token create --automation`): it publishes without
 #                  the two-factor prompt, which no CI run can answer.
+#
+#                  The token alone is not enough. Two more things must hold:
+#
+#                  * The npm account of the token must be allowed to write
+#                    the scope of the package. Either the account owns the
+#                    scope (its name is the scope) or it is a member of the
+#                    organisation that owns the scope. A token of another
+#                    account cannot create the package, and the registry
+#                    hides that behind "404 Not Found" on the publish.
+#
+#                  * The npm account of the token must not have two-factor
+#                    authentication on, or the publish has to be staged. npm
+#                    answers a publish with "Two-factor authentication is
+#                    required to publish this package but an automation
+#                    token was specified" when the account has two-factor
+#                    authentication on, because a CI run cannot answer the
+#                    prompt. The ways out are npm's staged publishing (a
+#                    maintainer approves the publish on npmjs.com) and
+#                    trusted publishing, which npm offers for GitHub Actions
+#                    and GitLab CI but not for Gitea Actions.
+#
 #   NPM_REGISTRY   optional. Without it the package goes to
 #                  https://registry.npmjs.org. Set it to a staging
 #                  registry to publish a rehearsal first.
@@ -37,6 +58,15 @@ jobs:
         with:
           node-version: '22'
           registry-url: ${{ secrets.NPM_REGISTRY || 'https://registry.npmjs.org' }}
+
+      - name: the token must be alive
+        run: |
+          set -euo pipefail
+          account="$(npm whoami)"
+          echo "the token publishes as $account"
+          echo "the account must be allowed to write the scope of the package"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - run: npm ci
 
