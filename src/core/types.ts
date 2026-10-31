@@ -86,6 +86,11 @@ export interface Config {
   logMaxBytes: number;
   /** Number of rotated log files to keep. */
   logKeep: number;
-  /** Whether `postinstall` may start the daemon (D7). */
+  /**
+   * Whether the daemon may be started automatically (D7).
+   *
+   * Kept for compatibility: the install starts no daemon, and the lazy
+   * start is always on. The value is read and ignored.
+   */
   autostart: boolean;
 }

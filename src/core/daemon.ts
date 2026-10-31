@@ -16,12 +16,22 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fork, type ChildProcess } from 'node:child_process';
 import { loadConfig, configPathFromArgv, resolveConfigPath } from './config.ts';
-import { logFileFor } from './paths.ts';
+import { logFileFor, resolvePaths } from './paths.ts';
 import { ensureLogDirectory } from './daemonControl.ts';
+import {
+  installationRoot,
+  installationTreeIsIntact,
+  isCheckoutInstallation,
+  removeInstallationFiles,
+} from './installation.ts';
 import { log, setLogLevel } from './log.ts';
 import { relativeModulePath } from './util/module.ts';
 
 const SCOPE = 'daemon';
+
+/** How often the daemon looks at its own installation. */
+const WATCH_INTERVAL_MS = 500;
+
 /**
  * The worker, next to the core.
  *
@@ -143,7 +153,10 @@ export async function runDaemon(): Promise<void> {
 
   log('info', SCOPE, 'daemon started', `pid=${process.pid} registry=${config.registryPort} relay=${config.relayPort} state=${config.stateDir}`);
 
+  let stopping = false;
   const shutdown = () => {
+    if (stopping) return;
+    stopping = true;
     log('info', SCOPE, 'daemon stopping');
     registry.stop();
     relay.stop();
@@ -156,4 +169,45 @@ export async function runDaemon(): Promise<void> {
   };
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
+
+  // The daemon watches its own installation (§5.4). An installation that
+  // is removed takes the daemon with it: the package is gone, and the
+  // daemon has nothing left to serve.
+  //
+  // The files of the installation go with it as well: the configuration
+  // file, the route store and the cache. npm 7 and later do not run the
+  // uninstall scripts of a package — npm's own documentation says so —
+  // so the daemon is the only one that can clean up.
+  //
+  // Two cases are left alone: a checkout is not an installation (a
+  // clone that is deleted must not take the files of the user with it),
+  // and a tree that is being rebuilt (`npm ci` removes the whole
+  // `node_modules` and fills it again) brings the installation back.
+  const root = installationRoot(import.meta.url);
+  if (root !== null) {
+    // Whether the installation is a checkout is decided now, while it is
+    // still there: the directory is gone by the time the daemon notices.
+    const checkout = isCheckoutInstallation(root);
+    const watch = setInterval(() => {
+      if (fs.existsSync(root)) return;
+      clearInterval(watch);
+
+      if (checkout) {
+        log('info', SCOPE, 'the checkout is gone', `root=${root}`);
+      } else if (!installationTreeIsIntact(root)) {
+        log('info', SCOPE, 'the tree of the installation is gone', `root=${root}`);
+      } else {
+        const paths = resolvePaths();
+        removeInstallationFiles({
+          configFile: configPath,
+          stateDir: config.stateDir,
+          cacheDir: paths.cacheDir,
+          logFile,
+        });
+        log('info', SCOPE, 'the installation is gone', `root=${root}`);
+      }
+
+      shutdown();
+    }, WATCH_INTERVAL_MS);
+  }
 }

@@ -109,23 +109,36 @@ Windows equivalent in `env-paths`.
 which is not XDG), one directory for everything (config and mutable runtime
 state have different lifecycles).
 
-### D7 — The daemon starts lazily; `postinstall` may start it but may never fail the install
+### D7 — The daemon starts lazily; the install starts nothing
 
-Three layers, in the order a user meets them:
+Two layers, in the order a user meets them:
 
 1. **Lazy start** (always on, default). Every entry point ensures the daemon
-   is running. Zero install-time side effects. This already works today.
-2. **`postinstall`** starts the daemon, guarded: it exits 0 unconditionally,
-   it skips when `npm_config_ignore_scripts` is set, it skips in CI, and it
-   does not start a per-user daemon from a root-owned global install.
-3. **`gatewarden install-service`** writes a systemd user unit (Linux), a
+   is running. Zero install-time side effects.
+2. **`gatewarden install-service`** writes a systemd user unit (Linux), a
    launchd agent (macOS) or a scheduled task (Windows). This is the supported
    way to survive a reboot.
 
-*Rejected*: `postinstall` without guards (it breaks `npm ci` in CI, and it
-starts a root daemon from `sudo npm i -g`), no `postinstall` at all (the
-service is then only up when an agent happens to run, which is not what was
-asked for).
+The install script (`postinstall`) writes the configuration file and nothing
+else: no daemon, no port, no process in the background. An install that
+starts a daemon makes the machine do something the consumer did not ask for.
+The lazy start does the job anyway, and `gatewarden start` starts the daemon
+without waiting for a command that needs it.
+
+**The warning of npm 11 is about the install scripts, not about what they
+do.** npm 11 names every dependency that ships install scripts (`postinstall`,
+`prepare`, …) in a warning, and it *blocks* those scripts until the consumer
+has reviewed them (`npm install-scripts ls`, `npm install-scripts approve
+<pkg>`). The warning does not change when the scripts stop doing anything:
+it is the presence of the scripts that it reports, and this package ships
+`prepare` because a git installation has to build itself (§2.2). What the
+install script does is a separate question, and the answer is now: it writes
+a default configuration file and starts nothing.
+
+*Rejected*: `postinstall` that starts the daemon (the install starts three
+processes and holds two ports on every network interface of the machine), and
+a `postinstall` without guards (it breaks `npm ci` in CI, and it starts a root
+daemon from `sudo npm i -g`).
 
 ### D8 — The web interface is removed
 
@@ -294,7 +307,8 @@ Published contents:
 | `bin/gatewarden.js` | the CLI |
 | `bin/gatewarden-mcp.js` | the MCP server (stdio) |
 | `bin/gatewarden-daemon.js` | the daemon entry point |
-| `scripts/postinstall.mjs` | the install script that starts the daemon once (§5.2) |
+| `scripts/postinstall.mjs` | the install script that writes the configuration file (§5.2) |
+| `scripts/preuninstall.mjs`, `scripts/postuninstall.mjs` | the uninstall scripts: stop the daemon, remove the files of the installation (§5.4) |
 | `skills/gatewarden/` | the Agent Skill (§8.1) |
 | `docs/` | `AGENTS.md`, the Traefik wiring guide, the setup reference |
 | `README.md`, `LICENSE` | |
@@ -465,7 +479,7 @@ needed, plus the ones the package needs:
 | `stateDir` | resolved | runtime state directory |
 | `documentFormat` | `"yaml"` | `yaml` or `json` for the configuration document |
 | `logMaxBytes` / `logKeep` | `5242880` / `3` | log rotation |
-| `autostart` | `true` | may `postinstall` start the daemon (D7) |
+| `autostart` | `true` | kept for compatibility; the install starts no daemon (D7) |
 
 `indexHost` is removed (D8). The defaults are not the user's values: the
 user writes them (§9.1), or the setup wizard derives them and writes them
@@ -627,31 +641,43 @@ unreferenced.
 
 This is the default and requires no configuration.
 
-### 5.2 Layer two — `postinstall`
+### 5.2 The install — `postinstall`
+
+The install script writes the configuration file and starts nothing:
 
 ```js
 // scripts/postinstall.mjs
 if (process.env.npm_config_ignore_scripts === 'true') process.exit(0);
 if (process.env.CI) process.exit(0);
 if (process.getuid?.() === 0) {
-  // A global install run as root: do not start a per-user daemon.
+  // A global install run as root: do not write into the home of one user.
   process.exit(0);
 }
 try {
   ensureDirectories();
   writeDefaultConfigIfMissing();
-  if (config.autostart) await ensureDaemon();
 } catch {
   // Never fail the install.
 }
 process.exit(0);
 ```
 
-Properties: exits 0 unconditionally; idempotent (pidfile plus `/healthz`);
-silent apart from one line in the log; disabled by `GATEWARDEN_AUTOSTART=0`
-or `"autostart": false`.
+Properties: exits 0 unconditionally; idempotent (the configuration file is
+written once and never overwritten); silent (nothing on stdout, nothing on
+stderr); disabled by `GATEWARDEN_AUTOSTART=0`. It starts no daemon, opens no
+port and leaves no process behind — the daemon is started by the lazy start
+(§5.1) and by `gatewarden start` (§5.3).
 
-### 5.3 Layer three — `install-service`
+npm 11 blocks the install scripts of a dependency until the consumer has
+reviewed them (`npm install-scripts ls`, `npm install-scripts approve
+@malarstrom/gatewarden`), so the script runs only for a consumer who says so.
+The gateway does not need it: the setup wizard writes the same file, and the
+commands work without one.
+
+The `autostart` key of the configuration file is kept for compatibility and
+has no effect: the install starts nothing either way.
+
+### 5.3 Layer two — `install-service`
 
 `gatewarden install-service` writes and enables:
 
@@ -670,6 +696,46 @@ still on the machine of an installation that was made before the rename, and
 it names a launcher that does not exist any more, so the daemon it would
 start is never started. `gatewarden doctor` reports it as `old service`, and
 `gatewarden install-service` writes the unit of the current name.
+
+### 5.4 The uninstall
+
+An installation that is removed takes its daemon with it. The daemon is
+spawned detached and outlives the command that started it, so a daemon that
+is left behind keeps listening on two ports for a package that is not there
+any more.
+
+npm 7 and later do not run the uninstall scripts of a package — npm's own
+documentation says so — so the daemon watches its own installation: the
+directory that holds the `package.json` of the package it runs from. When that
+directory is gone, the daemon stops itself: the workers are stopped, the pid
+file is removed, and the process exits.
+
+The files of the installation go with it: the configuration file, the route
+store, the log and the cache. The daemon is the only one that can remove
+them under npm, so it is the one that removes them. Two cases are left alone:
+
+- a checkout is not an installation (a clone that is deleted must not take
+  the files of the user with it);
+- a tree that is being rebuilt: `npm ci` removes the whole `node_modules`
+  and fills it again, and the installation comes back with it.
+
+The package ships the scripts for the package managers that do run the
+uninstall scripts:
+
+| Script | What it does |
+| --- | --- |
+| `scripts/preuninstall.mjs` | stops the daemon of the installation (`SIGTERM`, then `SIGKILL` after ten seconds); a process that is not the daemon of *this* installation is never stopped — the command line of the process has to name the installation, because two installations that share a state directory share their pid file |
+| `scripts/postuninstall.mjs` | removes the configuration file, the files of the gateway in the state directory (the route store, the pid file, the log) and the cache |
+
+Both resolve the directories the way the rest of the package does (§3.1):
+`GATEWARDEN_HOME` puts everything in one directory, `GATEWARDEN_CONFIG` and
+`GATEWARDEN_STATE_DIR` name one each, and the names the variables had before
+the rename still work. Neither script ever fails the uninstall.
+
+Under npm 7 and later the scripts are not run at all: the daemon does the
+same work when it sees that its installation is gone. The result is the same
+under every package manager — no process, no configuration file, no route
+store, no cache.
 
 ---
 

@@ -468,36 +468,32 @@ describe('the published package', () => {
     assert.ok(actual.includes('docs/AGENTS.md'), 'the agent instructions are not in the tarball');
   });
 
-  test('the install starts the daemon of the installation', async (t) => {
-    // The install script does not start a daemon when it runs as root:
-    // a global install as root must not start a daemon for one user.
-    // The runner of the CI is root, and there is no daemon to wait for.
-    if (process.getuid?.() === 0) {
-      t.skip('the install script does not start a daemon as root');
-      return;
-    }
+  test('the install starts nothing', async () => {
+    // The install writes the configuration file and starts nothing
+    // (§5.2): no daemon, no port, no process. The daemon is started by
+    // the lazy start, when a command needs it.
+    assert.equal(
+      fs.existsSync(path.join(home, 'daemon.pid')),
+      false,
+      'the install started a daemon',
+    );
 
-    const deadline = Date.now() + 30_000;
     let healthy = false;
-
-    while (Date.now() < deadline && !healthy) {
-      try {
-        const response = await fetch(`http://127.0.0.1:${registryPort}/healthz`);
-        healthy = response.ok && (await response.text()).trim() === 'ok';
-      } catch {
-        // not up yet
-      }
-      if (!healthy) await new Promise((resolve) => setTimeout(resolve, 200));
+    try {
+      const response = await fetch(`http://127.0.0.1:${registryPort}/healthz`);
+      healthy = response.ok && (await response.text()).trim() === 'ok';
+    } catch {
+      // nothing answers, which is the point
     }
 
-    assert.equal(healthy, true, 'the daemon of the installed package did not answer');
+    assert.equal(healthy, false, 'a daemon answers after the install');
   });
 
   test('the installed binary runs', async () => {
     const binary = path.join(install, 'node_modules', '.bin', 'gatewarden');
 
     const { stdout } = await execFileAsync(binary, ['--version'], {
-      env: { ...process.env, HOME: home, GATEWARDEN_HOME: home },
+      env: { ...process.env, HOME: home, GATEWARDEN_HOME: home, XDG_CACHE_HOME: path.join(home, '.cache') },
       timeout: 60_000,
     });
 
@@ -511,7 +507,7 @@ describe('the published package', () => {
       binary,
       ['register', '--project', 'packaged', '--branch', 'main', '--port', '4321'],
       {
-        env: { ...process.env, HOME: home, GATEWARDEN_HOME: home },
+        env: { ...process.env, HOME: home, GATEWARDEN_HOME: home, XDG_CACHE_HOME: path.join(home, '.cache') },
         cwd: workdir,
         timeout: 120_000,
       },
@@ -520,7 +516,7 @@ describe('the published package', () => {
     assert.match(stdout, /^registered /m, 'the register command did not report a registration');
 
     const listed = await execFileAsync(binary, ['list', '--json'], {
-      env: { ...process.env, HOME: home, GATEWARDEN_HOME: home },
+      env: { ...process.env, HOME: home, GATEWARDEN_HOME: home, XDG_CACHE_HOME: path.join(home, '.cache') },
       timeout: 60_000,
     });
     const routes = (JSON.parse(listed.stdout) as { routes: Array<{ fqdn: string }> }).routes;
@@ -548,7 +544,7 @@ describe('the published package', () => {
     const { stdout } = await execFileAsync(process.execPath, [script], {
       cwd: install,
       timeout: 60_000,
-      env: npmEnv({ HOME: home, GATEWARDEN_HOME: home }),
+      env: npmEnv({ HOME: home, GATEWARDEN_HOME: home, XDG_CACHE_HOME: path.join(home, '.cache') }),
     });
 
     const imported = JSON.parse(stdout.trim()) as { core: number; adapters: number };
@@ -558,7 +554,7 @@ describe('the published package', () => {
 
   test('the installed MCP server answers', async () => {
     const server = spawn(process.execPath, [path.join(packageDir, 'bin', 'gatewarden-mcp.js')], {
-      env: { ...process.env, HOME: home, GATEWARDEN_HOME: home },
+      env: { ...process.env, HOME: home, GATEWARDEN_HOME: home, XDG_CACHE_HOME: path.join(home, '.cache') },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 

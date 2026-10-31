@@ -14,8 +14,8 @@
 # One job per file gives every job its own copy of the repository, and it
 # makes a failing run name the file that failed.
 #
-# The package's own postinstall script starts the daemon. It checks the CI
-# environment and does nothing there, so no daemon runs on the runner.
+# The package's own install script writes the configuration file and starts
+# no daemon, so no daemon runs on the runner.
 
 name: ci
 
@@ -75,6 +75,7 @@ jobs:
           - slug.test.ts
           - state.test.ts
           - testenv.test.ts
+          - uninstall.test.ts
           - websocket.test.ts
     steps:
       - uses: actions/checkout@v4

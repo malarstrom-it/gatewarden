@@ -313,7 +313,7 @@ describe('the quick start from a clean install', () => {
     // The daemon the quick start started has to go before the directory does.
     try {
       await execFileAsync(path.join(install, 'bin', 'gatewarden'), ['stop'], {
-        env: { ...process.env, GATEWARDEN_HOME: home },
+        env: { ...process.env, GATEWARDEN_HOME: home, XDG_CACHE_HOME: path.join(home, '.cache') },
         timeout: 30_000,
       });
     } catch {
@@ -332,7 +332,7 @@ describe('the quick start from a clean install', () => {
 
   test('the installed binary runs', async () => {
     const { stdout } = await execFileAsync(path.join(install, 'bin', 'gatewarden'), ['--version'], {
-      env: { ...process.env, GATEWARDEN_HOME: home },
+      env: { ...process.env, GATEWARDEN_HOME: home, XDG_CACHE_HOME: path.join(home, '.cache') },
       timeout: 60_000,
     });
 
@@ -343,7 +343,7 @@ describe('the quick start from a clean install', () => {
     const command = quickStartRegister();
 
     const { stdout } = await execFileAsync(path.join(install, 'bin', 'gatewarden'), command.split(' ').slice(1), {
-      env: { ...process.env, GATEWARDEN_HOME: home },
+      env: { ...process.env, GATEWARDEN_HOME: home, XDG_CACHE_HOME: path.join(home, '.cache') },
       cwd: workdir,
       timeout: 120_000,
     });
@@ -352,7 +352,7 @@ describe('the quick start from a clean install', () => {
     assert.match(stdout, /^url: https:\/\/main\.my-app\.gwtest\.local$/m, 'the register command printed no address');
 
     const listed = await execFileAsync(path.join(install, 'bin', 'gatewarden'), ['list', '--json'], {
-      env: { ...process.env, GATEWARDEN_HOME: home },
+      env: { ...process.env, GATEWARDEN_HOME: home, XDG_CACHE_HOME: path.join(home, '.cache') },
       timeout: 60_000,
     });
     const routes = (JSON.parse(listed.stdout) as { routes: Array<{ project: string; branch: string; url: string }> })

@@ -1,13 +1,12 @@
 /**
  * The service unit the gateway can be installed as (§5.3).
  *
- * Three layers start the daemon (§5):
+ * Two layers start the daemon (§5):
  *
  * 1. the lazy start, which every entry point uses;
- * 2. `postinstall`, which starts the daemon once, after an install;
- * 3. `install-service`, the only layer that survives a reboot.
+ * 2. `install-service`, the only layer that survives a reboot.
  *
- * This module is the third one. It writes the unit of the platform and
+ * This module is the second one. It writes the unit of the platform and
  * enables it:
  *
  * | Platform | Unit |

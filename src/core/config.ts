@@ -82,7 +82,8 @@ export const CONFIG_KEYS: Record<string, string> = {
   documentFormat: 'Format of the dynamic configuration document: yaml or json.',
   logMaxBytes: 'Rotate the log file when it grows past this size.',
   logKeep: 'How many rotated log files to keep.',
-  autostart: 'Whether the daemon may be started by `postinstall` (D7).',
+  autostart:
+    'Kept for compatibility: the install starts no daemon (D7). The daemon starts itself when a command needs it.',
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {

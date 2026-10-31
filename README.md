@@ -188,7 +188,7 @@ Every field, one line each:
 | `documentFormat` | `yaml` or `json` for the configuration document | `yaml` |
 | `logMaxBytes` | the log is rotated above this size | `5242880` |
 | `logKeep` | how many rotated log files to keep | `3` |
-| `autostart` | whether the install may start the daemon | `true` |
+| `autostart` | kept for compatibility: the install starts no daemon any more, and the daemon starts itself when a command needs it | `true` |
 
 The empty values are not placeholders you forgot to fill in. `advertisedIp`
 and `advertisedHost` are detected on every run, and a file that pins the
@@ -482,16 +482,22 @@ writes the unit of the current name.
 
 ## The daemon lifecycle
 
-Three layers start the daemon, and each one is enough on its own:
+Two layers start the daemon, and each one is enough on its own:
 
 | Layer | What it does | When |
 | --- | --- | --- |
 | the lazy start | every command that needs the daemon starts it and waits for it | always |
-| `postinstall` | the install starts it once | after `npm install` |
 | `install-service` | the daemon is a service of the user | survives a reboot |
 
-`postinstall` never fails the install: it exits 0 whatever it does, and it
-does nothing as root, in CI, or when `GATEWARDEN_AUTOSTART=0` is set.
+The install starts nothing. `npm install` writes the configuration file and
+leaves the machine the way it found it: no daemon, no open port, no process
+in the background. The first command that needs the daemon starts it, and
+`gatewarden start` starts it without waiting for such a command.
+
+The install script never fails the install: it exits 0 whatever it does, and
+it does nothing as root, in CI, or when `GATEWARDEN_AUTOSTART=0` is set. npm
+11 blocks the install scripts of a dependency until you have looked at them —
+see [The warning of npm 11](#the-warning-of-npm-11).
 
 `install-service` writes the unit of the platform and enables it:
 
@@ -503,6 +509,48 @@ does nothing as root, in CI, or when `GATEWARDEN_AUTOSTART=0` is set.
 
 The unit runs the daemon directly, not the CLI. `--no-enable` writes the unit
 without enabling it, which is what a machine without `systemctl --user` needs.
+
+## The uninstall
+
+`npm uninstall @malarstrom/gatewarden` takes the daemon with it, and the
+files of the installation with the daemon. The daemon watches its own
+installation and stops itself when the package is gone: npm 7 and later do
+not run the uninstall scripts of a package — npm's own documentation says so
+— and a daemon that is left behind would keep listening on two ports for a
+package that is not there any more.
+
+The configuration file, the route store, the log and the cache go with it.
+`GATEWARDEN_HOME` decides where they were, and the names the environment
+variables had before the rename still work.
+
+The package ships the scripts that do the same work for the package managers
+that run them: `preuninstall` stops the daemon, `postuninstall` removes the
+files.
+
+## The warning of npm 11
+
+npm 11 names every dependency that ships install scripts in a warning, and it
+blocks those scripts until you have looked at them:
+
+```text
+npm warn install-scripts 1 package has install scripts not yet covered by allowScripts:
+npm warn install-scripts   @malarstrom/gatewarden@0.1.0 (postinstall: node scripts/postinstall.mjs; prepare: npm run build)
+```
+
+The warning is about the *scripts*, not about what they do — it names every
+package that has them, however harmless they are. This package has two: the
+install script writes a default configuration file and starts nothing, and
+`prepare` builds the package when it is installed from a git repository.
+
+Look at them, and let them run, with:
+
+```bash
+npm install-scripts ls
+npm install-scripts approve @malarstrom/gatewarden
+```
+
+Nothing breaks if you do not: the setup wizard writes the same configuration
+file, and the commands work without one.
 
 ## When something does not work
 

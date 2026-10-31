@@ -1,21 +1,25 @@
 /**
- * The `postinstall` layer of the daemon lifecycle (§5.2).
+ * The install script of the package (§5.2).
  *
- * The script that runs after an install has one job: start the daemon once,
- * and never fail the install. The guards around it are the interesting
- * part, and they are what the tests are about.
+ * The script that runs after an install has one job: write the
+ * configuration file, and start nothing at all. The daemon is started by
+ * the lazy start and by the explicit command `gatewarden start`, and an
+ * install that starts a daemon makes the machine do something nobody
+ * asked for.
+ *
+ * The guards around the script are the interesting part, and they are what
+ * the tests are about.
  *
  * The tests that want the script to *do* something run it as an installed
  * package: a copy of the sources with a manifest that is not private. A
  * checkout is not an installation, and the script says so.
  *
- * The script runs as an ordinary user. It must not start a daemon when it
- * runs as root — a global install as root must not start a daemon for one
- * user (§5.2) — so on a machine that works as root, such as the CI runner
- * of this repository, the script stops before it does anything, and every
- * test here would be about a script that does nothing. The tests therefore
- * run the script as an ordinary user whenever the machine has one, and skip
- * themselves with a reason when it does not.
+ * The script runs as an ordinary user. A global install as root must not
+ * write into the home of one user (§5.2), so on a machine that works as
+ * root, such as the CI runner of this repository, the script stops before
+ * it does anything, and every test here would be about a script that does
+ * nothing. The tests therefore run the script as an ordinary user whenever
+ * the machine has one, and skip themselves with a reason when it does not.
  */
 
 import assert from 'node:assert/strict';
@@ -25,12 +29,34 @@ import os from 'node:os';
 import path from 'node:path';
 import test, { type TestContext } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { loadConfig } from '../src/core/config.ts';
-import { isHealthy } from '../src/core/daemonControl.ts';
-import { freePort } from './helpers/cli.ts';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SCRIPT = path.join(REPO_ROOT, 'scripts', 'postinstall.mjs');
+
+/**
+ * The processes whose command line names a path.
+ *
+ * The daemon of an installation is started with the path of its
+ * configuration file on the command line, so the processes that mention
+ * the path are the processes of that installation. The list is empty on
+ * the systems whose processes cannot be read that way: the check is
+ * there for the machines that can answer it.
+ */
+function processesMentioning(needle: string): string[] {
+  if (process.platform !== 'linux') return [];
+
+  const found: string[] = [];
+  for (const entry of fs.readdirSync('/proc')) {
+    if (!/^\d+$/.test(entry)) continue;
+    try {
+      const cmdline = fs.readFileSync(`/proc/${entry}/cmdline`, 'utf8');
+      if (cmdline.includes(needle)) found.push(`${entry}: ${cmdline.split('\0').join(' ')}`);
+    } catch {
+      // The process is gone, or it belongs to another user.
+    }
+  }
+  return found;
+}
 
 interface RunResult {
   code: number;
@@ -425,82 +451,46 @@ test('the script does nothing when it runs as root', async (t) => {
   }
 });
 
-test('the script writes the configuration and starts the daemon', async (t) => {
+test('the script writes the configuration and starts nothing', async (t) => {
   const user = userOrSkip(t);
   if (!user) return;
   const home = makeHome(user);
   const installed = makeInstalledPackage(user);
-  const registryPort = await freePort();
-  const relayPort = await freePort();
-  fs.writeFileSync(
-    home.configPath,
-    JSON.stringify(
-      {
-        registryPort,
-        relayPort,
-        advertisedIp: '127.0.0.1',
-        advertisedHost: '127.0.0.1',
-        zone: 'gwtest.local',
-        entryPoints: ['websecure'],
-        certResolver: 'testca',
-        secret: '',
-        stateDir: home.stateDir,
-        documentFormat: 'yaml',
-        autostart: true,
-      },
-      null,
-      2,
-    ),
-  );
 
-  const config = loadConfig({ configPath: home.configPath, stateDir: home.stateDir });
-  t.after(async () => {
-    try {
-      const pid = Number.parseInt(fs.readFileSync(path.join(home.stateDir, 'daemon.pid'), 'utf8').trim(), 10);
-      if (Number.isFinite(pid)) process.kill(pid, 'SIGTERM');
-    } catch {
-      // not running
-    }
-    const deadline = Date.now() + 8000;
-    while (Date.now() < deadline && (await isHealthy(config))) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
+  try {
+    const result = await runScript(
+      installed.script,
+      environment(home.home, {
+        GATEWARDEN_CONFIG: home.configPath,
+        GATEWARDEN_STATE_DIR: home.stateDir,
+      }),
+      user,
+    );
+
+    assert.equal(result.code, 0, result.stderr);
+
+    // The script is silent: it writes to neither stdout nor stderr.
+    assert.equal(result.stdout, '', 'the script wrote to stdout');
+    assert.equal(result.stderr, '', 'the script wrote to stderr');
+
+    // The configuration file is written, and it holds the default values.
+    assert.ok(fs.existsSync(home.configPath), 'the script wrote no configuration file');
+    const written = JSON.parse(fs.readFileSync(home.configPath, 'utf8')) as Record<string, unknown>;
+    assert.equal(written['registryPort'], 45002);
+    assert.equal(written['relayPort'], 45001);
+
+    // The state directory is there.
+    assert.ok(fs.existsSync(home.stateDir), 'the state directory was not created');
+
+    // No daemon. The daemon writes its pidfile before it binds its port,
+    // so a pidfile that is not there is a daemon that was not started —
+    // and no process of the installation runs either.
+    assert.equal(fs.existsSync(path.join(home.stateDir, 'daemon.pid')), false, 'the daemon started');
+    assert.deepEqual(processesMentioning(home.configPath), [], 'the install started a process');
+  } finally {
     installed.cleanup();
     fs.rmSync(home.home, { recursive: true, force: true });
-  });
-
-  const result = await runScript(
-    installed.script,
-    environment(home.home, {
-      GATEWARDEN_CONFIG: home.configPath,
-      GATEWARDEN_STATE_DIR: home.stateDir,
-    }),
-    user,
-  );
-
-  assert.equal(result.code, 0, result.stderr);
-  assert.ok(fs.existsSync(home.stateDir), 'the state directory was not created');
-
-  // The daemon answers: the script started it.
-  const deadline = Date.now() + 20_000;
-  let healthy = false;
-  while (Date.now() < deadline && !healthy) {
-    healthy = await isHealthy(config);
-    if (!healthy) await new Promise((resolve) => setTimeout(resolve, 150));
   }
-  assert.equal(healthy, true, 'the daemon did not answer after the install');
-
-  // The second run is idempotent: the daemon is already running.
-  const second = await runScript(
-    installed.script,
-    environment(home.home, {
-      GATEWARDEN_CONFIG: home.configPath,
-      GATEWARDEN_STATE_DIR: home.stateDir,
-    }),
-    user,
-  );
-  assert.equal(second.code, 0, second.stderr);
-  assert.equal(await isHealthy(config), true);
 });
 
 test('the install does not import the old layout', async (t) => {

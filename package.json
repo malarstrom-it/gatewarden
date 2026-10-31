@@ -71,6 +71,8 @@
     "prepublishOnly": "npm run build && npm test",
     "publish:dry-run": "npm publish --dry-run",
     "postinstall": "node scripts/postinstall.mjs",
+    "preuninstall": "node scripts/preuninstall.mjs",
+    "postuninstall": "node scripts/postuninstall.mjs",
     "start": "node src/daemon.ts"
   },
   "engines": {

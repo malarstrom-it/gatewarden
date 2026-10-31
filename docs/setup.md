@@ -56,8 +56,23 @@ Check that it arrived:
 gatewarden --version
 ```
 
-It prints the version of the package. The same package is a pi
-package, and pi installs it like any other:
+It prints the version of the package. The install starts nothing: it writes
+the configuration file (if there is none) and leaves the machine the way it
+found it — no daemon, no open port, no process in the background. The daemon
+starts by itself the first time a command needs it (step four).
+
+npm 11 blocks the install scripts of a dependency until you have looked at
+them, and it names the package in a warning while it does:
+
+```bash
+npm install-scripts ls
+npm install-scripts approve @malarstrom/gatewarden
+```
+
+Nothing breaks if you do not approve them: the wizard writes the same
+configuration file, and the commands work without one.
+
+The same package is a pi package, and pi installs it like any other:
 
 ```bash
 pi install npm:@malarstrom/gatewarden
@@ -202,7 +217,7 @@ What you write on top of it is step four's example.
 | `documentFormat` | `"yaml"` | `yaml` or `json` for the configuration document | `yaml` |
 | `logMaxBytes` | `5242880` | the log is rotated above this size | 5 MB |
 | `logKeep` | `3` | how many rotated log files to keep | 3 |
-| `autostart` | `true` | whether the install may start the daemon | `true` |
+| `autostart` | `true` | kept for compatibility: the install starts no daemon any more, and the daemon starts itself when a command needs it | `true` |
 
 **An empty value means "derived", not "forgotten".** The address of the
 machine, the host name that is the address and the IPv6 prefixes of the
@@ -238,6 +253,16 @@ The other commands of the lifecycle:
 
 The log of the daemon is `daemon.log` in the state directory; the routes live
 in `routes.json` next to it. `gatewarden status` prints both paths.
+
+Removing the package takes the daemon with it, and the files of the
+installation with the daemon: the daemon watches its own installation and
+stops itself when the package is gone. npm 7 and later do not run the
+uninstall scripts of a package — npm's own documentation says so — and the
+package ships them for the package managers that do run them:
+`preuninstall` stops the daemon, `postuninstall` removes the configuration
+file, the route store, the log and the cache. The result is the same under
+every package manager: no process, no configuration file, no routes, no
+cache.
 
 ### The options every command takes
 

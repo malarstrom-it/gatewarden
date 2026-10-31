@@ -4,6 +4,7 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "allowImportingTsExtensions": true,
+    "allowJs": true,
     "rewriteRelativeImportExtensions": true,
     "noEmit": true,
     "strict": true,
