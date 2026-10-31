@@ -39,13 +39,22 @@ import { copyDependencyClosure, linkBinaries, unpackTarball } from './helpers/in
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+/** An entry of `exports`: a path, or a set of conditions. */
+type ExportEntry = string | { types?: string; import?: string; default?: string };
+
 const MANIFEST = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8')) as {
   name: string;
   version: string;
   license: string;
   type: string;
+  repository: { type: string; url: string };
+  homepage: string;
+  bugs: { url: string };
+  author: { name: string };
+  funding: { type: string; url: string };
   bin: Record<string, string>;
-  exports: Record<string, string>;
+  exports: Record<string, ExportEntry>;
+  typesVersions: Record<string, Record<string, string[]>>;
   files: string[];
   engines: Record<string, string>;
   dependencies: Record<string, string>;
@@ -282,7 +291,25 @@ describe('the published package', () => {
     assert.equal(MANIFEST.private, undefined, 'a private package is never published');
     assert.equal(MANIFEST.license, 'MIT');
     assert.equal(MANIFEST.type, 'module');
-    assert.equal(MANIFEST.exports['.'], './dist/core/index.js');
+    // The `exports` of the manifest: every entry point names its types
+    // first, so that a consumer finds the declarations of the package
+    // before it finds the JavaScript. The `types` condition has to come
+    // first in the object: Node reads the conditions in the order they
+    // stand, and the first one that matches wins.
+    const root = MANIFEST.exports['.'] as { types?: string; import?: string };
+    assert.equal(root.types, './dist/core/index.d.ts');
+    assert.equal(root.import, './dist/core/index.js');
+
+    const adapters = MANIFEST.exports['./adapters'] as { types?: string; import?: string };
+    assert.equal(adapters.types, './dist/adapters/index.d.ts');
+    assert.equal(adapters.import, './dist/adapters/index.js');
+
+    // The node10 resolution does not read `exports` at all: it reads the
+    // `types` field and the `typesVersions` map. Both entry points have
+    // to be found by it, or a consumer on the old resolution finds no
+    // declarations for the subpath.
+    assert.equal(MANIFEST.typesVersions['*']?.['adapters']?.[0], './dist/adapters/index.d.ts');
+
     assert.equal(MANIFEST.bin['gatewarden'], 'bin/gatewarden.js');
     assert.equal(MANIFEST.bin['gatewarden-mcp'], 'bin/gatewarden-mcp.js');
     assert.equal(MANIFEST.bin['gatewarden-daemon'], 'bin/gatewarden-daemon.js');
@@ -320,6 +347,21 @@ describe('the published package', () => {
     assert.deepEqual(MANIFEST.pi.extensions, ['dist/integrations/pi/extension.js']);
     assert.deepEqual(MANIFEST.pi.skills, ['./skills']);
     assert.ok(MANIFEST.keywords.includes('pi-package'));
+
+    // The keywords carry the name of the package. A reader of the npm
+    // page searches for the word the package answers to.
+    assert.ok(MANIFEST.keywords.includes('gatewarden'));
+
+    // The links of the npm page come from the manifest: the source code,
+    // the page of the package, and the place to report a bug. They name
+    // the gitea repository of the project, and not a github one.
+    assert.equal(MANIFEST.repository.type, 'git');
+    assert.equal(MANIFEST.repository.url, 'git+https://gitea.home.malarstrom.com/malarstrom/traefik-api.git');
+    assert.equal(MANIFEST.homepage, 'https://gitea.home.malarstrom.com/malarstrom/traefik-api');
+    assert.equal(MANIFEST.bugs.url, 'https://gitea.home.malarstrom.com/malarstrom/traefik-api/issues');
+    assert.equal(MANIFEST.author.name, 'malarstrom');
+    assert.equal(MANIFEST.funding.type, 'individual');
+    assert.equal(MANIFEST.funding.url, 'https://gitea.home.malarstrom.com/malarstrom');
   });
 
   test('a copy of the repository builds itself and ships the compiled output', async (t) => {

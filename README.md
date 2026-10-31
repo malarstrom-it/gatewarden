@@ -50,8 +50,13 @@ It installs from a git repository too. The compiled output is not in the
 repository, so the package builds itself when it is installed from one:
 
 ```bash
-npm install git+github.com/malarstrom/gatewarden
+npm install git+https://gitea.home.malarstrom.com/malarstrom/traefik-api.git
 ```
+
+The source of the package lives at
+[gitea.home.malarstrom.com/malarstrom/traefik-api](https://gitea.home.malarstrom.com/malarstrom/traefik-api),
+and a bug is reported at
+[its issues](https://gitea.home.malarstrom.com/malarstrom/traefik-api/issues).
 
 From a tarball — a checkout, or a build of your own — the same thing:
 

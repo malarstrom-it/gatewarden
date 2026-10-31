@@ -33,6 +33,15 @@
  * and the compiled type declarations of the package use it. The network name
  * is an example in the documentation, and the generic rules are what keep
  * the addresses of a private network out.
+ *
+ * The git server of the project is an exception of the same kind. The
+ * manifest names it in `repository`, `homepage`, `bugs` and `funding`, and
+ * the README names it as the place the source of the package lives. That is
+ * where the source is, and a package without it is a package nobody can
+ * look into. The host carries the DNS zone of the installation in its name,
+ * and the guard would otherwise read every one of those lines as a leak.
+ * The exception is the host of the git server, not the zone: the zone on its
+ * own is still a leak.
  */
 
 import assert from 'node:assert/strict';
@@ -74,6 +83,14 @@ const INSTALLATION_IDENTIFIERS: Array<{ value: string; what: string }> = [
   { value: 'herdr-ssh', what: 'the name of an entry point of that installation' },
   { value: '/opt/devbox-traefik-api', what: 'the path of that installation on its machine' },
 ];
+
+/**
+ * The host of the git server of the project.
+ *
+ * The source of the package lives there, and the manifest names it. The
+ * host is an exception to the zone it carries in its name.
+ */
+const PROJECT_HOST = 'gitea.home.malarstrom.com';
 
 /**
  * The addresses of a private network.
@@ -188,7 +205,12 @@ describe('the published package', () => {
       for (const { value, what } of INSTALLATION_IDENTIFIERS) {
         let index = text.indexOf(value);
         while (index !== -1) {
-          hits.push(`${file}:${lineOf(text, index)}: "${value}" — ${what}`);
+          // The host of the git server of the project is named by the
+          // manifest and by the README; the zone it carries in its name
+          // is not a leak there.
+          const onProjectHost =
+            PROJECT_HOST.includes(value) && text.startsWith(PROJECT_HOST, index - (PROJECT_HOST.length - value.length));
+          if (!onProjectHost) hits.push(`${file}:${lineOf(text, index)}: "${value}" — ${what}`);
           index = text.indexOf(value, index + value.length);
         }
       }

@@ -3,12 +3,42 @@
   "version": "0.1.0",
   "license": "MIT",
   "type": "module",
-  "description": "Give a development server running on this machine an https address on your own domain: an MCP server, a pi extension, a CLI and an Agent Skill over one proxy-agnostic core",
+  "description": "Give a local development server an https address on your own domain: an MCP server, a pi extension, a CLI and an Agent Skill over one proxy-agnostic core",
+  "repository": {
+    "type": "git",
+    "url": "git+https://gitea.home.malarstrom.com/malarstrom/traefik-api.git"
+  },
+  "homepage": "https://gitea.home.malarstrom.com/malarstrom/traefik-api",
+  "bugs": {
+    "url": "https://gitea.home.malarstrom.com/malarstrom/traefik-api/issues"
+  },
+  "author": {
+    "name": "malarstrom"
+  },
+  "funding": {
+    "type": "individual",
+    "url": "https://gitea.home.malarstrom.com/malarstrom"
+  },
   "main": "./dist/core/index.js",
   "types": "./dist/core/index.d.ts",
   "exports": {
-    ".": "./dist/core/index.js",
-    "./adapters": "./dist/adapters/index.js"
+    ".": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js",
+      "default": "./dist/core/index.js"
+    },
+    "./adapters": {
+      "types": "./dist/adapters/index.d.ts",
+      "import": "./dist/adapters/index.js",
+      "default": "./dist/adapters/index.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "adapters": [
+        "./dist/adapters/index.d.ts"
+      ]
+    }
   },
   "bin": {
     "gatewarden": "bin/gatewarden.js",
@@ -57,14 +87,21 @@
     "typescript": "^5.7.0"
   },
   "pi": {
-    "extensions": ["dist/integrations/pi/extension.js"],
-    "skills": ["./skills"]
+    "extensions": [
+      "dist/integrations/pi/extension.js"
+    ],
+    "skills": [
+      "./skills"
+    ]
   },
   "keywords": [
     "pi-package",
     "mcp",
+    "gatewarden",
     "gateway",
     "dev-server",
+    "local-development",
+    "https",
     "traefik"
   ]
 }
