@@ -55,6 +55,8 @@
     "skills",
     "docs",
     "README.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
     "LICENSE"
   ],
   "publishConfig": {

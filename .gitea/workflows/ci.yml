@@ -37,6 +37,33 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
 
+  # The dependency tree is checked on its own, and not as a part of another
+  # step. `npm audit` answers a question that no other step answers: is
+  # there a known vulnerability in something we ship? A package that runs
+  # a script on the consumer's machine — and this one writes the
+  # consumer's configuration file from its `postinstall` — has to know the
+  # answer before a consumer finds out.
+  #
+  # The level is `high`: the run fails on a high or a critical advisory and
+  # lets the lower ones through. A low advisory in a build dependency of a
+  # development tool is not worth a red build; a high one in the runtime
+  # tree is. The step fails on its own, so a red run says "audit" and not
+  # "install".
+  audit:
+    name: audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - name: no high or critical advisory in the dependency tree
+        run: npm audit --audit-level=high
+
+  # The tests are one job per test file, as described at the top of this
+  # file. They run on Node 22, the version the package is developed on.
   test:
     name: test (${{ matrix.file }})
     runs-on: ubuntu-latest
@@ -85,6 +112,53 @@ jobs:
       - run: npm ci
       - run: node --test "test/${{ matrix.file }}"
 
+  # The version matrix. The package says in its `engines` field that it
+  # runs on Node 20.11 and later, and a promise like that is only worth
+  # something if it is tested. The matrix runs the typecheck on all three
+  # versions and the test suite on the ones that can run it.
+  #
+  # Node 20 cannot run the test suite, and that is not a fault of the
+  # package: the test files are TypeScript, and Node runs them itself
+  # instead of compiling them. The type stripping arrived in Node 22.6 and
+  # was on by default in Node 22.18; Node 20 has never had it, and it
+  # answers a `.ts` file with `ERR_UNKNOWN_FILE_EXTENSION`. The Node 20 leg
+  # therefore checks the thing the `engines` field actually promises: the
+  # published package installs and runs on Node 20. The development tools
+  # need Node 22.18 or later, and the README and CONTRIBUTING say so.
+  node-matrix:
+    name: node ${{ matrix.node }} (typecheck and test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    fail-fast: false
+    strategy:
+      matrix:
+        node:
+          - '20'
+          - '22'
+          - '24'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci
+      - name: typecheck
+        run: npm run typecheck
+      - name: the test suite
+        if: matrix.node != '20'
+        run: npm test
+      - name: the published package installs and runs
+        if: matrix.node == '20'
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          tarball="$(npm pack --pack-destination "$work" | tail -1)"
+          mkdir -p "$work/consumer"
+          cd "$work/consumer"
+          npm init --yes > /dev/null
+          npm install "$work/$tarball"
+          ./node_modules/.bin/gatewarden --version
+
   build:
     name: build
     runs-on: ubuntu-latest
@@ -98,6 +172,69 @@ jobs:
       - run: npm run build
       - name: what the tarball holds
         run: npm pack --dry-run
+
+  # The manifest of a published package is what the registry shows and what
+  # the consumer's tools read. A mistake in it — an `exports` that points
+  # at a file that is not in the tarball, a `types` that is not there, a
+  # `main` and an `exports` that disagree — is invisible in the tests and
+  # fatal for the consumer. `publint` reads the tarball the way a consumer
+  # reads it and says what is wrong with it.
+  #
+  # The version of the tool is pinned: a new release of `publint` must not
+  # be able to turn a green build red without a commit in this repository
+  # that says what it found.
+  publint:
+    name: publint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - name: the tarball is well-formed for a consumer
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          tarball="$(npm pack --pack-destination "$work" | tail -1)"
+          npx --yes publint@0.3.25 run "$work/$tarball"
+
+  # The types are the second half of the same question. `publint` says the
+  # manifest points at the right files; `@arethetypeswrong/cli` says a
+  # consumer's TypeScript finds the types through the `exports` map the way
+  # Node and TypeScript resolve them in practice. A package can pass the
+  # first check and fail the second one: an `exports` map without a
+  # `types` condition, or a `default` that leads a CommonJS consumer to an
+  # ESM file.
+  #
+  # The profile is `esm-only`, because the package is ESM only: `"type":
+  # "module"`, and the `exports` map has no CommonJS entry. The other
+  # profiles answer the question "what happens to a CommonJS consumer",
+  # and the answer is "it has to use a dynamic import" — true, and not a
+  # fault of this package. The `esm-only` profile ignores that question
+  # and asks the one that matters here: does a consumer's TypeScript find
+  # the declarations through the `exports` map, the way Node resolves the
+  # package? The tool fails the run on a missing declaration or on a
+  # resolution that finds the wrong file.
+  #
+  # The version of the tool is pinned, for the same reason as `publint`.
+  types:
+    name: types (attw)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - name: the types of the tarball resolve
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          tarball="$(npm pack --pack-destination "$work" | tail -1)"
+          npx --yes @arethetypeswrong/cli@0.18.5 --profile esm-only "$work/$tarball"
 
   package:
     name: package

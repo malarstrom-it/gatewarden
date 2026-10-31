@@ -328,6 +328,8 @@ describe('the published package', () => {
       'skills',
       'docs',
       'README.md',
+      'CHANGELOG.md',
+      'CONTRIBUTING.md',
       'LICENSE',
     ]);
 
@@ -463,6 +465,16 @@ describe('the published package', () => {
 
     assert.ok(actual.includes('LICENSE'), 'the licence is not in the tarball');
     assert.ok(actual.includes('README.md'), 'the readme is not in the tarball');
+    // The readme links to the changelog and to the contributing guide, and
+    // the links have to work for a consumer that reads the readme from
+    // `node_modules`.
+    assert.ok(actual.includes('CHANGELOG.md'), 'the changelog is not in the tarball');
+    assert.ok(actual.includes('CONTRIBUTING.md'), 'the contributing guide is not in the tarball');
+    // The security policy is the one document that is not in the tarball:
+    // it names the address of the maintainer, and the published package
+    // carries no data of the installation it was written for (S14). The
+    // readme points at the repository for it.
+    assert.ok(!actual.includes('SECURITY.md'), 'the security policy is in the tarball');
     assert.ok(actual.includes('dist/core/index.js'), 'the exported entry point is not in the tarball');
     assert.ok(actual.includes('skills/gatewarden/SKILL.md'), 'the skill is not in the tarball');
     assert.ok(actual.includes('docs/AGENTS.md'), 'the agent instructions are not in the tarball');

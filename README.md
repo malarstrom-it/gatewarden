@@ -568,12 +568,22 @@ lists the failures that actually happen.
 ## Development
 
 ```bash
-npm install
+npm ci
 npm run build      # tsc -p tsconfig.build.json
 npm test           # node --test test/*.test.ts
 npm run typecheck  # tsc --noEmit
 npm run publish:dry-run   # what the publish would upload, without uploading it
 ```
+
+`npm ci` installs exactly what the lock file says. Use it and not
+`npm install`: `npm install` may write to the lock file, and a lock file that
+changes on its own is a lock file nobody reviews.
+
+The development tools need **Node 22.18 or later**: the test files are
+TypeScript and Node runs them itself, and the type stripping that makes that
+possible is on by default from Node 22.18. The package itself runs on Node
+20.11 and later — it ships compiled JavaScript and nothing is built at install
+time.
 
 The build writes `dist/`: the compiled JavaScript, the type declarations and
 the source maps. The source keeps its `.ts` import specifiers — Node does not
@@ -583,6 +593,19 @@ the output (`rewriteRelativeImportExtensions`).
 The launchers in `bin/` are thin. In a checkout they run the TypeScript source,
 so the working tree is always what runs. In an installed package — under
 `node_modules`, where Node cannot strip types — they run the compiled `dist/`.
+
+## Security
+
+A security flaw is reported privately, never as a public issue. The security
+policy — how to report it, to whom, within what time, and what is already
+protected — is `SECURITY.md` in the
+[repository of the package](https://gitea.home.malarstrom.com/malarstrom/traefik-api).
+
+## Contributing
+
+How to build, test, typecheck and pack the package, which commits are taken,
+and what every change has to follow: [`CONTRIBUTING.md`](CONTRIBUTING.md).
+What changed in each release: [`CHANGELOG.md`](CHANGELOG.md).
 
 ## License
 
