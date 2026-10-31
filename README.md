@@ -86,7 +86,7 @@ file is the way. Nothing below needs the wizard to have succeeded.
 | A Traefik proxy (v2 or v3) on another machine | The proxy terminates TLS and forwards the request. The gateway never terminates TLS itself. |
 | A DNS zone the proxy already serves, e.g. `example.com` | Every route gets the host name `<branch>.<project>.<zone>`. Without a zone there is no host name, and `gatewarden register` refuses to register a route. |
 | TLS for that zone: a certificate resolver in the proxy | The user opens an `https://` address. The gateway asks the proxy's resolver for the certificate; the credentials stay in the proxy, and the gateway never reads them. |
-| A machine the proxy can reach, and an address the proxy knows it by (a host name or an IP) | The proxy polls the configuration document on port `45002` and sends the requests to the relay on port `45001`. Both ports have to be open from the proxy to that machine. |
+| A machine the proxy can reach, and an address the proxy knows it by (a host name or an IP) | The proxy polls the configuration document on port `45002` and sends the requests to the relay on port `45001`. Both ports have to be open from the proxy to that machine, and the address of the proxy has to be in `allowedCidrs`: both listeners answer the trust list and nobody else. |
 
 **Can** — every one of these is optional, and the gateway works without them
 
@@ -96,7 +96,7 @@ file is the way. Nothing below needs the wizard to have succeeded.
 | A shared secret (`"secret"`) in the configuration file | the proxy has to present it to the registry and to the relay |
 | The shared middlewares of your proxy (`compress`, `default-security-headers`) | the dev routers get them too, when you name the provider that owns them |
 | `gatewarden install-service` | the daemon starts again after a reboot |
-| More addresses in `allowedCidrs` | the relay accepts the dispatch header from more than one proxy |
+| More addresses in `allowedCidrs` | the gateway accepts them: the relay takes the dispatch header from them, the registry serves the configuration document to them |
 
 ### Step 1 — install the package
 
@@ -157,6 +157,7 @@ prints the path it uses and every key it knows.
   "compressMiddleware": false,
   "middlewareProvider": "",
   "allowedCidrs": ["127.0.0.1/32", "::1/128", "192.0.2.0/24"],
+  "registryAllowedCidrs": [],
   "secret": "",
   "stateDir": "",
   "documentFormat": "yaml",
@@ -182,7 +183,8 @@ Every field, one line each:
 | `securityHeaders` | also apply the shared `default-security-headers` middleware | `false` — the frame-deny of that middleware can break a preview |
 | `compressMiddleware` | also apply the shared `compress` middleware | `false` |
 | `middlewareProvider` | the provider that owns the shared middlewares — the name of your file provider, for example | empty = the shared middlewares are not used |
-| `allowedCidrs` | the addresses allowed to send the dispatch header to the relay | the address of your proxy, and the loopback |
+| `allowedCidrs` | the addresses allowed to talk to the gateway: the relay takes the dispatch header from them, the registry serves the configuration document to them | the address of your proxy, and the loopback |
+| `registryAllowedCidrs` | the addresses allowed to read the configuration document, on top of `allowedCidrs` | empty = the same addresses as the relay |
 | `secret` | a shared secret between the gateway and the proxy | empty = none |
 | `stateDir` | the directory with the routes and the pid file | empty = the XDG state directory |
 | `documentFormat` | `yaml` or `json` for the configuration document | `yaml` |
@@ -217,8 +219,8 @@ the daemon works.
 | --- | --- |
 | `gatewarden doctor` | `nothing is broken` (and the exit code is 0) |
 | `gatewarden status` | `daemon: running (pid …)` and `zone: example.com` |
-| `curl -sS http://<the machine>:45002/healthz` | `ok` |
-| `curl -sS http://<the machine>:45002/traefik` | the configuration document, in YAML — the same thing the proxy polls |
+| `curl -sS http://127.0.0.1:45002/healthz` | `ok` |
+| `curl -sS http://127.0.0.1:45002/traefik` | the configuration document, in YAML — the same thing the proxy polls |
 | `gatewarden register --project probe --branch main --port 3999` | `url: https://main.probe.example.com` |
 | open that address in a browser | your dev server |
 
@@ -239,10 +241,11 @@ not.
 | the address answers `502` | the dev server is not listening on the port you registered | check it with `gatewarden list` — the state column says `up` or `down` |
 | the address answers `404` at the proxy | the proxy has not picked the route up yet, or the wiring is not in place | wait one poll interval; then check that the `http` provider is in the proxy's static configuration, and that the proxy was restarted after it was added |
 | the relay answers `403` | the address of the proxy is not in `allowedCidrs` | add the address of the proxy to `allowedCidrs` in the configuration file, and restart the daemon |
+| the registry answers `403` | the address that asks for the configuration document is not in the trust list | add the address to `allowedCidrs` (or to `registryAllowedCidrs`) in the configuration file, and restart the daemon — the answer says which address was refused |
 | the certificate of the address is not trusted | the resolver was not asked for a wildcard of the project, or the zone is another one | look at the resolver in the log of the proxy; `"tlsMode": "fqdn"` asks for one certificate per address instead of one per project |
 | the host name does not resolve | the DNS zone has no wildcard record for the subdomains | add a `*` record for the zone to your DNS |
 | `gatewarden doctor` says `not running` | the daemon is not up | `gatewarden start`, and read the log file the command names |
-| the proxy serves its dashboard instead of your dev server | the route is not in the document the proxy polls | `curl -sS http://<the machine>:45002/traefik` — the route has to be in it |
+| the proxy serves its dashboard instead of your dev server | the route is not in the document the proxy polls | `curl -sS http://127.0.0.1:45002/traefik` — the route has to be in it |
 
 More cases, with the reason they happen: the skill's
 [troubleshooting reference](skills/gatewarden/references/troubleshooting.md).

@@ -156,6 +156,7 @@ test('the new layout has the keys of §3.2', () => {
     assert.equal(config.logMaxBytes, 5242880);
     assert.equal(config.logKeep, 3);
     assert.equal(config.secret, '');
+    assert.deepEqual(config.registryAllowedCidrs, []);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }
@@ -171,6 +172,9 @@ test('the built-in defaults carry no value of one installation', () => {
   assert.equal(DEFAULT_CONFIG.advertisedHost, '');
   assert.equal(DEFAULT_CONFIG.advertisedIp, '');
   assert.deepEqual(DEFAULT_CONFIG.allowedCidrs, ['127.0.0.1/32', '::1/128']);
+  // The list of the registry is empty: the registry is trusted by the
+  // list of the relay unless the installation says otherwise (D15).
+  assert.deepEqual(DEFAULT_CONFIG.registryAllowedCidrs, []);
 
   // Nothing in the defaults names a host, a zone or a network that is
   // not the loopback of every machine.
@@ -220,6 +224,38 @@ test('a value of the wrong type falls back to the default', () => {
     assert.deepEqual(config.entryPoints, ['web']);
     // A secret that is not a string is no secret.
     assert.equal(config.secret, '');
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('the list of the registry is read from the configuration file', () => {
+  const home = isolatedHome();
+  try {
+    fs.mkdirSync(path.dirname(configPathIn(home)), { recursive: true });
+    fs.writeFileSync(
+      configPathIn(home),
+      JSON.stringify({ registryAllowedCidrs: ['192.0.2.0/24'], allowedCidrs: ['127.0.0.1/32'] }),
+    );
+
+    const config = loadConfig({ home, env: {} });
+
+    assert.deepEqual(config.registryAllowedCidrs, ['192.0.2.0/24']);
+    assert.ok(config.allowedCidrs.includes('127.0.0.1/32'), 'the list of the relay is gone');
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('a list of the registry that is not a list is the default list', () => {
+  const home = isolatedHome();
+  try {
+    fs.mkdirSync(path.dirname(configPathIn(home)), { recursive: true });
+    fs.writeFileSync(configPathIn(home), JSON.stringify({ registryAllowedCidrs: '192.0.2.0/24' }));
+
+    const config = loadConfig({ home, env: {} });
+
+    assert.deepEqual(config.registryAllowedCidrs, []);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

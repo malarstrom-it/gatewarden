@@ -322,6 +322,8 @@ URL: https://doc.traefik.io/traefik/reference/routing-configuration/http/middlew
 
 Trust boundary for the relay: it accepts the dispatch header **only** from the Traefik container's
 source address on the Docker network, and (defence in depth) only when a shared secret is present.
+The registry follows the same rule (D15 of [`gatewarden.md`](./gatewarden.md)): it serves the
+dynamic configuration document only to the addresses in the trust list.
 The relay's port is not published on the host, so it is not reachable from the LAN ("Ports are not
 accessible from outside the host or, with the default configuration, from containers in other
 networks.").

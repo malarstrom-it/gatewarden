@@ -70,7 +70,47 @@ configuration document and the health probe, and nothing else (D9).
 ## The relay answers 403
 
 By design: the relay only accepts the dispatch header (`X-Dev-Target`) from the
-addresses in `allowedCidrs`. A request from anywhere else is refused.
+addresses in `allowedCidrs`. A request from anywhere else is refused. The
+answer says why: `forbidden: the source address 192.0.2.7 is not in the trust
+list (allowedCidrs)`.
+
+## The registry answers 403
+
+By design, and for the same reason: the registry serves the configuration
+document only to the addresses in the trust list — the list of the relay
+(`allowedCidrs`) and, on top of it, the list of the registry
+(`registryAllowedCidrs`, empty by default). The document names the projects,
+the branches, the zone, the address of the machine and the port of the relay,
+so it is not served to anybody else.
+
+The answer says which address was refused and where the list is written:
+
+```text
+forbidden: the source address 192.0.2.7 is not in the trust list (allowedCidrs)
+```
+
+Two things cause it:
+
+* the address of the proxy is not in `allowedCidrs` — the proxy cannot poll
+  the document, so no route reaches it. Add the address of the proxy to
+  `allowedCidrs` and restart the daemon;
+* the installation has a `secret` and the caller did not present it in the
+  `X-Registry-Secret` header.
+
+A refusal of the registry does not stop the relay: the two have their own
+lists, and `registryAllowedCidrs` widens the list of the registry without
+touching the one of the relay.
+
+The health probe (`/healthz`) is the exception: it is the liveness of the
+daemon, and the daemon asks it from the machine itself. It is answered to
+the trust list and to the loopback, and it asks for no secret — a trust list
+that leaves the loopback out does not make `gatewarden doctor` or
+`gatewarden start` fail on an installation that runs.
+
+When the registry refuses the poll of the proxy, the proxy has no document
+and no routes: the public URL answers `404`. `gatewarden setup` reads the
+log of the daemon and says that the trust list is the cause — the wiring is
+not.
 
 ## The URL works but the app does not load
 

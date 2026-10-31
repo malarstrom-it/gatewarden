@@ -52,6 +52,7 @@ export const DEFAULT_CONFIG: Config = {
   compressMiddleware: false,
   middlewareProvider: '',
   allowedCidrs: ['127.0.0.1/32', '::1/128'],
+  registryAllowedCidrs: [],
   secret: '',
   stateDir: '',
   documentFormat: 'yaml',
@@ -76,7 +77,10 @@ export const CONFIG_KEYS: Record<string, string> = {
     'Also apply the "default-security-headers" middleware of the shared middlewares to the dev routers (default false: frameDeny/stsPreload can break previews).',
   compressMiddleware: 'Also apply the "compress" middleware of the shared middlewares to the dev routers (default false).',
   middlewareProvider: 'Name of the Traefik provider that owns the shared middlewares (empty = the shared middlewares are not used).',
-  allowedCidrs: 'CIDRs allowed to send the X-Dev-Target dispatch header to the relay.',
+  allowedCidrs:
+    'CIDRs allowed to talk to the gateway: the relay takes the X-Dev-Target dispatch header from them, the registry serves the configuration document to them.',
+  registryAllowedCidrs:
+    'CIDRs allowed to read the configuration document, on top of allowedCidrs (empty = the same addresses as the relay).',
   secret: 'Optional shared secret, checked on the registry document and the relay dispatch.',
   stateDir: 'Directory holding the route store and the pidfile.',
   documentFormat: 'Format of the dynamic configuration document: yaml or json.',
@@ -470,6 +474,7 @@ export function normaliseConfig(config: Config): Config {
       ? config.middlewareProvider
       : DEFAULT_CONFIG.middlewareProvider,
     allowedCidrs: stringListOr(config.allowedCidrs, DEFAULT_CONFIG.allowedCidrs),
+    registryAllowedCidrs: stringListOr(config.registryAllowedCidrs, DEFAULT_CONFIG.registryAllowedCidrs),
     secret: isString(config.secret) ? config.secret : DEFAULT_CONFIG.secret,
     stateDir: isString(config.stateDir) ? config.stateDir : DEFAULT_CONFIG.stateDir,
     documentFormat: config.documentFormat === 'json' ? 'json' : DEFAULT_CONFIG.documentFormat,

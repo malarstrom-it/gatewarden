@@ -38,6 +38,7 @@ const BASE_CONFIG: Config = {
   compressMiddleware: false,
   middlewareProvider: 'file',
   allowedCidrs: ['127.0.0.1/32', '::1/128'],
+  registryAllowedCidrs: [],
   secret: '',
   stateDir: '/tmp/gatewarden-golden',
   documentFormat: 'yaml',

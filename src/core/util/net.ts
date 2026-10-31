@@ -115,6 +115,20 @@ export function isAddressAllowed(address: string | undefined, cidrs: string[]): 
   return cidrs.some((cidr) => addressInCidr(addr, cidr));
 }
 
+/**
+ * True when the address is the loopback of the machine itself.
+ *
+ * `127.0.0.0/8` and `::1` — the addresses a process on this machine
+ * uses to talk to this machine. They are not the network: only a
+ * process here can have one.
+ */
+export function isLoopbackAddress(address: string | undefined): boolean {
+  if (!address) return false;
+  const addr = normaliseAddress(address);
+  if (addr === '::1') return true;
+  return addressInCidr(addr, '127.0.0.0/8');
+}
+
 /** True when the TCP port on 127.0.0.1 accepts a connection. */
 export function isPortListening(port: number, host = '127.0.0.1', timeoutMs = 500): Promise<boolean> {
   return new Promise((resolve) => {

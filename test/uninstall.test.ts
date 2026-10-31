@@ -118,6 +118,7 @@ async function makeConfig(dir: string): Promise<{ configPath: string; config: Co
     compressMiddleware: false,
     middlewareProvider: 'file',
     allowedCidrs: ['127.0.0.1/32'],
+    registryAllowedCidrs: [],
     secret: '',
     stateDir: dir,
     documentFormat: 'yaml',

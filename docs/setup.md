@@ -122,9 +122,12 @@ to be reachable:
 | `45002` | the proxy polls the configuration document on it |
 | `45001` | the requests of the user go to the relay on it |
 
-Both listeners bind on every interface of the machine. The relay accepts the
-dispatch header (`X-Dev-Target`) only from the addresses in `allowedCidrs`,
-so the address of the proxy has to be in that list (step three).
+Both listeners bind on every interface of the machine. Both of them answer
+the addresses in the trust list (`allowedCidrs`) and nobody else: the relay
+takes the dispatch header (`X-Dev-Target`) only from them, and the registry
+serves the configuration document only to them. The address of the proxy has
+to be in that list (step three) — it polls the document and sends the
+requests.
 
 Check that the proxy reaches the gateway — from the proxy's machine:
 
@@ -133,7 +136,13 @@ curl -sS http://<the address the proxy reaches the machine on>:45002/healthz
 ```
 
 It answers `ok`. The registry answers two paths and nothing else: the
-configuration document (`/traefik`) and the health probe (`/healthz`).
+configuration document (`/traefik`) and the health probe (`/healthz`). The
+document is answered to the addresses in the trust list and to nobody else:
+a request from an address that is not in `allowedCidrs` gets a `403` that
+says so — *"the source address 192.0.2.7 is not in the trust list
+(allowedCidrs)"*. The probe is the liveness of the daemon, and the daemon
+asks it from the machine itself: it is answered to the trust list and to
+the loopback, and it asks for no secret.
 
 More about the proxy side: [`docs/traefik.md`](traefik.md).
 
@@ -186,6 +195,7 @@ What you write on top of it is step four's example.
   "compressMiddleware": false,
   "middlewareProvider": "",
   "allowedCidrs": ["127.0.0.1/32", "::1/128", "192.0.2.0/24"],
+  "registryAllowedCidrs": [],
   "secret": "",
   "stateDir": "",
   "documentFormat": "yaml",
@@ -211,7 +221,8 @@ What you write on top of it is step four's example.
 | `securityHeaders` | `false` | also apply the shared `default-security-headers` middleware | `false` — the frame-deny of that middleware can break a preview |
 | `compressMiddleware` | `false` | also apply the shared `compress` middleware | `false` |
 | `middlewareProvider` | `""` | the provider that owns the shared middlewares | the name of your file provider (`file`), when you want the two middlewares above; empty = they are not used |
-| `allowedCidrs` | `["127.0.0.1/32", "::1/128"]` | the addresses allowed to send the dispatch header to the relay | the address of your proxy, and the loopback; the relay answers `403` to everything else |
+| `allowedCidrs` | `["127.0.0.1/32", "::1/128"]` | the addresses allowed to talk to the gateway: the relay takes the dispatch header from them, the registry serves the configuration document to them | the address of your proxy, and the loopback; both listeners answer `403` to everything else |
+| `registryAllowedCidrs` | `[]` | the addresses allowed to read the configuration document, on top of `allowedCidrs` | empty = the same addresses as the relay; add the address of a machine that may only read the document |
 | `secret` | `""` | a shared secret between the gateway and the proxy | your own; when it is set, the provider has to send it as a header |
 | `stateDir` | the XDG state directory | the directory with the routes and the pid file | empty = the state directory of the platform |
 | `documentFormat` | `"yaml"` | `yaml` or `json` for the configuration document | `yaml` |
@@ -286,9 +297,9 @@ Run these in the order below. The first one is the one to start with.
 | --- | --- | --- |
 | 1 | `gatewarden doctor` | `nothing is broken`, and the exit code is 0 |
 | 2 | `gatewarden status` | `daemon: running (pid …)`, `zone: example.com` |
-| 3 | `curl -sS http://<the machine>:45002/healthz` | `ok` |
-| 4 | `curl -sS http://<the machine>:45002/traefik` | the configuration document, in YAML — the same thing the proxy polls |
-| 5 | from the proxy's machine: `curl -sS http://<the machine>:45002/healthz` | `ok` — the proxy reaches the machine |
+| 3 | `curl -sS http://127.0.0.1:45002/healthz` | `ok` |
+| 4 | `curl -sS http://127.0.0.1:45002/traefik` | the configuration document, in YAML — the same thing the proxy polls |
+| 5 | from the proxy's machine: `curl -sS http://<the machine>:45002/healthz` | `ok` — the proxy reaches the machine, and its address is in the trust list |
 | 6 | `gatewarden register --project probe --branch main --port 3999` | `url: https://main.probe.example.com` |
 | 7 | open that address | the dev server that listens on `3999` |
 
@@ -426,12 +437,13 @@ What cannot be derived is asked for — **the value in the configuration file is
 the default in the question, not an answer**. The host name the proxy reaches
 this machine under is asked for as well: the proxy's API does not say it, and
 the wiring is written with it. The trust list is asked for too: the proxy is
-the one that sends the dispatch header to the relay, and the wizard offers the
-addresses of the proxy it talked to as the default in the question. **An
-answer adds to the list that was offered** — the wizard never removes an
-address from the trust list, so a list of your own cannot take the loopback
-away and break every route with a refusal from the relay. Remove an address
-by editing the configuration file. When there is nobody to ask (a
+the one that polls the document and sends the dispatch header to the relay,
+and the wizard offers the addresses of the proxy it talked to as the default
+in the question. **An answer adds to the list that was offered** — the wizard
+never removes an address from the trust list, so a list of your own cannot
+take the loopback away and break every route with a refusal from the relay.
+Remove an address by editing the configuration file. When there is nobody to
+ask (a
 non-interactive run, a machine without a terminal, a question that times out),
 the value is kept and reported as unconfirmed, together with where every value
 came from: the proxy, the user, the configuration file or the built-in
@@ -500,9 +512,13 @@ code says so.
 When the relay **refuses** the request (403), the verification **fails** and
 the reason names the trust list: the relay only serves the addresses in
 `allowedCidrs`, and a refusal is neither a certificate problem nor a proxy
-that does not know the route. A proxy that refuses the request **itself** — an
-`ipAllowList`, a `forwardAuth`, a middleware of its own — is a different
-thing, and the wizard says so instead of sending the user to the trust list.
+that does not know the route. The same is true when the **registry** refuses
+the document: the proxy never got a document, so it has none of your routes,
+and the public URL answers `404` — the wizard reads the log of the daemon
+and says that the trust list is the cause, not the wiring. A proxy that
+refuses the request **itself** — an `ipAllowList`, a `forwardAuth`, a
+middleware of its own — is a different thing, and the wizard says so
+instead of sending the user to the trust list.
 
 Each step is reported as it goes, and what could not be verified is reported
 too. Without a proxy that answers there is no public URL to fetch, and the
@@ -569,7 +585,7 @@ report and in the exit code.
 | `certResolver` | the certificate resolver the routers ask for; empty means no TLS block |
 | `middlewareProvider` | the proxy provider that owns the shared middlewares |
 | `advertisedHost` | the host name the proxy reaches this machine under |
-| `allowedCidrs` | the sources that may send the dispatch header to the relay |
+| `allowedCidrs` | the sources that may talk to the gateway: the proxy that polls the document and sends the dispatch header |
 
 The wizard does not touch the ports or the secret: they are the
 installation's own, not the proxy's.

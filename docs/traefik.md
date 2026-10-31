@@ -54,9 +54,12 @@ Everything else in the proxy's configuration stays as it is.
 | `45002` (`registryPort`) | the proxy polls the configuration document on it |
 | `45001` (`relayPort`) | the requests of the user go to the relay on it |
 
-Both listeners bind on every interface of the machine. The relay accepts the
-dispatch header (`X-Dev-Target`) only from the addresses in `allowedCidrs`,
-so the address of the proxy has to be in that list of the configuration file.
+Both listeners bind on every interface of the machine, and both of them
+answer the addresses in `allowedCidrs` and nobody else: the relay takes the
+dispatch header (`X-Dev-Target`) only from them, and the registry serves the
+configuration document only to them. The address of the proxy has to be in
+that list of the configuration file — it polls the document and sends the
+requests.
 
 ### Can: the shared middlewares
 
@@ -338,13 +341,12 @@ address of `gateway` are reachable from the proxy container.
 The gateway's own ports are not published on the host, so they are not
 reachable from the LAN; only the proxy reaches them.
 
-The listeners are dual stack (`::` when the container has IPv6), and the relay
-accepts the dispatch header from the CIDRs of the installation's own trust
-list — `192.0.2.0/24`, the loopback and the container's own IPv6 prefix
-(`2001:db8::/64`, derived at runtime) — so a connection over either stack
-is accepted. The built-in default of the trust list is the loopback alone: the
-rest belongs to the installation, and you write it in the configuration file
-(or the setup wizard asks for it).
+The listeners are dual stack (`::` when the container has IPv6), and both of
+them accept the CIDRs of the installation's own trust list — `192.0.2.0/24`,
+the loopback and the container's own IPv6 prefix (`2001:db8::/64`, derived at
+runtime) — so a connection over either stack is accepted. The built-in default
+of the trust list is the loopback alone: the rest belongs to the installation,
+and you write it in the configuration file (or the setup wizard asks for it).
 
 ## 8. What goes into your own files
 

@@ -56,6 +56,18 @@ test('the dynamic configuration document is served on /traefik', async () => {
   });
 });
 
+test('the health probe answers the machine itself, whatever the trust list says', async () => {
+  // The trust list does not hold the loopback: the daemon's own
+  // liveness depends on the answer of the probe, and the loopback is
+  // the machine and not the network. A trust list that leaves the
+  // loopback out must not make the daemon report itself as broken.
+  await withRegistry({ allowedCidrs: ['10.99.0.0/16'] }, async ({ url }) => {
+    const response = await fetch(`${url}/healthz`);
+    assert.equal(response.status, 200);
+    assert.equal((await response.text()).trim(), 'ok');
+  });
+});
+
 test('the dynamic configuration document is protected by the registry secret', async () => {
   await withRegistry({ secret: 'topsecret' }, async ({ url, store }) => {
     store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
@@ -65,7 +77,58 @@ test('the dynamic configuration document is protected by the registry secret', a
     const allowed = await fetch(`${url}/traefik`, { headers: { [REGISTRY_SECRET_HEADER]: 'topsecret' } });
     assert.equal(allowed.status, 200);
     assert.match(await allowed.text(), /http:/);
+
+    // The probe answers without the secret: the daemon asks it whether
+    // it is alive, and it holds nothing worth a secret.
+    const probe = await fetch(`${url}/healthz`);
+    assert.equal(probe.status, 200);
+    assert.equal((await probe.text()).trim(), 'ok');
   });
+});
+
+test('a source address outside the trust list is refused with 403, an address inside it gets the document', async () => {
+  // The refused one: the trust list holds the network of the proxy, and
+  // the caller is on the loopback.
+  await withRegistry({ allowedCidrs: ['10.99.0.0/16'] }, async ({ url, store }) => {
+    store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
+    const refused = await fetch(`${url}/traefik`);
+    assert.equal(refused.status, 403);
+
+    // The refusal says why: the address is not in the trust list, and
+    // the key of the list is named.
+    const body = await refused.text();
+    assert.match(body, /forbidden/);
+    assert.match(body, /not in the trust list/, 'the refusal does not say that the address is not in the trust list');
+    assert.match(body, /allowedCidrs/, 'the refusal does not name the key of the trust list');
+
+    // The probe is the liveness of the daemon, and the daemon asks it
+    // from this machine: the loopback is served whatever the list says
+    // (the probe of a caller from the network is refused).
+    const probe = await fetch(`${url}/healthz`);
+    assert.equal(probe.status, 200);
+  });
+
+  // The allowed one: the loopback is in the trust list.
+  await withRegistry({ allowedCidrs: ['127.0.0.1/32', '::1/128'] }, async ({ url, store }) => {
+    store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
+    const allowed = await fetch(`${url}/traefik`);
+    assert.equal(allowed.status, 200);
+    assert.match(await allowed.text(), /Host\(`main\.alpha\.home\.malarstrom\.com`\)/);
+  });
+});
+
+test('the list of the registry widens the list of the relay', async () => {
+  // The relay trusts the network of the proxy; the registry trusts it
+  // and the loopback, so that the document can be read from here.
+  await withRegistry(
+    { allowedCidrs: ['10.99.0.0/16'], registryAllowedCidrs: ['127.0.0.1/32', '::1/128'] },
+    async ({ url, store }) => {
+      store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
+      const response = await fetch(`${url}/traefik`);
+      assert.equal(response.status, 200);
+      assert.match(await response.text(), /Host\(`main\.alpha\.home\.malarstrom\.com`\)/);
+    },
+  );
 });
 
 test('the registry answers only the configuration path and the health probe', async () => {

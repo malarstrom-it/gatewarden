@@ -31,6 +31,7 @@ import { DEFAULT_CONFIG, writeConfigFile, zoneOf } from '../core/config.ts';
 import { daemonStatus, ensureDaemon, stopDaemon } from '../core/daemonControl.ts';
 import { RegistrationStore } from '../core/state.ts';
 import { withRouteLock } from '../core/lock.ts';
+import { isGatewayRefusal, SECRET_REFUSAL, TRUST_LIST_REFUSAL } from '../core/trust.ts';
 import { buildFqdn } from '../core/util/slug.ts';
 import type { GatewayPaths } from '../core/paths.ts';
 import type { Config } from '../core/types.ts';
@@ -84,6 +85,19 @@ export const FORBIDDEN_REASON =
   'the relay refused the request: the address of the proxy is not in the trust list (allowedCidrs), or the secret is wrong';
 
 /**
+ * Why the verification failed when the registry refused the document.
+ *
+ * The registry answers the trust list and nobody else (D15). When the
+ * poll of the proxy is refused, the proxy has no configuration, the
+ * route never reaches it, and the public URL answers 404 — a wizard
+ * that stopped there would blame the wiring, and the cause is the
+ * trust list. The refusal says who it is: the address of the proxy is
+ * not in the list, or the secret is wrong.
+ */
+export const REGISTRY_REFUSED_REASON =
+  'the registry refused the document: the address of the proxy is not in the trust list (allowedCidrs), or the secret is wrong';
+
+/**
  * Why the verification failed when the proxy refused the request.
  *
  * The proxy may refuse a request itself: an `ipAllowList`, a
@@ -93,15 +107,6 @@ export const FORBIDDEN_REASON =
  */
 export const PROXY_REFUSED_REASON =
   'the proxy refused the request (403): the middleware of the proxy did not let it through (an ipAllowList, a forwardAuth)';
-
-/**
- * The bodies the relay refuses with.
- *
- * The relay says who it is when it refuses: the trust list or the secret.
- * A proxy that refuses in front of it says something else, and the two
- * ask different things of the user.
- */
-const RELAY_REFUSALS = ['forbidden: source address not allowed', 'forbidden: relay secret missing or wrong'];
 
 /**
  * Why the verification was skipped when the proxy does not serve the
@@ -176,7 +181,10 @@ export interface SetupReport {
     certResolver: string;
     middlewareProvider: string;
     advertisedHost: string;
-    /** The sources that may send the dispatch header to the relay. */
+    /**
+     * The sources that may talk to the gateway: the proxy that polls
+     * the document and sends the dispatch header.
+     */
     allowedCidrs: string[];
     /**
      * Where every value came from: `the proxy`, `the user`,
@@ -623,10 +631,11 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
     proxy.middlewareProvider !== undefined,
   );
 
-  // The trust list: the sources that may send the dispatch header to the
-  // relay (§9.2). The proxy is the one that sends it, and the wizard
-  // knows where the proxy is: its API answered there. The addresses of
-  // the proxy are therefore part of the list; the user may add more.
+  // The trust list: the sources that may talk to the gateway (§9.2).
+  // The proxy is the one that polls the document and sends the dispatch
+  // header, and the wizard knows where the proxy is: its API answered
+  // there. The addresses of the proxy are therefore part of the list;
+  // the user may add more.
   const proxyCidrs = (await proxyAddresses(apiBaseUrl)).map(cidrOf);
   // The IPv6 prefixes of this machine's own networks are derived at
   // runtime: they are not part of the list the user is asked about, and
@@ -659,7 +668,7 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
 
   if (interactive && prompter) {
     const answer = await prompter.ask(
-      '   the addresses that may send the dispatch header (comma separated CIDRs, added to the ones already allowed)',
+      '   the addresses that may talk to the gateway: the proxy that polls the document and sends the dispatch header (comma separated CIDRs, added to the ones already allowed)',
       suggestedCidrs.join(', '),
       promptTimeoutMs,
     );
@@ -771,6 +780,7 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
     enabled: opts.verify !== false,
     pollIntervalMs: opts.pollIntervalMs ?? 3000,
     entryPointPorts: proxy.entryPointPorts,
+    logFile: opts.paths.logFile,
     knowsRoute: async () => {
       // The proxy is asked again: does it point at this machine? The
       // throwaway route is still registered when the question is asked.
@@ -830,6 +840,10 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
   } else if (verification.status === 'failed' && verification.reason === FORBIDDEN_REASON) {
     nextSteps.push(
       'the relay refused the request: the address of the proxy has to be in the trust list (allowedCidrs) of the configuration file',
+    );
+  } else if (verification.status === 'failed' && verification.reason === REGISTRY_REFUSED_REASON) {
+    nextSteps.push(
+      'the registry refused the document: the address of the proxy has to be in the trust list (allowedCidrs) of the configuration file, and the secret has to be the one of the installation',
     );
   } else if (verification.status === 'failed' && verification.reason === PROXY_REFUSED_REASON) {
     nextSteps.push(
@@ -910,6 +924,8 @@ interface VerifyOptions {
   pollIntervalMs: number;
   /** The port every entry point of the proxy answers on. */
   entryPointPorts?: Record<string, number>;
+  /** The log file of the daemon: it says what the registry refused. */
+  logFile?: string;
   /**
    * Does the proxy know about the routes of this machine?
    *
@@ -1043,6 +1059,18 @@ async function verifyEndToEnd(opts: VerifyOptions): Promise<SetupReport['verific
           steps,
         };
       }
+      // The proxy knows nothing of our routes because the registry
+      // never gave it any: it refused the poll of the proxy. The
+      // registry writes every refusal down, and the log is where the
+      // answer is — without it the wizard would blame the wiring for a
+      // trust list that is the cause.
+      if (opts.logFile && registryRefusedDocument(opts.logFile)) {
+        return {
+          status: 'failed',
+          reason: REGISTRY_REFUSED_REASON,
+          steps,
+        };
+      }
       return { status: 'skipped', reason: NOT_SERVED_REASON, steps };
     }
     if (fetched.certificateFailure) {
@@ -1167,12 +1195,13 @@ async function fetchPublicUrl(
         continue;
       }
       if (response.status === 403) {
-        // Who refused? The relay refuses with a body of its own, and it
-        // says why: the trust list or the secret. A proxy that refuses in
-        // front of it has a body of its own, and the cause is somewhere
-        // else entirely.
+        // Who refused? The gateway refuses with a body of its own, and
+        // it says why: the trust list or the secret. A proxy that
+        // refuses in front of it has a body of its own, and the cause is
+        // somewhere else entirely. The bodies are the ones of the core
+        // (`isGatewayRefusal`), so that the two cannot drift apart.
         const body = await response.text().catch(() => '');
-        if (RELAY_REFUSALS.some((refusal) => body.includes(refusal))) {
+        if (isGatewayRefusal(body)) {
           forbidden = true;
           details.push(`${url} — ${status}: the relay refused the request`);
         } else {
@@ -1230,6 +1259,67 @@ async function fetchPublicUrl(
     certificateFailure,
     httpError,
   };
+}
+
+/**
+ * The last bytes of a file.
+ *
+ * The log of an installation can be big, and the wizard reads the end
+ * of it: the lines it needs are the ones of the daemon that runs now.
+ */
+function readLogTail(logFile: string, bytes: number): string {
+  const fd = fs.openSync(logFile, 'r');
+  try {
+    const size = fs.fstatSync(fd).size;
+    const length = Math.min(size, bytes);
+    const buffer = Buffer.alloc(length);
+    if (length > 0) fs.readSync(fd, buffer, 0, length, size - length);
+    return buffer.toString('utf8');
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/**
+ * The lines the daemon that runs now has written.
+ *
+ * The log of an installation holds the lines of every run before it.
+ * The daemon writes a line when it starts, and everything after that
+ * line belongs to the run that is up.
+ */
+function logLinesOfTheCurrentRun(logFile: string): string[] {
+  let content: string;
+  try {
+    content = readLogTail(logFile, 64 * 1024);
+  } catch {
+    return [];
+  }
+  const lines = content.split('\n');
+  const lastStart = lines.findLastIndex((line) => line.includes('[daemon] daemon started'));
+  return lastStart >= 0 ? lines.slice(lastStart + 1) : lines;
+}
+
+/**
+ * Did the registry refuse the document?
+ *
+ * The registry answers the trust list and nobody else (D15). When the
+ * poll of the proxy is refused, the proxy has no configuration, the
+ * route never reaches it, and the public URL answers 404. The daemon
+ * writes every refusal down, with the address it refused, so the log
+ * is where the answer is.
+ *
+ * The probe is not the document: a refusal of the probe says that the
+ * caller is not trusted either, but it is not the reason the proxy has
+ * no routes.
+ */
+export function registryRefusedDocument(logFile: string): boolean {
+  for (const line of logLinesOfTheCurrentRun(logFile)) {
+    if (!line.includes('[registry] rejected request')) continue;
+    if (line.includes('/healthz')) continue;
+    if (!line.includes(TRUST_LIST_REFUSAL) && !line.includes(SECRET_REFUSAL)) continue;
+    return true;
+  }
+  return false;
 }
 
 /**

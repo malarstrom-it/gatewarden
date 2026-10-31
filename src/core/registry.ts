@@ -5,9 +5,32 @@ import type { Config } from './types.ts';
 import type { ProxyAdapter } from './proxy.ts';
 import { RegistrationStore } from './state.ts';
 import { REGISTRY_SECRET_HEADER } from './protocol.ts';
+import { isTrusted, isTrustedAddress, registryTrustKeys, registryTrustList, type TrustOptions } from './trust.ts';
 import { log } from './log.ts';
 
 const SCOPE = 'registry';
+
+/**
+ * The trust boundary of the registry.
+ *
+ * The registry is bound on every address of the machine, and the
+ * document it serves names the projects, the branches, the zone, the
+ * address of the machine and the port of the relay. It therefore
+ * answers the addresses in the trust list and nobody else — the same
+ * rule the relay follows (§3.2, D15).
+ *
+ * The list is the list of the relay and the list of the registry on top
+ * of it: an installation that says nothing about the registry trusts
+ * the same addresses for both listeners.
+ */
+function trust(config: Config): TrustOptions {
+  return {
+    cidrs: registryTrustList(config),
+    keys: registryTrustKeys(config),
+    secretHeader: REGISTRY_SECRET_HEADER,
+    scope: 'registry',
+  };
+}
 
 /**
  * Create the registry HTTP server.
@@ -38,19 +61,42 @@ export function createRegistryServer(store: RegistrationStore, config: Config, a
       }
 
       if (url.pathname === '/healthz') {
+        // The probe says that the daemon is alive and nothing else, but
+        // it is still an answer to the network: only the addresses in
+        // the trust list get one.
+        //
+        // The machine itself always gets one: the loopback is not the
+        // network, only a process here can use it, and the daemon's own
+        // liveness depends on the answer. A trust list that leaves the
+        // loopback out must not make the daemon report itself as
+        // broken.
+        const trusted = isTrustedAddress({ address: req.socket.remoteAddress }, {
+          cidrs: registryTrustList(config),
+          keys: registryTrustKeys(config),
+          allowLoopback: true,
+        });
+        if (!trusted.ok) {
+          log('warn', SCOPE, 'rejected request', `${req.method} ${req.url}: ${trusted.reason}`);
+          res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' });
+          res.end(`forbidden: ${trusted.reason}\n`);
+          return;
+        }
         res.writeHead(200, { 'content-type': 'text/plain; charset=utf-8' });
         res.end('ok');
         return;
       }
 
       if (url.pathname === documentPath) {
-        if (config.secret) {
-          const provided = req.headers[REGISTRY_SECRET_HEADER.toLowerCase()];
-          if (provided !== config.secret) {
-            res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' });
-            res.end('forbidden: registry secret missing or wrong\n');
-            return;
-          }
+        // The trust boundary of the registry: the address of the caller
+        // has to be in the trust list, and the secret has to be
+        // presented when the installation has one — the same two rules
+        // the relay follows.
+        const trusted = isTrusted({ address: req.socket.remoteAddress }, req.headers, config, trust(config));
+        if (!trusted.ok) {
+          log('warn', SCOPE, 'rejected request', `${req.method} ${req.url}: ${trusted.reason}`);
+          res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' });
+          res.end(`forbidden: ${trusted.reason}\n`);
+          return;
         }
         const body = adapter.render(store.list(), config);
         res.writeHead(200, { 'content-type': 'application/yaml; charset=utf-8' });

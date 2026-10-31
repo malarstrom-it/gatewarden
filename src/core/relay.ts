@@ -11,7 +11,7 @@ import net from 'node:net';
 import type { Config } from './types.ts';
 import { RegistrationStore } from './state.ts';
 import { DISPATCH_HEADER, RELAY_SECRET_HEADER } from './protocol.ts';
-import { isAddressAllowed } from './util/net.ts';
+import { isTrusted, readHeader, type TrustOptions } from './trust.ts';
 import { log } from './log.ts';
 
 const SCOPE = 'relay';
@@ -43,30 +43,9 @@ function filterHeaders(headers: http.IncomingHttpHeaders): http.OutgoingHttpHead
   return out;
 }
 
-/** The relay's view of the caller. */
-export interface Peer {
-  address: string | undefined;
-}
-
-function readHeader(headers: http.IncomingHttpHeaders, name: string): string | undefined {
-  const value = headers[name.toLowerCase()];
-  if (Array.isArray(value)) return value[0];
-  return value;
-}
-
-/**
- * Check the trust boundary: the source address must be inside an allowed CIDR
- * and, when a secret is configured, the secret header must match.
- */
-export function isTrusted(peer: Peer, headers: http.IncomingHttpHeaders, config: Config): { ok: boolean; reason?: string } {
-  if (!isAddressAllowed(peer.address, config.allowedCidrs)) {
-    return { ok: false, reason: 'source address not allowed' };
-  }
-  if (config.secret) {
-    const provided = readHeader(headers, RELAY_SECRET_HEADER);
-    if (provided !== config.secret) return { ok: false, reason: 'relay secret missing or wrong' };
-  }
-  return { ok: true };
+/** The trust boundary of the relay: the trust list and the secret. */
+function trust(config: Config): TrustOptions {
+  return { cidrs: config.allowedCidrs, secretHeader: RELAY_SECRET_HEADER, scope: 'relay' };
 }
 
 /**
@@ -74,7 +53,7 @@ export function isTrusted(peer: Peer, headers: http.IncomingHttpHeaders, config:
  */
 export function createRelayServer(store: RegistrationStore, config: Config): http.Server {
   const server = http.createServer((req, res) => {
-    const trusted = isTrusted({ address: req.socket.remoteAddress }, req.headers, config);
+    const trusted = isTrusted({ address: req.socket.remoteAddress }, req.headers, config, trust(config));
     if (!trusted.ok) {
       log('warn', SCOPE, 'rejected request', `${req.method} ${req.url}: ${trusted.reason}`);
       res.writeHead(403, { 'content-type': 'text/plain; charset=utf-8' });
@@ -131,7 +110,7 @@ export function createRelayServer(store: RegistrationStore, config: Config): htt
 
   // WebSocket / HMR upgrades are tunnelled raw.
   server.on('upgrade', (req, socket, head) => {
-    const trusted = isTrusted({ address: req.socket.remoteAddress }, req.headers, config);
+    const trusted = isTrusted({ address: req.socket.remoteAddress }, req.headers, config, trust(config));
     if (!trusted.ok) {
       log('warn', SCOPE, 'rejected upgrade', trusted.reason);
       socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');

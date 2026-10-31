@@ -162,6 +162,8 @@ endpoints existed only for the web page and go away with it (§10).
 removes the version-skew risk between an installed package and a running
 daemon, and removes the CSRF guard from the write path entirely.
 
+The two endpoints are answered to the trust list and to nobody else (D15).
+
 ### D10 — The route state is written atomically and guarded by a lock file
 
 The store writes to a temporary file and renames it (this already works).
@@ -257,6 +259,60 @@ warning (the doctor would fail in every clean environment there is).
 
 *Consequence*: the doctor exits 0 in an empty environment, and the checks
 it reports are the ones of §9.9.
+
+### D15 — The registry answers the trust list, not the network
+
+The registry is bound on every address of the machine, and the document it
+serves names the projects, the branches, the zone, the address of the
+machine and the port of the relay. It therefore answers the addresses in the
+trust list (`allowedCidrs`) and nobody else — the same rule the relay
+follows — and a refused caller gets an answer that says **why**: "the source
+address 192.0.2.7 is not in the trust list (allowedCidrs)".
+
+The registry has a list of its own (`registryAllowedCidrs`) on top of the
+list of the relay. It is empty by default, and an empty list means "the same
+addresses as the relay": the two listeners are trusted by the same addresses
+unless the installation says otherwise. The list of the registry only
+*widens* the trust — it can never take an address away from the relay.
+
+The secret stays what it was: when the installation has one, the registry
+asks for it in `X-Registry-Secret` before it hands out the document, and the
+relay asks for it in `X-Relay-Secret` before it dispatches.
+
+The health probe is the liveness of the daemon, and the daemon asks it from
+the machine itself. It is answered to the trust list **and** to the
+loopback — the loopback is the machine and not the network, only a process
+here can use it — and it asks for no secret: it holds nothing worth one. A
+trust list that leaves the loopback out must not make the daemon report
+itself as broken, and the doctor and `gatewarden start` must not fail on an
+installation that runs.
+
+*Reason*: the registry was the one listener that answered anybody. The
+secret was empty in the standard installation, and the document told the
+network which projects run, under which names, in which zone, on which
+address and on which port. The mechanism was already there — the trust list
+of the relay — and not using it was an inconsistency, not a decision.
+
+*Rejected*: leaving the registry open and relying on the secret alone (the
+secret is empty in the standard installation); a list of the registry that
+*replaces* the list of the relay (a hand-written file could then take the
+loopback away and break the daemon's own health probe); one list for
+everything and nothing else (an address that may only read the document
+does not have to be allowed to dispatch).
+
+*Consequence*: the trust list of the relay is also the trust list of the
+registry; the address of the proxy has to be in it, because the proxy polls
+the document and sends the dispatch header; and a `403` from the registry
+names the address that was refused and the key of the list.
+
+**The two refusals are told apart.** The registry refuses the poll of the
+proxy when the proxy's address is not in its list. The proxy then has no
+configuration at all, the route never reaches it, and the public URL
+answers `404` — a wizard that stopped there would blame the wiring, and the
+cause is the trust list. The registry writes every refusal down, with the
+address it refused, and the wizard reads the log of the daemon when the
+public URL does not answer: the refusal of the registry and the refusal of
+the relay are two different reasons (§9.7).
 
 ---
 
@@ -474,7 +530,8 @@ needed, plus the ones the package needs:
 | `middlewareProvider` | `""` (to be set) | proxy provider that owns the shared middlewares |
 | `securityHeaders` | `false` | apply the shared security-headers middleware |
 | `compressMiddleware` | `false` | apply the shared compress middleware |
-| `allowedCidrs` | `["127.0.0.1/32", "::1/128"]` (to be set) | sources allowed to use the dispatch header |
+| `allowedCidrs` | `["127.0.0.1/32", "::1/128"]` (to be set) | sources allowed to talk to the gateway: the relay takes the dispatch header from them, the registry serves the document to them (D15) |
+| `registryAllowedCidrs` | `[]` | sources allowed to read the configuration document, on top of `allowedCidrs` (D15) |
 | `secret` | `""` | optional shared secret |
 | `stateDir` | resolved | runtime state directory |
 | `documentFormat` | `"yaml"` | `yaml` or `json` for the configuration document |
@@ -577,6 +634,7 @@ use the same order, so they move the same files to the same place.
 ```
 
 - **registry** serves the dynamic configuration document. Two endpoints (D9).
+  It answers the trust list and nobody else (D15).
 - **relay** resolves the dispatch header to `127.0.0.1:<port>` and proxies,
   tunnelling WebSocket upgrades.
 - **worker** is one supervised child process per listener, so a crash in one
@@ -920,10 +978,11 @@ is hard-coded.
 
 Two more values are the machine's own, and the proxy's API does not say them:
 the host name the proxy reaches this machine under, and the trust list of the
-relay. The wizard asks for the host name, because the wiring is written with
-it. For the trust list it derives what it can: the proxy is the one that
-sends the dispatch header, and the addresses of the host the API answered on
-are therefore the sources the relay has to accept. The rest is asked for.
+gateway. The wizard asks for the host name, because the wiring is written
+with it. For the trust list it derives what it can: the proxy is the one
+that polls the document and sends the dispatch header, and the addresses of
+the host the API answered on are therefore the sources both listeners have to
+accept (D15). The rest is asked for.
 
 An answer to the trust list **adds** to the list that was offered. The
 wizard never removes an address from it: a list of one's own that took the
@@ -980,10 +1039,11 @@ The verification tells two things apart (D14):
   status is `skipped`, the reason says which, and the exit code of
   `gatewarden setup` is 0.
 * **It ran, and the chain answered with an error.** The relay refused
-  the request (the trust list), the proxy refused it (its own
-  middleware), the certificate of the public URL is not trusted, or the
-  proxy knows the route and does not serve it. The status is `failed`, the
-  reason says which, and the exit code is 1.
+  the request (the trust list), the registry refused the document (the
+  trust list), the proxy refused it (its own middleware), the
+  certificate of the public URL is not trusted, or the proxy knows the
+  route and does not serve it. The status is `failed`, the reason says
+  which, and the exit code is 1.
 
 The wizard writes the next steps in clear text, in every mode.
 
@@ -1085,7 +1145,7 @@ superseded here, deliberately and explicitly:
 | "The Traefik dynamic configuration document served at `/traefik` must not change" | **changed**: the index router is removed (§10.1). Every other object keeps its name and shape |
 | "The Remove flow, the `X-Gateway-UI: 1` guard, the `data-registration-id` attribute … stay as they are" | **changed**: the guard and the attribute belonged to the page and go with it |
 | "Creating a route by hand goes through `POST /api/registrations` … a project and branch that already has a route is a conflict (409), never a silent update" | **changed**: the endpoint is gone; the agent-facing path updates in place (§6.2), while the CLI keeps its own semantics |
-| "No secret is configured for the registry … Do not raise this again." | **kept**: the secret stays off by default. The registry no longer has a write endpoint, so the guard has nothing to guard |
+| "No secret is configured for the registry … Do not raise this again." | **kept**: the secret stays off by default. The registry has no write endpoint, so the guard has nothing to guard — and the trust list guards the document instead (D15) |
 | "The index page must keep: …" | **removed**: the page is gone (D8) |
 | "The tests stay green, and other projects' live routes must keep working" | **kept** |
 

@@ -76,6 +76,15 @@ export interface Config {
   middlewareProvider: string;
   /** CIDRs allowed to use the relay dispatch header. */
   allowedCidrs: string[];
+  /**
+   * CIDRs allowed to read the configuration document, on top of
+   * `allowedCidrs`.
+   *
+   * Empty means "the same addresses as the relay": the registry is
+   * trusted by the list of the relay unless the installation says
+   * otherwise (D15).
+   */
+  registryAllowedCidrs: string[];
   /** Optional shared secret (registry endpoint and relay dispatch). */
   secret: string;
   /** Directory holding state, pidfile and logs. */

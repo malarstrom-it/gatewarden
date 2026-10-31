@@ -1067,6 +1067,69 @@ test('the verification says that the relay refused the request', async (t) => {
   // proxy: the relay refuses its request, and the wizard has to say so.
   // A refusal is not a certificate problem and not a proxy that does not
   // know the route.
+  //
+  // The registry has a list of its own: it holds the loopback, so that
+  // the proxy still gets the document to serve the route with. The
+  // refusal the wizard has to recognise is then the one of the relay,
+  // and not the one of the registry.
+  const cli = await makeCliFixture({
+    config: {
+      zone: 'localhost',
+      advertisedHost: '127.0.0.1',
+      advertisedIp: '127.0.0.1',
+      allowedCidrs: ['10.0.0.0/8'],
+      registryAllowedCidrs: ['127.0.0.1/32', '::1/128'],
+    },
+    env: { NODE_EXTRA_CA_CERTS: certificate.certFile },
+  });
+  t.after(async () => {
+    await cli.stopDaemon();
+    cli.cleanup();
+    fs.rmSync(certificate.dir, { recursive: true, force: true });
+  });
+
+  const registryPort = (JSON.parse(fs.readFileSync(cli.configPath, 'utf8')) as { registryPort: number }).registryPort;
+
+  const proxy = new FakeTraefik({
+    tls: { key: certificate.key, cert: certificate.cert },
+    documentEndpoint: `http://127.0.0.1:${registryPort}/traefik`,
+    pollIntervalMs: 100,
+  });
+  await proxy.start();
+  t.after(async () => {
+    await proxy.stop();
+  });
+
+  const report = await cli.runJson<SetupReport>([
+    'setup',
+    '--api-base-url',
+    `http://127.0.0.1:${proxy.apiPort}`,
+    '--poll-interval',
+    '1000',
+    '--json',
+  ]);
+
+  assert.equal(report.verification.status, 'failed', report.verification.steps.map((s) => s.detail).join(' | '));
+  assert.match(report.verification.reason ?? '', /the relay refused the request/);
+  assert.match(report.verification.reason ?? '', /allowedCidrs/, 'the reason does not name the trust list');
+  assert.ok(
+    report.nextSteps.some((step) => step.includes('allowedCidrs')),
+    'the wizard does not say that the trust list has to hold the address of the proxy',
+  );
+});
+
+test('the verification says that the registry refused the document', async (t) => {
+  const certificate = makeCertificate('*.gatewarden-setup.localhost');
+  if (!certificate) {
+    t.skip('openssl is not there to make a certificate');
+    return;
+  }
+
+  // The trust list of the installation does not hold the address of the
+  // proxy, and the registry has no list of its own: the registry
+  // refuses the poll of the proxy, the proxy has no configuration, and
+  // the public URL answers 404. The wizard has to name the trust list
+  // anyway — the wiring is not the cause.
   const cli = await makeCliFixture({
     config: {
       zone: 'localhost',
@@ -1104,7 +1167,7 @@ test('the verification says that the relay refused the request', async (t) => {
   ]);
 
   assert.equal(report.verification.status, 'failed', report.verification.steps.map((s) => s.detail).join(' | '));
-  assert.match(report.verification.reason ?? '', /the relay refused the request/);
+  assert.match(report.verification.reason ?? '', /the registry refused the document/);
   assert.match(report.verification.reason ?? '', /allowedCidrs/, 'the reason does not name the trust list');
   assert.ok(
     report.nextSteps.some((step) => step.includes('allowedCidrs')),
