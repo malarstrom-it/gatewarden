@@ -325,7 +325,7 @@ const listDevServers: ToolDefinition = {
 };
 
 /** Report the state of the gateway. */
-const devGatewayStatus: ToolDefinition = {
+const gatewardenStatus: ToolDefinition = {
   name: 'dev_gateway_status',
   title: 'Report the state of the gateway',
   description:
@@ -363,7 +363,7 @@ export const TOOLS: ToolDefinition[] = [
   publishDevServer,
   removeDevServer,
   listDevServers,
-  devGatewayStatus,
+  gatewardenStatus,
 ];
 
 /** The names of the four tools. */

@@ -21,7 +21,7 @@ import path from 'node:path';
 import test, { after, before } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import devGatewayExtension, { STATUS_KEY, statusText } from '../src/integrations/pi/extension.ts';
+import gatewardenExtension, { STATUS_KEY, statusText } from '../src/integrations/pi/extension.ts';
 import { renderRouteTable } from '../src/integrations/pi/table.ts';
 import { PI_TOOL_NAMES } from '../src/integrations/pi/tools.ts';
 import { loadConfig } from '../src/core/config.ts';
@@ -148,7 +148,7 @@ interface Fixture {
  * ports it uses.
  */
 async function makeInstallation(): Promise<{ dir: string; configPath: string }> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-pi-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-pi-'));
   const registryPort = await freePort();
   const relayPort = await freePort();
   const configPath = path.join(dir, 'config.json');
@@ -190,10 +190,10 @@ before(async () => {
 
   // The working directory of the session: a throwaway one, so that the
   // inferred project and branch do not depend on the repository.
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-pi-session-'));
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-pi-session-'));
 
   // The whole installation lives in the temporary directory (§11.1).
-  process.env['DEV_GATEWAY_HOME'] = dir;
+  process.env['GATEWARDEN_HOME'] = dir;
   process.env['HOME'] = dir;
 
   fixture = {
@@ -226,7 +226,7 @@ after(async () => {
 /** Load the extension, the way pi loads it. */
 function load(): FakePi {
   const pi = new FakePi();
-  devGatewayExtension(pi);
+  gatewardenExtension(pi);
   return pi;
 }
 
@@ -412,21 +412,21 @@ test('a gateway that cannot be read is told to the user, and does not throw', as
   // all, and nothing is asked of the network.
   const broken = path.join(fixture.dir, 'broken.json');
   fs.writeFileSync(broken, 'this is not json');
-  const savedHome = process.env['DEV_GATEWAY_HOME'];
-  const savedConfig = process.env['DEV_GATEWAY_CONFIG'];
-  delete process.env['DEV_GATEWAY_HOME'];
-  process.env['DEV_GATEWAY_CONFIG'] = broken;
+  const savedHome = process.env['GATEWARDEN_HOME'];
+  const savedConfig = process.env['GATEWARDEN_CONFIG'];
+  delete process.env['GATEWARDEN_HOME'];
+  process.env['GATEWARDEN_CONFIG'] = broken;
   try {
     await start({ type: 'session_start', reason: 'startup' }, ctx);
   } finally {
-    if (savedHome === undefined) delete process.env['DEV_GATEWAY_HOME'];
-    else process.env['DEV_GATEWAY_HOME'] = savedHome;
-    if (savedConfig === undefined) delete process.env['DEV_GATEWAY_CONFIG'];
-    else process.env['DEV_GATEWAY_CONFIG'] = savedConfig;
+    if (savedHome === undefined) delete process.env['GATEWARDEN_HOME'];
+    else process.env['GATEWARDEN_HOME'] = savedHome;
+    if (savedConfig === undefined) delete process.env['GATEWARDEN_CONFIG'];
+    else process.env['GATEWARDEN_CONFIG'] = savedConfig;
     fs.rmSync(broken, { force: true });
   }
 
-  assert.equal(ctx.ui.statuses.get(STATUS_KEY), 'dev-gateway unreachable');
+  assert.equal(ctx.ui.statuses.get(STATUS_KEY), 'gatewarden unreachable');
   assert.equal(ctx.ui.notifications.length, 1);
   assert.match(ctx.ui.notifications[0]!.message, /invalid config file/);
 });
@@ -436,7 +436,7 @@ test('the status line follows a development server that dies', async () => {
   // dies, and nothing tells the extension when that happens: the status
   // line is brought up to date on its own.
   const pi = new FakePi();
-  devGatewayExtension(pi, { statusRefreshMs: 20 });
+  gatewardenExtension(pi, { statusRefreshMs: 20 });
   const ctx = makeContext(fixture.cwd);
 
   const start = pi.handlers.get('session_start');
@@ -473,8 +473,8 @@ test('the read-only tool leaves the environment alone', async () => {
   // A tool that is declared read-only must not start a background
   // process: the list tool only reads the state file.
   const installation = await makeInstallation();
-  const savedHome = process.env['DEV_GATEWAY_HOME'];
-  process.env['DEV_GATEWAY_HOME'] = installation.dir;
+  const savedHome = process.env['GATEWARDEN_HOME'];
+  process.env['GATEWARDEN_HOME'] = installation.dir;
 
   try {
     const pi = load();
@@ -492,8 +492,8 @@ test('the read-only tool leaves the environment alone', async () => {
       'the read-only tool started a daemon',
     );
   } finally {
-    if (savedHome === undefined) delete process.env['DEV_GATEWAY_HOME'];
-    else process.env['DEV_GATEWAY_HOME'] = savedHome;
+    if (savedHome === undefined) delete process.env['GATEWARDEN_HOME'];
+    else process.env['GATEWARDEN_HOME'] = savedHome;
     fs.rmSync(installation.dir, { recursive: true, force: true });
   }
 });

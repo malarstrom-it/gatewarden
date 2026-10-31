@@ -34,8 +34,8 @@ async function freePort(): Promise<number> {
 
 /** A home directory of its own, with a configuration file in it. */
 function makeHome(registryPort: number, relayPort: number): string {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-daemon-'));
-  const configDir = path.join(home, '.config', 'dev-gateway');
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-daemon-'));
+  const configDir = path.join(home, '.config', 'gatewarden');
   fs.mkdirSync(configDir, { recursive: true });
   fs.writeFileSync(
     path.join(configDir, 'config.json'),
@@ -144,7 +144,7 @@ test('a daemon that is started by hand gives its workers the configuration file'
 });
 
 test('the log file is opened, and the directory it lives in is created', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-log-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-log-'));
   try {
     const logFile = path.join(dir, 'logs', 'of', 'the', 'platform', 'daemon.log');
     const handle = openLogFile(logFile);
@@ -157,7 +157,7 @@ test('the log file is opened, and the directory it lives in is created', () => {
 });
 
 test('the log directory of the platform is created, where it is not the state directory', () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-log-'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-log-'));
   try {
     for (const platform of ['darwin', 'win32'] as NodeJS.Platform[]) {
       const stateDir = path.join(home, 'state');
@@ -180,7 +180,7 @@ test('a daemon that is started with a configuration file on the command line rea
   const home = makeHome(registryPort, relayPort);
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
 
-  const configFile = path.join(home, '.config', 'dev-gateway', 'config.json');
+  const configFile = path.join(home, '.config', 'gatewarden', 'config.json');
   const daemon = spawn(process.execPath, [DAEMON, '--config', configFile], {
     env: homeEnv(home),
     stdio: ['ignore', 'pipe', 'pipe'],

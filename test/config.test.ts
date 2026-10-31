@@ -14,11 +14,11 @@ import { DEFAULT_CONFIG, configFileContent, loadConfig, requireZone, resolveConf
 import { resolvePaths } from '../src/core/paths.ts';
 
 function isolatedHome(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-config-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-config-'));
 }
 
 function configPathIn(home: string): string {
-  return path.join(home, '.config', 'dev-gateway', 'config.json');
+  return path.join(home, '.config', 'gatewarden', 'config.json');
 }
 
 test('the configuration file is read from the XDG configuration directory', () => {
@@ -50,14 +50,14 @@ test('a state directory named by the configuration file is kept', () => {
   }
 });
 
-test('DEV_GATEWAY_STATE_DIR wins over the state directory of the configuration file', () => {
+test('GATEWARDEN_STATE_DIR wins over the state directory of the configuration file', () => {
   const home = isolatedHome();
   const stateDir = path.join(home, 'from', 'the', 'environment');
   try {
     fs.mkdirSync(path.dirname(configPathIn(home)), { recursive: true });
     fs.writeFileSync(configPathIn(home), JSON.stringify({ stateDir: path.join(home, 'from', 'the', 'file') }));
 
-    const config = loadConfig({ home, env: { DEV_GATEWAY_STATE_DIR: stateDir } });
+    const config = loadConfig({ home, env: { GATEWARDEN_STATE_DIR: stateDir } });
 
     assert.equal(config.stateDir, stateDir);
   } finally {
@@ -70,7 +70,7 @@ test('an explicit state directory wins over the environment', () => {
   try {
     const config = loadConfig({
       home,
-      env: { DEV_GATEWAY_STATE_DIR: path.join(home, 'from', 'the', 'environment') },
+      env: { GATEWARDEN_STATE_DIR: path.join(home, 'from', 'the', 'environment') },
       stateDir: path.join(home, 'from', 'the', 'flag'),
     });
 
@@ -85,10 +85,10 @@ test('the configuration file path is the same, whichever function asks for it', 
   // daemon and the CLI end up reading different files (§3.1).
   const environments = [
     {},
-    { DEV_GATEWAY_HOME: path.join(path.sep, 'h') },
-    { DEV_GATEWAY_CONFIG: path.join(path.sep, 'c.json') },
-    { DEV_GATEWAY_HOME: path.join(path.sep, 'h'), DEV_GATEWAY_CONFIG: path.join(path.sep, 'c.json') },
-    { DEV_GATEWAY_STATE_DIR: path.join(path.sep, 's') },
+    { GATEWARDEN_HOME: path.join(path.sep, 'h') },
+    { GATEWARDEN_CONFIG: path.join(path.sep, 'c.json') },
+    { GATEWARDEN_HOME: path.join(path.sep, 'h'), GATEWARDEN_CONFIG: path.join(path.sep, 'c.json') },
+    { GATEWARDEN_STATE_DIR: path.join(path.sep, 's') },
     { TRAEFIK_DEV_CONFIG: path.join(path.sep, 'old.json') },
   ];
 
@@ -99,10 +99,10 @@ test('the configuration file path is the same, whichever function asks for it', 
   }
 });
 
-test('DEV_GATEWAY_HOME wins over DEV_GATEWAY_CONFIG, as the order of §3.1 says', () => {
+test('GATEWARDEN_HOME wins over GATEWARDEN_CONFIG, as the order of §3.1 says', () => {
   const env = {
-    DEV_GATEWAY_HOME: path.join(path.sep, 'h'),
-    DEV_GATEWAY_CONFIG: path.join(path.sep, 'c.json'),
+    GATEWARDEN_HOME: path.join(path.sep, 'h'),
+    GATEWARDEN_CONFIG: path.join(path.sep, 'c.json'),
   };
 
   assert.equal(resolveConfigPath({ env }), path.join(path.sep, 'h', 'config.json'));
@@ -114,11 +114,11 @@ test('the state directory follows XDG_STATE_HOME, even when the file names one',
   const second = path.join(home, '.state2');
   try {
     fs.mkdirSync(path.dirname(configPathIn(home)), { recursive: true });
-    fs.writeFileSync(configPathIn(home), JSON.stringify({ stateDir: path.join(first, 'dev-gateway') }));
+    fs.writeFileSync(configPathIn(home), JSON.stringify({ stateDir: path.join(first, 'gatewarden') }));
 
     const config = loadConfig({ home, env: { XDG_STATE_HOME: second } });
 
-    assert.equal(config.stateDir, path.join(second, 'dev-gateway'));
+    assert.equal(config.stateDir, path.join(second, 'gatewarden'));
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

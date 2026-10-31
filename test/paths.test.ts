@@ -14,8 +14,10 @@ import test from 'node:test';
 import {
   APP_NAME,
   configFileOverride,
+  deprecatedEnvNotices,
   envPathsDirs,
   homeOverride,
+  legacyAppPaths,
   legacyDir,
   logFileFor,
   platformDirs,
@@ -84,9 +86,9 @@ test('Windows falls back to the home directory when APPDATA is unset', () => {
   assert.equal(paths.stateDir, path.join(home, 'AppData', 'Local', APP_NAME, 'State'));
 });
 
-test('DEV_GATEWAY_HOME puts everything in one directory', () => {
+test('GATEWARDEN_HOME puts everything in one directory', () => {
   const base = path.join(path.sep, 'tmp', 'gateway-home');
-  const paths = resolvePaths({ platform: 'linux', env: { DEV_GATEWAY_HOME: base }, home: HOME });
+  const paths = resolvePaths({ platform: 'linux', env: { GATEWARDEN_HOME: base }, home: HOME });
 
   assert.equal(paths.configFile, path.join(base, 'config.json'));
   assert.equal(paths.stateDir, base);
@@ -94,14 +96,14 @@ test('DEV_GATEWAY_HOME puts everything in one directory', () => {
   assert.equal(paths.cacheDir, path.join(base, 'cache'));
 });
 
-test('DEV_GATEWAY_HOME wins over the other overrides', () => {
+test('GATEWARDEN_HOME wins over the other overrides', () => {
   const base = path.join(path.sep, 'tmp', 'gateway-home');
   const paths = resolvePaths({
     platform: 'linux',
     env: {
-      DEV_GATEWAY_HOME: base,
-      DEV_GATEWAY_CONFIG: path.join(path.sep, 'tmp', 'other', 'config.json'),
-      DEV_GATEWAY_STATE_DIR: path.join(path.sep, 'tmp', 'other', 'state'),
+      GATEWARDEN_HOME: base,
+      GATEWARDEN_CONFIG: path.join(path.sep, 'tmp', 'other', 'config.json'),
+      GATEWARDEN_STATE_DIR: path.join(path.sep, 'tmp', 'other', 'state'),
     },
     home: HOME,
   });
@@ -110,17 +112,17 @@ test('DEV_GATEWAY_HOME wins over the other overrides', () => {
   assert.equal(paths.stateDir, base);
 });
 
-test('DEV_GATEWAY_CONFIG moves the configuration file only', () => {
+test('GATEWARDEN_CONFIG moves the configuration file only', () => {
   const configFile = path.join(path.sep, 'tmp', 'other', 'config.json');
-  const paths = resolvePaths({ platform: 'linux', env: { DEV_GATEWAY_CONFIG: configFile }, home: HOME });
+  const paths = resolvePaths({ platform: 'linux', env: { GATEWARDEN_CONFIG: configFile }, home: HOME });
 
   assert.equal(paths.configFile, configFile);
   assert.equal(paths.stateDir, path.join(HOME, '.local', 'state', APP_NAME));
 });
 
-test('DEV_GATEWAY_STATE_DIR moves the state directory only', () => {
+test('GATEWARDEN_STATE_DIR moves the state directory only', () => {
   const stateDir = path.join(path.sep, 'tmp', 'other', 'state');
-  const paths = resolvePaths({ platform: 'linux', env: { DEV_GATEWAY_STATE_DIR: stateDir }, home: HOME });
+  const paths = resolvePaths({ platform: 'linux', env: { GATEWARDEN_STATE_DIR: stateDir }, home: HOME });
 
   assert.equal(paths.stateDir, stateDir);
   assert.equal(paths.configFile, path.join(HOME, '.config', APP_NAME, 'config.json'));
@@ -140,7 +142,7 @@ test('the old environment names are still read, but the new ones win', () => {
     platform: 'linux',
     env: {
       TRAEFIK_DEV_CONFIG: path.join(path.sep, 'tmp', 'old', 'config.json'),
-      DEV_GATEWAY_CONFIG: path.join(path.sep, 'tmp', 'new', 'config.json'),
+      GATEWARDEN_CONFIG: path.join(path.sep, 'tmp', 'new', 'config.json'),
     },
     home: HOME,
   });
@@ -149,14 +151,14 @@ test('the old environment names are still read, but the new ones win', () => {
 
 test('the overrides are read from the environment', () => {
   const env = {
-    DEV_GATEWAY_HOME: path.join(path.sep, 'tmp', 'home'),
-    DEV_GATEWAY_CONFIG: path.join(path.sep, 'tmp', 'config.json'),
-    DEV_GATEWAY_STATE_DIR: path.join(path.sep, 'tmp', 'state'),
+    GATEWARDEN_HOME: path.join(path.sep, 'tmp', 'home'),
+    GATEWARDEN_CONFIG: path.join(path.sep, 'tmp', 'config.json'),
+    GATEWARDEN_STATE_DIR: path.join(path.sep, 'tmp', 'state'),
   };
 
-  assert.equal(homeOverride(env), env.DEV_GATEWAY_HOME);
-  assert.equal(configFileOverride(env), env.DEV_GATEWAY_CONFIG);
-  assert.equal(stateDirOverride(env), env.DEV_GATEWAY_STATE_DIR);
+  assert.equal(homeOverride(env), env.GATEWARDEN_HOME);
+  assert.equal(configFileOverride(env), env.GATEWARDEN_CONFIG);
+  assert.equal(stateDirOverride(env), env.GATEWARDEN_STATE_DIR);
   assert.equal(homeOverride({}), undefined);
 });
 
@@ -197,9 +199,9 @@ test('the log file of a state directory and the one of the resolution are the sa
   }
 });
 
-test('the log file is in the one directory when DEV_GATEWAY_HOME is set', () => {
+test('the log file is in the one directory when GATEWARDEN_HOME is set', () => {
   for (const platform of ['linux', 'darwin', 'win32'] as NodeJS.Platform[]) {
-    const env = { DEV_GATEWAY_HOME: path.join(path.sep, 'tmp', 'one-directory') };
+    const env = { GATEWARDEN_HOME: path.join(path.sep, 'tmp', 'one-directory') };
     const paths = resolvePaths({ platform, env, home: HOME });
     assert.equal(paths.logFile, path.join(path.sep, 'tmp', 'one-directory', 'daemon.log'), `${platform}`);
     assert.equal(
@@ -208,4 +210,73 @@ test('the log file is in the one directory when DEV_GATEWAY_HOME is set', () => 
       `${platform}: the log file of the resolution differs`,
     );
   }
+});
+
+test('the environment names of the rename still work, and the current ones win', () => {
+  // The names the variables had before the rename are deprecated, not
+  // dead: a script that still sets them keeps working.
+  const legacy = resolvePaths({
+    platform: 'linux',
+    env: {
+      DEV_GATEWAY_HOME: path.join(path.sep, 'tmp', 'old-home'),
+      DEV_GATEWAY_CONFIG: path.join(path.sep, 'tmp', 'old', 'config.json'),
+      DEV_GATEWAY_STATE_DIR: path.join(path.sep, 'tmp', 'old', 'state'),
+    },
+    home: HOME,
+  });
+
+  assert.equal(legacy.configFile, path.join(path.sep, 'tmp', 'old-home', 'config.json'));
+  assert.equal(legacy.stateDir, path.join(path.sep, 'tmp', 'old-home'));
+  assert.equal(legacy.logFile, path.join(path.sep, 'tmp', 'old-home', 'daemon.log'));
+
+  const both = resolvePaths({
+    platform: 'linux',
+    env: {
+      DEV_GATEWAY_HOME: path.join(path.sep, 'tmp', 'old-home'),
+      DEV_GATEWAY_CONFIG: path.join(path.sep, 'tmp', 'old', 'config.json'),
+      GATEWARDEN_HOME: path.join(path.sep, 'tmp', 'new-home'),
+      GATEWARDEN_CONFIG: path.join(path.sep, 'tmp', 'new', 'config.json'),
+    },
+    home: HOME,
+  });
+
+  assert.equal(both.configFile, path.join(path.sep, 'tmp', 'new-home', 'config.json'));
+  assert.equal(both.stateDir, path.join(path.sep, 'tmp', 'new-home'));
+});
+
+test('the deprecated environment names are reported, and only when they are used', () => {
+  assert.deepEqual(deprecatedEnvNotices({}), []);
+
+  assert.deepEqual(
+    deprecatedEnvNotices({ DEV_GATEWAY_HOME: path.join(path.sep, 'tmp', 'old') }),
+    ['DEV_GATEWAY_HOME is deprecated: use GATEWARDEN_HOME instead'],
+  );
+
+  // A variable that is set under both names gets no notice: the current
+  // name wins, and the old one is ignored.
+  assert.deepEqual(
+    deprecatedEnvNotices({
+      DEV_GATEWAY_HOME: path.join(path.sep, 'tmp', 'old'),
+      GATEWARDEN_HOME: path.join(path.sep, 'tmp', 'new'),
+    }),
+    [],
+  );
+});
+
+test('the directories of the old name are found', () => {
+  // The installation that was made before the rename keeps its files in
+  // the directories of the old name. The migration moves them, and the
+  // doctor reports them.
+  const dirs = legacyAppPaths({ platform: 'linux', env: {}, home: HOME });
+
+  assert.equal(dirs.configDir, path.join(HOME, '.config', 'dev-gateway'));
+  assert.equal(dirs.stateDir, path.join(HOME, '.local', 'state', 'dev-gateway'));
+});
+
+test('the current directories and the old ones are two apart', () => {
+  const current = resolvePaths({ platform: 'linux', env: {}, home: HOME });
+  const legacy = legacyAppPaths({ platform: 'linux', env: {}, home: HOME });
+
+  assert.notEqual(current.configFile, path.join(legacy.configDir, 'config.json'));
+  assert.notEqual(current.stateDir, legacy.stateDir);
 });

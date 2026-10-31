@@ -7,7 +7,7 @@
  *
  * 1. the lazy start: every entry point starts the daemon when it is down;
  * 2. this script: the install starts it once, in the background;
- * 3. `dev-gateway install-service`: the daemon survives a reboot.
+ * 3. `gatewarden install-service`: the daemon survives a reboot.
  *
  * The rules the specification sets, one by one:
  *
@@ -18,7 +18,9 @@
  *   install as root must not start a daemon for one user);
  * - it does nothing when the daemon is already running: the check is the
  *   health endpoint and the pidfile;
- * - `DEV_GATEWAY_AUTOSTART=0` and `"autostart": false` turn it off.
+ * - `GATEWARDEN_AUTOSTART=0` and `"autostart": false` turn it off. The
+ *   name the variable had before the rename (`DEV_GATEWAY_AUTOSTART`) still
+ *   works, and it is deprecated.
  *
  * One guard is added: a checkout is not an installation. When the script
  * runs in the package's own directory — `npm install` in a clone — it does
@@ -38,7 +40,7 @@ function stop() {
 
 if (process.env.npm_config_ignore_scripts === 'true') stop();
 if (process.env.CI) stop();
-if (process.env.DEV_GATEWAY_AUTOSTART === '0') stop();
+if ((process.env.GATEWARDEN_AUTOSTART ?? process.env.DEV_GATEWAY_AUTOSTART) === '0') stop();
 if (process.getuid?.() === 0) stop();
 
 // A checkout is not an installation: `npm install` in the package's own
@@ -51,7 +53,7 @@ if (process.getuid?.() === 0) stop();
 if (isCheckout()) stop();
 
 // The install does not import the old layout (`~/.traefik-dev/`). The
-// migration is the job of `dev-gateway migrate`, and a silent import
+// migration is the job of `gatewarden migrate`, and a silent import
 // during an install would write into the user's home without being
 // asked. The configuration the install writes is the default one.
 const initCwd = process.env.INIT_CWD ? path.resolve(process.env.INIT_CWD) : null;

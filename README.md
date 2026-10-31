@@ -1,11 +1,11 @@
-# @malarstrom/agent-dev-gateway
+# @malarstrom/gatewarden
 
-Publish a development server that runs on this machine to an address the user can
-open in a browser, on their own network.
+Give a development server that runs on this machine an https address on your
+own domain: a URL you can open in a browser, on your own network.
 
-An agent starts a dev server — Vite, Next, Nuxt, `python -m http.server`, any
-local port — and hands the user a URL. The gateway does the rest: it tells the
-proxy about the route, the proxy terminates TLS, and a relay forwards the
+The dev server keeps running the way it does — Vite, Next, Nuxt,
+`python -m http.server`, any local port. The gateway does the rest: it tells
+the proxy about the route, the proxy terminates TLS, and a relay forwards the
 request to the dev server on `127.0.0.1:<port>`, WebSocket upgrades included.
 
 ```text
@@ -33,7 +33,7 @@ contract, and the adapter is picked by the `proxy` key of the configuration.
 ## Install
 
 ```bash
-npm install -g @malarstrom/agent-dev-gateway
+npm install -g @malarstrom/gatewarden
 ```
 
 Node 20.11 or later. The package ships compiled JavaScript; the runtime
@@ -43,14 +43,14 @@ the lock around the route store.
 The same package is a pi package. pi installs it like any other:
 
 ```bash
-pi install npm:@malarstrom/agent-dev-gateway
+pi install npm:@malarstrom/gatewarden
 ```
 
 It installs from a git repository too. The compiled output is not in the
 repository, so the package builds itself when it is installed from one:
 
 ```bash
-npm install git+github.com/malarstrom/agent-dev-gateway
+npm install git+github.com/malarstrom/gatewarden
 ```
 
 From a tarball — a checkout, or a build of your own — the same thing:
@@ -65,7 +65,7 @@ This section is the whole installation: what has to be there, the steps in
 the order you do them, a configuration file you can copy, a checklist that
 tells you it works, and what to do when it does not.
 
-The setup wizard (`dev-gateway setup`) is **optional**. It fills in the same
+The setup wizard (`gatewarden setup`) is **optional**. It fills in the same
 values from your proxy and writes them for you. Every value it can derive,
 you can write by hand — and on a machine where the wizard cannot reach the
 proxy, or where you do not want to answer its questions, the hand-written
@@ -79,7 +79,7 @@ file is the way. Nothing below needs the wizard to have succeeded.
 | --- | --- |
 | Node 20.11 or later on the machine that runs the dev servers | The package is plain JavaScript; nothing is built at install time. `node --version` tells you which one you have. |
 | A Traefik proxy (v2 or v3) on another machine | The proxy terminates TLS and forwards the request. The gateway never terminates TLS itself. |
-| A DNS zone the proxy already serves, e.g. `example.com` | Every route gets the host name `<branch>.<project>.<zone>`. Without a zone there is no host name, and `dev-gateway register` refuses to register a route. |
+| A DNS zone the proxy already serves, e.g. `example.com` | Every route gets the host name `<branch>.<project>.<zone>`. Without a zone there is no host name, and `gatewarden register` refuses to register a route. |
 | TLS for that zone: a certificate resolver in the proxy | The user opens an `https://` address. The gateway asks the proxy's resolver for the certificate; the credentials stay in the proxy, and the gateway never reads them. |
 | A machine the proxy can reach, and an address the proxy knows it by (a host name or an IP) | The proxy polls the configuration document on port `45002` and sends the requests to the relay on port `45001`. Both ports have to be open from the proxy to that machine. |
 
@@ -87,10 +87,10 @@ file is the way. Nothing below needs the wizard to have succeeded.
 
 | What | What it gives you |
 | --- | --- |
-| `dev-gateway setup` | writes the configuration file for you, from the values it reads from your proxy, and asks for the ones it cannot read. A shortcut, not a requirement. |
+| `gatewarden setup` | writes the configuration file for you, from the values it reads from your proxy, and asks for the ones it cannot read. A shortcut, not a requirement. |
 | A shared secret (`"secret"`) in the configuration file | the proxy has to present it to the registry and to the relay |
 | The shared middlewares of your proxy (`compress`, `default-security-headers`) | the dev routers get them too, when you name the provider that owns them |
-| `dev-gateway install-service` | the daemon starts again after a reboot |
+| `gatewarden install-service` | the daemon starts again after a reboot |
 | More addresses in `allowedCidrs` | the relay accepts the dispatch header from more than one proxy |
 
 ### Step 1 — install the package
@@ -98,7 +98,7 @@ file is the way. Nothing below needs the wizard to have succeeded.
 On the machine that runs the dev servers:
 
 ```bash
-npm install -g @malarstrom/agent-dev-gateway
+npm install -g @malarstrom/gatewarden
 ```
 
 ### Step 2 — wire the proxy
@@ -125,16 +125,16 @@ docker restart <the traefik container>
 
 This is the one change on the proxy side, and it is yours to make: the
 gateway runs on another machine and cannot write the proxy's configuration.
-`dev-gateway setup` prints the same snippet with your values filled in and
+`gatewarden setup` prints the same snippet with your values filled in and
 writes it to `<state>/wiring/traefik.yml`, so that you can copy it.
 
 What else the proxy side needs: [`docs/traefik.md`](docs/traefik.md).
 
 ### Step 3 — write the configuration file
 
-The file is `~/.config/dev-gateway/config.json` on Linux
-(`~/Library/Preferences/dev-gateway/config.json` on macOS,
-`%APPDATA%\dev-gateway\Config\config.json` on Windows). `dev-gateway config`
+The file is `~/.config/gatewarden/config.json` on Linux
+(`~/Library/Preferences/gatewarden/config.json` on macOS,
+`%APPDATA%\gatewarden\Config\config.json` on Windows). `gatewarden config`
 prints the path it uses and every key it knows.
 
 ```json
@@ -190,13 +190,13 @@ and `advertisedHost` are detected on every run, and a file that pins the
 address of the moment it was written keeps advertising an address the machine
 does not have any more. An empty value means "derived".
 
-`dev-gateway config --write` writes the file with your current values: the
+`gatewarden config --write` writes the file with your current values: the
 same file, in the same format, when you want a starting point.
 
 ### Step 4 — start the daemon
 
 ```bash
-dev-gateway start
+gatewarden start
 ```
 
 It prints `started the daemon (pid 12345)`. The daemon serves the
@@ -210,14 +210,14 @@ the daemon works.
 
 | Command | What a working installation answers |
 | --- | --- |
-| `dev-gateway doctor` | `nothing is broken` (and the exit code is 0) |
-| `dev-gateway status` | `daemon: running (pid …)` and `zone: example.com` |
+| `gatewarden doctor` | `nothing is broken` (and the exit code is 0) |
+| `gatewarden status` | `daemon: running (pid …)` and `zone: example.com` |
 | `curl -sS http://<the machine>:45002/healthz` | `ok` |
 | `curl -sS http://<the machine>:45002/traefik` | the configuration document, in YAML — the same thing the proxy polls |
-| `dev-gateway register --project probe --branch main --port 3999` | `url: https://main.probe.example.com` |
+| `gatewarden register --project probe --branch main --port 3999` | `url: https://main.probe.example.com` |
 | open that address in a browser | your dev server |
 
-`dev-gateway doctor` is the one to start with: it names every check it made
+`gatewarden doctor` is the one to start with: it names every check it made
 and every check that failed. What each check means is in
 [`docs/setup.md`](docs/setup.md).
 
@@ -230,24 +230,24 @@ not.
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| `dev-gateway register` says `no DNS zone is configured` | the configuration file has no `zone` | write the zone into the configuration file (`"zone": "example.com"`) and register again |
-| the address answers `502` | the dev server is not listening on the port you registered | check it with `dev-gateway list` — the state column says `up` or `down` |
+| `gatewarden register` says `no DNS zone is configured` | the configuration file has no `zone` | write the zone into the configuration file (`"zone": "example.com"`) and register again |
+| the address answers `502` | the dev server is not listening on the port you registered | check it with `gatewarden list` — the state column says `up` or `down` |
 | the address answers `404` at the proxy | the proxy has not picked the route up yet, or the wiring is not in place | wait one poll interval; then check that the `http` provider is in the proxy's static configuration, and that the proxy was restarted after it was added |
 | the relay answers `403` | the address of the proxy is not in `allowedCidrs` | add the address of the proxy to `allowedCidrs` in the configuration file, and restart the daemon |
 | the certificate of the address is not trusted | the resolver was not asked for a wildcard of the project, or the zone is another one | look at the resolver in the log of the proxy; `"tlsMode": "fqdn"` asks for one certificate per address instead of one per project |
 | the host name does not resolve | the DNS zone has no wildcard record for the subdomains | add a `*` record for the zone to your DNS |
-| `dev-gateway doctor` says `not running` | the daemon is not up | `dev-gateway start`, and read the log file the command names |
+| `gatewarden doctor` says `not running` | the daemon is not up | `gatewarden start`, and read the log file the command names |
 | the proxy serves its dashboard instead of your dev server | the route is not in the document the proxy polls | `curl -sS http://<the machine>:45002/traefik` — the route has to be in it |
 
 More cases, with the reason they happen: the skill's
-[troubleshooting reference](skills/dev-gateway/references/troubleshooting.md).
+[troubleshooting reference](skills/gatewarden/references/troubleshooting.md).
 
 ## Quick start
 
 **1. Install the package** on the machine that runs the dev servers:
 
 ```bash
-npm install -g @malarstrom/agent-dev-gateway
+npm install -g @malarstrom/gatewarden
 ```
 
 **2. Connect it to your proxy.** One block in the static configuration of the
@@ -262,12 +262,12 @@ providers:
 ```
 
 ```bash
-dev-gateway start
+gatewarden start
 ```
 
 Every field of the configuration file, and every command with its flags, is
 in [Vad som krävs](#vad-som-krävs-what-you-need) above.
-`dev-gateway setup` does this step for you when your proxy answers on its
+`gatewarden setup` does this step for you when your proxy answers on its
 API: it derives the values, writes the configuration file and starts the
 daemon. It is optional — the wizard is not a requirement for anything.
 
@@ -280,7 +280,7 @@ daemon. It is optional — the wizard is not a requirement for anything.
 or with the CLI:
 
 ```bash
-dev-gateway register --project my-app --branch main --port 5173
+gatewarden register --project my-app --branch main --port 5173
 ```
 
 ```text
@@ -306,8 +306,8 @@ runtime dependency, it is only the oracle of the conformance test.
 ```json
 {
   "mcpServers": {
-    "dev-gateway": {
-      "command": "dev-gateway-mcp",
+    "gatewarden": {
+      "command": "gatewarden-mcp",
       "args": [],
       "cwd": "${workspaceFolder}"
     }
@@ -336,7 +336,7 @@ running the server changes nothing until an agent asks it to.
 ### The pi extension
 
 ```bash
-pi install npm:@malarstrom/agent-dev-gateway
+pi install npm:@malarstrom/gatewarden
 ```
 
 The extension gives pi users what MCP alone does not: the three tools as
@@ -345,7 +345,7 @@ route table, and a status line with the number of live routes.
 
 ### The skill
 
-The package ships an [Agent Skill](skills/dev-gateway/SKILL.md). pi, Claude
+The package ships an [Agent Skill](skills/gatewarden/SKILL.md). pi, Claude
 Code, Codex and OpenCode read it; the description is what makes the agent load
 it when a dev server is started.
 
@@ -363,17 +363,17 @@ remove the route when the server is gone.
 
 | Command | What it does |
 | --- | --- |
-| `dev-gateway register --project p --branch b --port N [--label text]` | register (or update the port of) a dev server |
-| `dev-gateway unregister --project p --branch b` | remove the registration |
-| `dev-gateway list` | list the registrations (`--json` for scripts) |
-| `dev-gateway status` | daemon state, ports, configuration summary |
-| `dev-gateway config [--write]` | show the configuration and every key (`--write` writes the file) |
-| `dev-gateway setup` | optional: walk a new installation through the six steps and write the configuration file ([`docs/setup.md`](docs/setup.md)) |
-| `dev-gateway start` | start the daemon and wait for it |
-| `dev-gateway stop` | stop the daemon |
-| `dev-gateway doctor` | report what is broken, if anything |
-| `dev-gateway install-service` | install the daemon as a service, so it survives a reboot |
-| `dev-gateway migrate [--dry-run]` | move the old layout (`~/.traefik-dev/`) to the new one, and report what moved |
+| `gatewarden register --project p --branch b --port N [--label text]` | register (or update the port of) a dev server |
+| `gatewarden unregister --project p --branch b` | remove the registration |
+| `gatewarden list` | list the registrations (`--json` for scripts) |
+| `gatewarden status` | daemon state, ports, configuration summary |
+| `gatewarden config [--write]` | show the configuration and every key (`--write` writes the file) |
+| `gatewarden setup` | optional: walk a new installation through the six steps and write the configuration file ([`docs/setup.md`](docs/setup.md)) |
+| `gatewarden start` | start the daemon and wait for it |
+| `gatewarden stop` | stop the daemon |
+| `gatewarden doctor` | report what is broken, if anything |
+| `gatewarden install-service` | install the daemon as a service, so it survives a reboot |
+| `gatewarden migrate [--dry-run]` | move the old layouts (`~/.traefik-dev/` and `~/.config/dev-gateway/`) to the new one, and report what moved |
 
 Global options: `--config <path>`, `--state-dir <path>`, `--json`. They are
 global: they work before the command and after it.
@@ -382,7 +382,7 @@ The old names of the commands still work: `register`, `unregister`, `list`,
 `status` and `config` are the same commands under the same names.
 
 Every command that reports something can report it as JSON: `--json` writes one
-object to the standard output and nothing else. `dev-gateway list --json` writes
+object to the standard output and nothing else. `gatewarden list --json` writes
 the routes in the shape the MCP tool `list_dev_servers` uses:
 
 ```json
@@ -409,20 +409,20 @@ that is registered but dead cannot pass as working.
 
 ## The configuration
 
-The configuration file (`~/.config/dev-gateway/config.json` on Linux).
+The configuration file (`~/.config/gatewarden/config.json` on Linux).
 Every key, what it means and what to write in it: [Vad som krävs](#vad-som-krävs-what-you-need).
-`dev-gateway config` prints the same list for the installation you are in,
-and `dev-gateway config --write` writes the file.
+`gatewarden config` prints the same list for the installation you are in,
+and `gatewarden config --write` writes the file.
 
 The defaults are the built-in ones, not your values: you write them, and
-`dev-gateway setup` derives them from the proxy and writes them for you when
+`gatewarden setup` derives them from the proxy and writes them for you when
 you would rather it did.
 
 Not one value of one installation is in the defaults. The zone, the
 certificate resolver, the provider of the shared middlewares and the host name
 the proxy reaches this machine under are empty until you fill them in, and the
 trust list holds the loopback addresses of every machine. A route needs a
-zone: `dev-gateway register` says so when there is none.
+zone: `gatewarden register` says so when there is none.
 
 The values that are derived at runtime are not written to the file either: the
 address of this machine, the host name that is the address, and the IPv6
@@ -437,10 +437,10 @@ The files follow the XDG Base Directory specification:
 
 | Purpose | Linux | macOS | Windows |
 | --- | --- | --- | --- |
-| configuration | `~/.config/dev-gateway/config.json` | `~/Library/Preferences/dev-gateway/` | `%APPDATA%\dev-gateway\Config\` |
-| state (routes, pid) | `~/.local/state/dev-gateway/` | `~/Library/Application Support/dev-gateway/` | `%LOCALAPPDATA%\dev-gateway\State\` |
-| log | `~/.local/state/dev-gateway/daemon.log` | `~/Library/Logs/dev-gateway/` | `%LOCALAPPDATA%\dev-gateway\Log\` |
-| cache | `~/.cache/dev-gateway/` | `~/Library/Caches/dev-gateway/` | `%LOCALAPPDATA%\dev-gateway\Cache\` |
+| configuration | `~/.config/gatewarden/config.json` | `~/Library/Preferences/gatewarden/` | `%APPDATA%\gatewarden\Config\` |
+| state (routes, pid) | `~/.local/state/gatewarden/` | `~/Library/Application Support/gatewarden/` | `%LOCALAPPDATA%\gatewarden\State\` |
+| log | `~/.local/state/gatewarden/daemon.log` | `~/Library/Logs/gatewarden/` | `%LOCALAPPDATA%\gatewarden\Log\` |
+| cache | `~/.cache/gatewarden/` | `~/Library/Caches/gatewarden/` | `%LOCALAPPDATA%\gatewarden\Cache\` |
 
 The state directory holds `routes.json` (the routes, the single source of
 truth, written atomically and guarded by a lock file), `daemon.pid` and
@@ -450,15 +450,30 @@ Three environment variables move the files:
 
 | Variable | Effect |
 | --- | --- |
-| `DEV_GATEWAY_HOME` | everything in one directory: the configuration, the state, the log and the cache |
-| `DEV_GATEWAY_CONFIG` | the configuration file only |
-| `DEV_GATEWAY_STATE_DIR` | the state directory only |
+| `GATEWARDEN_HOME` | everything in one directory: the configuration, the state, the log and the cache |
+| `GATEWARDEN_CONFIG` | the configuration file only |
+| `GATEWARDEN_STATE_DIR` | the state directory only |
 
-The old layout (`~/.traefik-dev/`) is picked up on the first run: when the new
-configuration file does not exist and the old one does, the old values become
-the new configuration and the old route store is imported. The old directory is
-left in place. `dev-gateway migrate` does the same import explicitly and
-reports what it moved; `dev-gateway migrate --dry-run` only reports.
+The names these variables had before the rename (`DEV_GATEWAY_HOME`,
+`DEV_GATEWAY_CONFIG`, `DEV_GATEWAY_STATE_DIR`) still work. They are
+deprecated: the CLI reads them, and it says once that they are on their way
+out. The current name wins when both are set.
+
+Two old layouts are picked up on the first run: `~/.traefik-dev/`, which came
+before the package, and `~/.config/dev-gateway/`, which is the layout of the
+name the directories had before the rename. When the new configuration file
+does not exist and an old one does, the old values become the new
+configuration and the old route store is imported. The old directories are
+left in place. `gatewarden migrate` does the same import explicitly and
+reports what it moved; `gatewarden migrate --dry-run` only reports. In a
+home that holds both, the newer one wins: the layout of the old name comes
+after the pre-package layout, and both paths — the command and the first run
+— move the same files.
+
+The service unit of the old name (`dev-gateway.service`, the old launchd
+label) is looked for as well: it names a launcher that does not exist any
+more, so `gatewarden doctor` reports it, and `gatewarden install-service`
+writes the unit of the current name.
 
 ## The daemon lifecycle
 
@@ -471,27 +486,27 @@ Three layers start the daemon, and each one is enough on its own:
 | `install-service` | the daemon is a service of the user | survives a reboot |
 
 `postinstall` never fails the install: it exits 0 whatever it does, and it
-does nothing as root, in CI, or when `DEV_GATEWAY_AUTOSTART=0` is set.
+does nothing as root, in CI, or when `GATEWARDEN_AUTOSTART=0` is set.
 
 `install-service` writes the unit of the platform and enables it:
 
 | Platform | Unit |
 | --- | --- |
-| Linux | `~/.config/systemd/user/dev-gateway.service` |
-| macOS | `~/Library/LaunchAgents/dev.mal.arstrom.dev-gateway.plist` |
-| Windows | a scheduled task running `dev-gateway-daemon.js` |
+| Linux | `~/.config/systemd/user/gatewarden.service` |
+| macOS | `~/Library/LaunchAgents/com.malarstrom.gatewarden.plist` |
+| Windows | a scheduled task running `gatewarden-daemon.js` |
 
 The unit runs the daemon directly, not the CLI. `--no-enable` writes the unit
 without enabling it, which is what a machine without `systemctl --user` needs.
 
 ## When something does not work
 
-`dev-gateway doctor` reads the installation and reports every check it made:
+`gatewarden doctor` reads the installation and reports every check it made:
 the configuration file, the state directory, the daemon, the two ports, the
 routes, the proxy and the service unit. It exits 1 when a check fails, so a
 script can ask it. What each check means: [`docs/setup.md`](docs/setup.md).
 
-The skill's [troubleshooting reference](skills/dev-gateway/references/troubleshooting.md)
+The skill's [troubleshooting reference](skills/gatewarden/references/troubleshooting.md)
 lists the failures that actually happen.
 
 ## Development

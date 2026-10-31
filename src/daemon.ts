@@ -1,5 +1,5 @@
 /**
- * The daemon entry point (`dev-gateway-daemon`).
+ * The daemon entry point (`gatewarden-daemon`).
  *
  * The process that supervises the workers. It is deliberately thin: the
  * supervisor lives in the core (`src/core/daemon.ts`), and the entry point

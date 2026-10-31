@@ -30,7 +30,7 @@ import { CLI, LEGACY_DAEMON, freePort } from './helpers/cli.ts';
 
 /** A throwaway installation with a configuration file of its own. */
 async function makeConfig(): Promise<{ dir: string; configPath: string; config: Config }> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-control-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-control-'));
   const configPath = path.join(dir, 'config.json');
   fs.writeFileSync(
     configPath,
@@ -185,7 +185,7 @@ test('the daemon runs before it serves', async (t) => {
   const config = loadConfig({ configPath, stateDir: dir });
 
   const daemon = spawn(process.execPath, [LEGACY_DAEMON, '--config', configPath], {
-    env: { ...process.env, HOME: dir, DEV_GATEWAY_STATE_DIR: dir },
+    env: { ...process.env, HOME: dir, GATEWARDEN_STATE_DIR: dir },
     detached: true,
     stdio: 'ignore',
   });
@@ -313,8 +313,8 @@ test(
     const env = {
       PATH: process.env['PATH'] ?? '',
       HOME: dir,
-      DEV_GATEWAY_STATE_DIR: dir,
-      DEV_GATEWAY_CONFIG: configPath,
+      GATEWARDEN_STATE_DIR: dir,
+      GATEWARDEN_CONFIG: configPath,
     };
 
     // The command that starts the daemon runs under the helper, so that

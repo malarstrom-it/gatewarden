@@ -22,7 +22,7 @@ import { describeSnapshot, pidsOnPort, snapshotOf, snapshotsAreEqual } from './p
 import { testRouteFqdn } from './settings.ts';
 
 /** The answer of the throwaway server. */
-export const MARKER = 'dev-gateway test environment';
+export const MARKER = 'gatewarden test environment';
 
 export interface E2eStep {
   /** What was checked. */

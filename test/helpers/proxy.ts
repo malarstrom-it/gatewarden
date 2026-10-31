@@ -89,7 +89,7 @@ function parseDocument(body: string, contentType: string | undefined): DynamicDo
  *
  * The API and the public listeners are separate: the API answers on a
  * free port, the public URLs on the ports a public URL uses (443 and
- * 80), so that a URL like `https://check.dev-gateway-setup.localhost`
+ * 80), so that a URL like `https://check.gatewarden-setup.localhost`
  * reaches it.
  */
 export class FakeTraefik {

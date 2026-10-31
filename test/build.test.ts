@@ -163,7 +163,7 @@ test('the compiled sibling resolution points at the compiled modules', async () 
 });
 
 test('the compiled daemon serves and forks the compiled worker', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-build-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-build-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
   const registryPort = await freePort();

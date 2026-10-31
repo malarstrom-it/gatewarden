@@ -541,7 +541,7 @@ async function fetchServices(base: string, timeoutMs: number): Promise<Map<strin
 export function traefikWiringSnippet(config: Config): string {
   const host = config.advertisedHost || config.advertisedIp;
   const lines = [
-    '# dev-gateway: the dynamic configuration this proxy polls.',
+    '# gatewarden: the dynamic configuration this proxy polls.',
     'providers:',
     '  http:',
     `    endpoint: "http://${host}:${config.registryPort}${DOCUMENT_PATH}"`,

@@ -32,14 +32,14 @@ shell or in the agent's answer. (confirmed)
 
 ## Product Purpose
 
-The dev gateway: a registry and a relay inside the container that let agents
+The gatewarden: a registry and a relay inside the container that let agents
 publish dev servers, which the client's own Traefik then serves on the LAN as
 `https://<branch>.<project>.home.malarstrom.com`, each project covered by one
 wildcard certificate. (confirmed)
 
 The route list is the client's overview of that: what the agents are running
 right now, the host name of each route, the port inside the container, and
-whether it answers. The overview is `dev-gateway list`, `list_dev_servers`
+whether it answers. The overview is `gatewarden list`, `list_dev_servers`
 and `/routes` — a view for the agent and for the client's own terminal, not
 a page the client opens in a browser. (confirmed)
 
@@ -87,7 +87,7 @@ each one has after the web interface was removed (S3, §10.3):
 
 ## Brand Commitments
 
-- The product is called "Dev gateway", and the client's own zone and the
+- The product is called "Gatewarden", and the client's own zone and the
   wildcard naming `<branch>.<project>.home.malarstrom.com` are facts of the
   product. (confirmed)
 - The visual world of the index page — the Daylight world, the Up/Down

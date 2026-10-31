@@ -1,9 +1,9 @@
 {
-  "name": "@malarstrom/agent-dev-gateway",
+  "name": "@malarstrom/gatewarden",
   "version": "0.1.0",
   "license": "MIT",
   "type": "module",
-  "description": "Publish a development server running on this machine to an address the user can open in a browser: an MCP server, a pi extension, a CLI and an Agent Skill over one proxy-agnostic core",
+  "description": "Give a development server running on this machine an https address on your own domain: an MCP server, a pi extension, a CLI and an Agent Skill over one proxy-agnostic core",
   "main": "./dist/core/index.js",
   "types": "./dist/core/index.d.ts",
   "exports": {
@@ -11,15 +11,15 @@
     "./adapters": "./dist/adapters/index.js"
   },
   "bin": {
-    "dev-gateway": "bin/dev-gateway.js",
-    "dev-gateway-mcp": "bin/dev-gateway-mcp.js",
-    "dev-gateway-daemon": "bin/dev-gateway-daemon.js"
+    "gatewarden": "bin/gatewarden.js",
+    "gatewarden-mcp": "bin/gatewarden-mcp.js",
+    "gatewarden-daemon": "bin/gatewarden-daemon.js"
   },
   "files": [
     "dist",
-    "bin/dev-gateway.js",
-    "bin/dev-gateway-mcp.js",
-    "bin/dev-gateway-daemon.js",
+    "bin/gatewarden.js",
+    "bin/gatewarden-mcp.js",
+    "bin/gatewarden-daemon.js",
     "bin/entry.mjs",
     "scripts",
     "skills",
@@ -63,8 +63,8 @@
   "keywords": [
     "pi-package",
     "mcp",
-    "traefik",
+    "gateway",
     "dev-server",
-    "agent"
+    "traefik"
   ]
 }

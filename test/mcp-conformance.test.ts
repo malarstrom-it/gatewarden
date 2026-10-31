@@ -26,7 +26,7 @@ import { freePort } from './helpers/cli.ts';
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 /** The MCP server of the package. */
-export const MCP_BIN = path.join(REPO_ROOT, 'bin', 'dev-gateway-mcp.js');
+export const MCP_BIN = path.join(REPO_ROOT, 'bin', 'gatewarden-mcp.js');
 
 interface Fixture {
   /** The throwaway directory: the configuration, the state and the home. */
@@ -45,7 +45,7 @@ interface Fixture {
  * The server is started as a child process, the way a harness starts it.
  */
 async function makeMcpFixture(options: { connect?: boolean; zone?: string } = {}): Promise<Fixture> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-mcp-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-mcp-'));
   const registryPort = await freePort();
   const relayPort = await freePort();
 
@@ -81,7 +81,7 @@ async function makeMcpFixture(options: { connect?: boolean; zone?: string } = {}
   const env: Record<string, string> = {
     PATH: process.env['PATH'] ?? '',
     HOME: dir,
-    DEV_GATEWAY_HOME: dir,
+    GATEWARDEN_HOME: dir,
     XDG_CONFIG_HOME: path.join(dir, '.config'),
     XDG_STATE_HOME: path.join(dir, '.local', 'state'),
     XDG_CACHE_HOME: path.join(dir, '.cache'),
@@ -95,7 +95,7 @@ async function makeMcpFixture(options: { connect?: boolean; zone?: string } = {}
     stderr: 'pipe',
   });
 
-  const client = new Client({ name: 'dev-gateway-conformance', version: '1.0.0' }, { capabilities: {} });
+  const client = new Client({ name: 'gatewarden-conformance', version: '1.0.0' }, { capabilities: {} });
 
   const cleanup = async (): Promise<void> => {
     try {
@@ -147,7 +147,7 @@ test('the official SDK client can talk to the server', async (t) => {
   t.after(() => fixture.cleanup());
 
   const version = fixture.client.getServerVersion();
-  assert.equal(version?.name, 'dev-gateway');
+  assert.equal(version?.name, 'gatewarden');
   assert.equal(typeof version?.version, 'string');
 
   const capabilities = fixture.client.getServerCapabilities();
@@ -196,7 +196,7 @@ test('publishing without a zone says how to get one', async (t) => {
   });
   assert.equal(published.isError, true, JSON.stringify(published.content));
   assert.match(JSON.stringify(published.content), /no DNS zone is configured/);
-  assert.match(JSON.stringify(published.content), /dev-gateway setup/);
+  assert.match(JSON.stringify(published.content), /gatewarden setup/);
 
   const listed = await fixture.client.callTool({ name: 'list_dev_servers', arguments: {} });
   const routes = (listed.structuredContent as { routes: unknown[] }).routes;

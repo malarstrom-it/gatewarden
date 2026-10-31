@@ -1,9 +1,9 @@
-# Agent Dev Gateway — package specification
+# Gatewarden — package specification
 
 Status: **draft for review**. Nothing in this document is implemented yet.
 
 Scope: this repository becomes the source of the npm package
-`@malarstrom/agent-dev-gateway`, published under the `malarstrom` organisation.
+`@malarstrom/gatewarden`, published under the `malarstrom` organisation.
 
 This document is the contract the implementation is held to. When the code and
 this document disagree, one of them is a bug. Every slice in §12 cites the
@@ -18,14 +18,20 @@ Written in English to match `PRODUCT.md`, `README.md` and the rest of
 
 Each decision records what was chosen, why, and what was rejected.
 
-### D1 — The package is `@malarstrom/agent-dev-gateway`
+### D1 — The package is `@malarstrom/gatewarden`
 
-The binary is `dev-gateway`. The scope is the `malarstrom` organisation on npm.
+The binary is `gatewarden`. The scope is the `malarstrom` organisation on npm.
 
-*Rejected*: `dev-gateway` (taken on npm, version 0.3.0), `traefik-dev-gateway`
-(free, but names one proxy in a package that is not about one proxy),
-`agent-dev-gateway` unscoped (free, but an unscoped name is a permanent
-squatting risk — a scope is owned).
+The name is free: `https://registry.npmjs.org/gatewarden` answers 404, and the
+npm search for `gatewarden` finds nothing. The package has never been
+published, so the version `0.1.0` is free as well.
+
+*Rejected*: the name the package had before this decision — it is taken on
+npm (version 0.3.0), and that package installs a binary of the same name, so
+`npx` fetches the wrong thing; `traefik-dev-gateway` (free, but names one
+proxy in a package that is not about one proxy); the unscoped variant of the
+old name (free, but an unscoped name is a permanent squatting risk — a scope
+is owned).
 
 The repository stays `traefik-api` for now. The repository name and the
 package name are independent; renaming the repository is a separate decision.
@@ -91,16 +97,17 @@ Resolved with `env-paths`, which is the npm ecosystem's convention.
 
 | Purpose | Linux | macOS | Windows |
 | --- | --- | --- | --- |
-| configuration | `~/.config/dev-gateway/config.json` | `~/Library/Preferences/dev-gateway/` | `%APPDATA%\dev-gateway\Config\` |
-| state (routes, pid) | `~/.local/state/dev-gateway/` | `~/Library/Application Support/dev-gateway/` | `%LOCALAPPDATA%\dev-gateway\State\` |
-| log | `~/.local/state/dev-gateway/daemon.log` | `~/Library/Logs/dev-gateway/` | `%LOCALAPPDATA%\dev-gateway\Log\` |
+| configuration | `~/.config/gatewarden/config.json` | `~/Library/Preferences/gatewarden/` | `%APPDATA%\gatewarden\Config\` |
+| state (routes, pid) | `~/.local/state/gatewarden/` | `~/Library/Application Support/gatewarden/` | `%LOCALAPPDATA%\gatewarden\State\` |
+| log | `~/.local/state/gatewarden/daemon.log` | `~/Library/Logs/gatewarden/` | `%LOCALAPPDATA%\gatewarden\Log\` |
 
 `env-paths` supplies configuration, data, cache and log directly. The state
 directory is one extra resolution, because XDG's `state` has no macOS or
 Windows equivalent in `env-paths`.
 
-*Rejected*: `~/.dev-gateway/` (the older convention, not XDG), one directory
-for everything (config and mutable runtime state have different lifecycles).
+*Rejected*: a hidden directory in the home directory (the older convention,
+which is not XDG), one directory for everything (config and mutable runtime
+state have different lifecycles).
 
 ### D7 — The daemon starts lazily; `postinstall` may start it but may never fail the install
 
@@ -111,7 +118,7 @@ Three layers, in the order a user meets them:
 2. **`postinstall`** starts the daemon, guarded: it exits 0 unconditionally,
    it skips when `npm_config_ignore_scripts` is set, it skips in CI, and it
    does not start a per-user daemon from a root-owned global install.
-3. **`dev-gateway install-service`** writes a systemd user unit (Linux), a
+3. **`gatewarden install-service`** writes a systemd user unit (Linux), a
    launchd agent (macOS) or a scheduled task (Windows). This is the supported
    way to survive a reboot.
 
@@ -193,7 +200,7 @@ optional extra step in all three.
 
 ### D14 — The healthcheck reports where the installation stands; it fails only on a broken thing
 
-The healthcheck of the package is `dev-gateway doctor`. It has to run
+The healthcheck of the package is `gatewarden doctor`. It has to run
 everywhere: in a container that has no proxy, no zone, no daemon and no
 public URL, and on a machine with an installation that is broken. The rule
 it follows:
@@ -217,7 +224,7 @@ it follows:
 
 The exit code of the doctor is 0 unless a check failed. `--strict` makes
 the warnings errors as well, for the one who wants the whole installation
-to be complete. `dev-gateway status` never fails: it is a report, not a
+to be complete. `gatewarden status` never fails: it is a report, not a
 check.
 
 The verification of the setup wizard (§9.7) follows the same rule: a
@@ -276,7 +283,7 @@ host name the developer can open, and it tells the agent the address.
 ### 2.1 The npm package
 
 ```bash
-npm install -g @malarstrom/agent-dev-gateway
+npm install -g @malarstrom/gatewarden
 ```
 
 Published contents:
@@ -284,11 +291,11 @@ Published contents:
 | Path | Purpose |
 | --- | --- |
 | `dist/` | compiled JavaScript (D2) |
-| `bin/dev-gateway.js` | the CLI |
-| `bin/dev-gateway-mcp.js` | the MCP server (stdio) |
-| `bin/dev-gateway-daemon.js` | the daemon entry point |
+| `bin/gatewarden.js` | the CLI |
+| `bin/gatewarden-mcp.js` | the MCP server (stdio) |
+| `bin/gatewarden-daemon.js` | the daemon entry point |
 | `scripts/postinstall.mjs` | the install script that starts the daemon once (§5.2) |
-| `skills/dev-gateway/` | the Agent Skill (§8.1) |
+| `skills/gatewarden/` | the Agent Skill (§8.1) |
 | `docs/` | `AGENTS.md`, the Traefik wiring guide, the setup reference |
 | `README.md`, `LICENSE` | |
 
@@ -296,13 +303,13 @@ Published contents:
 
 ```json
 {
-  "name": "@malarstrom/agent-dev-gateway",
+  "name": "@malarstrom/gatewarden",
   "version": "0.1.0",
   "license": "MIT",
   "type": "module",
   "bin": {
-    "dev-gateway": "bin/dev-gateway.js",
-    "dev-gateway-mcp": "bin/dev-gateway-mcp.js"
+    "gatewarden": "bin/gatewarden.js",
+    "gatewarden-mcp": "bin/gatewarden-mcp.js"
   },
   "exports": {
     ".": "./dist/core/index.js"
@@ -347,8 +354,8 @@ pi installs npm, git and local-path packages through `pi install`. The same
 package therefore serves both audiences:
 
 ```bash
-pi install npm:@malarstrom/agent-dev-gateway
-pi install git:github.com/malarstrom/agent-dev-gateway@v1
+pi install npm:@malarstrom/gatewarden
+pi install git:github.com/malarstrom/gatewarden@v1
 pi install ./                                   # from a checkout
 ```
 
@@ -360,9 +367,9 @@ traefik-api/                          # the repository (name unchanged, D1)
 ├── tsconfig.json                     # type-check only, noEmit
 ├── tsconfig.build.json               # emit to dist/
 ├── bin/                              # thin launchers, no logic
-│   ├── dev-gateway.js
-│   ├── dev-gateway-mcp.js
-│   └── dev-gateway-daemon.js
+│   ├── gatewarden.js
+│   ├── gatewarden-mcp.js
+│   └── gatewarden-daemon.js
 ├── src/
 │   ├── core/                         # proxy-agnostic (D3)
 │   │   ├── paths.ts                  # XDG resolution + overrides (D6)
@@ -387,7 +394,7 @@ traefik-api/                          # the repository (name unchanged, D1)
 │       ├── index.ts
 │       ├── setup.ts                  # the setup wizard (§9.2)
 │       └── service.ts                # systemd / launchd / schtasks (D7)
-├── skills/dev-gateway/SKILL.md
+├── skills/gatewarden/SKILL.md
 ├── docs/
 │   ├── AGENTS.md
 │   ├── traefik.md
@@ -399,10 +406,10 @@ traefik-api/                          # the repository (name unchanged, D1)
 
 ### 2.4 Naming inside the package
 
-The published package is `@malarstrom/agent-dev-gateway`; the *directories*
-inside the home directory are named `dev-gateway` (not `agent-dev-gateway`),
-because the scope is an npm publishing detail and the directory is a user
-detail. `env-paths('dev-gateway', { suffix: '' })`.
+The published package is `@malarstrom/gatewarden`; the *directories*
+inside the home directory are named `gatewarden` as well, because the scope is
+an npm publishing detail and the directory is a user detail.
+`env-paths('gatewarden', { suffix: '' })`.
 
 ---
 
@@ -423,11 +430,16 @@ export interface GatewayPaths {
 
 Resolution order:
 
-1. `DEV_GATEWAY_HOME` — everything in one directory. The escape hatch for
+1. `GATEWARDEN_HOME` — everything in one directory. The escape hatch for
    tests, for people who want one folder, and for CI.
-2. `DEV_GATEWAY_CONFIG` — the configuration file only.
-3. `DEV_GATEWAY_STATE_DIR` — the state directory only.
-4. `env-paths('dev-gateway', { suffix: '' })` — the XDG defaults (D6).
+2. `GATEWARDEN_CONFIG` — the configuration file only.
+3. `GATEWARDEN_STATE_DIR` — the state directory only.
+4. `env-paths('gatewarden', { suffix: '' })` — the XDG defaults (D6).
+
+The names the variables had before the rename (`DEV_GATEWAY_HOME`,
+`DEV_GATEWAY_CONFIG`, `DEV_GATEWAY_STATE_DIR`) are still read, below the
+current ones. They are deprecated: the CLI and the MCP server say so once,
+where the user can see it, and the current name wins when both are set.
 
 ### 3.2 Configuration
 
@@ -503,17 +515,30 @@ name. A route that was written before the store kept the zone has none in
 the file; the zone is then the tail of its host name, which is where it was
 put.
 
-### 3.4 Migration from the previous layout
+### 3.4 Migration from the previous layouts
 
-The current installation keeps everything in `~/.traefik-dev/`:
-`config.json`, `registrations.json`, `daemon.pid`, `daemon.log`.
+Two installations came before this one, and both are still read:
 
-On first run, if the new configuration file does not exist and the old one
-does, the old file is read and the old route file is imported. The old
-directory is left in place and is never deleted automatically.
+1. the pre-package layout, which keeps everything in `~/.traefik-dev/`:
+   `config.json`, `registrations.json`, `daemon.pid`, `daemon.log`;
+2. the layout of the name the directories had before the rename, which keeps
+   the configuration in `~/.config/dev-gateway/config.json` and the route
+   store in `~/.local/state/dev-gateway/routes.json`. The file names inside
+   are the ones of the new layout: only the directory carries the old name.
 
-`dev-gateway migrate` performs the same import explicitly and reports what
-it moved.
+On first run, if the new configuration file does not exist and an old one
+does, the old file is read and the old route file is imported. The layout of
+the old name is the newer of the two, and it wins when both hold something.
+The old directories are left in place and are never deleted automatically.
+
+`gatewarden migrate` performs the same import explicitly and reports what it
+moved. `gatewarden doctor` reports a layout that is still there: it is still
+there until the migration has run.
+
+The two layouts are migrated in one order: the layout of the old name first,
+because it is the newer of the two, and the pre-package layout after it. The
+first run (`loadConfigWithReport`) and the command (`gatewarden migrate`)
+use the same order, so they move the same files to the same place.
 
 ---
 
@@ -523,7 +548,7 @@ it moved.
 
 ```text
                     ┌──────────────────────────────────────────┐
-                    │              dev-gateway core             │
+                    │              gatewarden core             │
                     │                                          │
    CLI ───────────►│  state.ts ◄──── relay.ts ◄──── worker.ts │◄── daemon.ts
    MCP server ────►│     ▲                                  │      (supervisor)
@@ -581,10 +606,10 @@ without the user typing them.
 
 | Adapter | Surface | Mechanism |
 | --- | --- | --- |
-| MCP server | every harness that speaks MCP | `bin/dev-gateway-mcp.js`, stdio |
+| MCP server | every harness that speaks MCP | `bin/gatewarden-mcp.js`, stdio |
 | pi extension | pi | `pi.registerTool`, `pi.registerCommand`, `pi.ui` |
-| CLI | humans, scripts, any harness that can run a command | `dev-gateway` |
-| Agent Skill | every harness that reads `SKILL.md` | `skills/dev-gateway/SKILL.md` |
+| CLI | humans, scripts, any harness that can run a command | `gatewarden` |
+| Agent Skill | every harness that reads `SKILL.md` | `skills/gatewarden/SKILL.md` |
 | `AGENTS.md` | every harness that reads context files | `docs/AGENTS.md` |
 
 All five are clients of the same core. None of them hosts the daemon (D12).
@@ -623,21 +648,28 @@ process.exit(0);
 ```
 
 Properties: exits 0 unconditionally; idempotent (pidfile plus `/healthz`);
-silent apart from one line in the log; disabled by `DEV_GATEWAY_AUTOSTART=0`
+silent apart from one line in the log; disabled by `GATEWARDEN_AUTOSTART=0`
 or `"autostart": false`.
 
 ### 5.3 Layer three — `install-service`
 
-`dev-gateway install-service` writes and enables:
+`gatewarden install-service` writes and enables:
 
 | Platform | Unit |
 | --- | --- |
-| Linux | `~/.config/systemd/user/dev-gateway.service` |
-| macOS | `~/Library/LaunchAgents/dev.mal.arstrom.dev-gateway.plist` |
-| Windows | a scheduled task running `dev-gateway-daemon.js` |
+| Linux | `~/.config/systemd/user/gatewarden.service` |
+| macOS | `~/Library/LaunchAgents/com.malarstrom.gatewarden.plist` |
+| Windows | a scheduled task running `gatewarden-daemon.js` |
 
 The unit runs the daemon directly, not the CLI. It is the only layer that
 survives a reboot, and the setup wizard recommends it.
+
+The unit of the name the package had before the rename (`dev-gateway.service`,
+the old launchd label, the old scheduled task) is looked for as well. It is
+still on the machine of an installation that was made before the rename, and
+it names a launcher that does not exist any more, so the daemon it would
+start is never started. `gatewarden doctor` reports it as `old service`, and
+`gatewarden install-service` writes the unit of the current name.
 
 ---
 
@@ -648,8 +680,8 @@ survives a reboot, and the setup wizard recommends it.
 ```json
 {
   "mcpServers": {
-    "dev-gateway": {
-      "command": "dev-gateway-mcp",
+    "gatewarden": {
+      "command": "gatewarden-mcp",
       "args": [],
       "cwd": "${workspaceFolder}"
     }
@@ -662,7 +694,7 @@ clients, so the same entry works in Claude Code, Cursor, VS Code, Windsurf,
 Zed, Continue, Goose and OpenCode.
 
 The server never starts the daemon at startup; it starts it on the first tool
-call (§5.1). Running `npx @malarstrom/agent-dev-gateway` is therefore safe.
+call (§5.1). Running `npx @malarstrom/gatewarden` is therefore safe.
 
 ### 6.2 Tool contracts
 
@@ -703,7 +735,7 @@ rendered in the terminal, and a status line.
 | `remove_dev_server` | native tool |
 | `list_dev_servers` | native tool |
 | `/routes` | command; renders the route table with local and public state |
-| status line | `ctx.ui.setStatus("dev-gateway", "3 routes live")` |
+| status line | `ctx.ui.setStatus("gatewarden", "3 routes live")` |
 | `session_start` | ensures the daemon is running (§5.1) |
 
 The extension is published compiled (`dist/integrations/pi/extension.js`), so
@@ -715,12 +747,12 @@ pi loads it without a TypeScript loader.
 
 ### 8.1 The Agent Skill
 
-`skills/dev-gateway/SKILL.md` follows the Agent Skills specification. It is
+`skills/gatewarden/SKILL.md` follows the Agent Skills specification. It is
 read by pi, Claude Code, Codex and OpenCode.
 
 ```markdown
 ---
-name: dev-gateway
+name: gatewarden
 description: Publish a development server running on this machine so the user
   can open it in a browser on their network. Use when a dev server is started
   (Vite, Next, Nuxt, python -m http.server, any local port) and the user needs
@@ -736,7 +768,7 @@ useful in a harness without MCP support.
 A short, portable block:
 
 > When you start a development server, publish it: call the
-> `publish_dev_server` tool, or run `dev-gateway register --port <port>`.
+> `publish_dev_server` tool, or run `gatewarden register --port <port>`.
 > Give the user the returned URL verbatim. Do not compose the host name
 > yourself.
 
@@ -749,7 +781,7 @@ A short, portable block:
 This is the primary way to install the gateway (D13). Four steps, in this
 order, and every one of them is a thing the user does.
 
-1. **Install the package.** `npm install -g @malarstrom/agent-dev-gateway`,
+1. **Install the package.** `npm install -g @malarstrom/gatewarden`,
    on the machine that runs the development servers. Node 20.11 or later.
 2. **Wire the proxy.** On the machine the proxy runs on, add the `http`
    provider to the `providers:` block of the static configuration:
@@ -765,9 +797,9 @@ order, and every one of them is a thing the user does.
    `advertisedHost` of the configuration file. Then restart the proxy: the
    static configuration is only read at start-up. The gateway cannot make
    this change: the proxy's configuration lives on another machine.
-3. **Write the configuration file.** `~/.config/dev-gateway/config.json` on
-   Linux (`~/Library/Preferences/dev-gateway/config.json` on macOS,
-   `%APPDATA%\dev-gateway\Config\config.json` on Windows). The file holds
+3. **Write the configuration file.** `~/.config/gatewarden/config.json` on
+   Linux (`~/Library/Preferences/gatewarden/config.json` on macOS,
+   `%APPDATA%\gatewarden\Config\config.json` on Windows). The file holds
    the values of §3.2; the README holds the whole file with a line about
    every field. The one that is required is the `zone`: without it a route
    has no host name, and `register` refuses one. The `advertisedHost` (the
@@ -775,12 +807,12 @@ order, and every one of them is a thing the user does.
    resolver of the proxy) are the values of the proxy — without them the
    gateway still works, but the address is not the one the user can open.
    The rest have working defaults.
-4. **Start the daemon.** `dev-gateway start`. The daemon also starts by
+4. **Start the daemon.** `gatewarden start`. The daemon also starts by
    itself the first time a route is registered, so this step is not
    strictly necessary — it is there so that the user learns at once that the
    daemon works.
 
-The installation is then **verified**: `dev-gateway doctor` checks the
+The installation is then **verified**: `gatewarden doctor` checks the
 configuration file, the state directory, the daemon, the zone, the shared
 middlewares, the two ports, the routes, the proxy, the service unit and
 the old layout, and names every check it made with the reason for it
@@ -793,14 +825,14 @@ is not installed are warnings. Only a broken thing is a failure.
 
 The three documents that carry this are the README (the section
 "Vad som krävs"), `docs/setup.md` (the same, with the commands and their
-flags, and what every check of `dev-gateway doctor` means) and
+flags, and what every check of `gatewarden doctor` means) and
 `docs/traefik.md` (what the proxy side must have: the `http` provider, the
 file provider of the shared middlewares, the routers the gateway adds and
 the reachability).
 
 ### 9.2 The setup wizard — the optional extra step
 
-`dev-gateway setup`. Six steps, five of them automatic. The wizard writes
+`gatewarden setup`. Six steps, five of them automatic. The wizard writes
 the same values as §9.1 writes by hand, and derives them from the proxy
 where it can. It is optional: it is the extra step, not a requirement for a
 working installation (D13).
@@ -880,7 +912,7 @@ The verification tells two things apart (D14):
   there is no zone to build it from, the name does not resolve, nothing
   listens on the port, or the proxy does not serve the route yet. The
   status is `skipped`, the reason says which, and the exit code of
-  `dev-gateway setup` is 0.
+  `gatewarden setup` is 0.
 * **It ran, and the chain answered with an error.** The relay refused
   the request (the trust list), the proxy refused it (its own
   middleware), the certificate of the public URL is not trusted, or the
@@ -899,15 +931,15 @@ verification needed.
 ### 9.8 Step six — write the configuration and start
 
 The derived values are written to the configuration file, the daemon is
-started, and the wizard recommends `dev-gateway install-service` for
+started, and the wizard recommends `gatewarden install-service` for
 surviving a reboot.
 
 Both happen before the verification of §9.7, because the verification
 needs them; the step reports them, it does not introduce them.
 
-### 9.9 The healthcheck — `dev-gateway doctor`
+### 9.9 The healthcheck — `gatewarden doctor`
 
-`dev-gateway doctor` is the healthcheck of the package (D14). It reads
+`gatewarden doctor` is the healthcheck of the package (D14). It reads
 the installation and reports every check it made, with the reason for it.
 It changes nothing: it does not migrate the old layout and it does not
 start a daemon.
@@ -946,7 +978,7 @@ errors as well — for the one who wants the whole installation to be
 complete, not only unbroken. `--json` writes the same report as one JSON
 object, with a top-level `ok` that is `false` when a check failed.
 
-`dev-gateway status` is a report and not a check: it runs everywhere, on
+`gatewarden status` is a report and not a check: it runs everywhere, on
 a machine with an installation and on one without, and its exit code is 0
 in both cases. A script that wants to know whether the gateway serves
 reads `daemon.healthy` of the JSON form.
@@ -971,10 +1003,10 @@ reads `daemon.healthy` of the JSON form.
 
 | The page showed | Now |
 | --- | --- |
-| the route list with up/down state | `dev-gateway list`, `list_dev_servers`, `/routes` |
+| the route list with up/down state | `gatewarden list`, `list_dev_servers`, `/routes` |
 | the host name to open | the `url` field of `publish_dev_server` |
-| the remove button | `dev-gateway unregister`, `remove_dev_server` |
-| the create form | `dev-gateway register`, `publish_dev_server` |
+| the remove button | `gatewarden unregister`, `remove_dev_server` |
+| the create form | `gatewarden register`, `publish_dev_server` |
 
 ### 10.3 Consequences for the confirmed constraints in `PRODUCT.md`
 
@@ -1009,11 +1041,11 @@ certificate. **No test may touch either.**
 | registry port | 45002 | 46002 |
 | relay port | 45001 | 46001 |
 | domain | `home.malarstrom.com` | `gwtest.local` |
-| state directory | `~/.local/state/dev-gateway/` | `/tmp/dev-gateway-test/` |
+| state directory | `~/.local/state/gatewarden/` | `/tmp/gatewarden-test/` |
 | proxy | the user's Traefik | a Traefik started by the test |
 | certificates | the user's ACME certificates | a generated self-signed CA |
 
-The isolation is enforced by `DEV_GATEWAY_HOME` and by the test's own proxy
+The isolation is enforced by `GATEWARDEN_HOME` and by the test's own proxy
 configuration, not by convention.
 
 ### 11.2 The test proxy
@@ -1035,7 +1067,7 @@ certificatesResolvers:
   testca:
     acme:
       tlsChallenge: true
-      storage: /tmp/dev-gateway-test/acme.json
+      storage: /tmp/gatewarden-test/acme.json
 ```
 
 The test domain resolves to `127.0.0.1` via `/etc/hosts` when the test runs
@@ -1076,7 +1108,7 @@ Adds `tsconfig.build.json`, the `dist/` output, the `build` and
 
 *Satisfies*: D2.
 *Acceptance*: `npm run build && npm test` is green; `npm pack` produces a
-tarball whose `bin/dev-gateway.js` runs and prints its version; the existing
+tarball whose `bin/gatewarden.js` runs and prints its version; the existing
 103 tests still pass unchanged.
 
 ### S1 — Paths and configuration
@@ -1086,8 +1118,8 @@ overrides, and the migration from `~/.traefik-dev/`.
 
 *Satisfies*: D6, §3.
 *Acceptance*: path resolution is unit-tested for Linux, macOS and Windows;
-`DEV_GATEWAY_HOME` puts everything in one directory; an existing
-`~/.traefik-dev/config.json` is picked up; `dev-gateway migrate` reports what
+`GATEWARDEN_HOME` puts everything in one directory; an existing
+`~/.traefik-dev/config.json` is picked up; `gatewarden migrate` reports what
 it moved.
 
 ### S2 — The core split and the Traefik adapter
@@ -1118,12 +1150,12 @@ The new binary names, the new commands (`setup`, `start`, `stop`, `doctor`,
 `install-service`, `migrate`) and the JSON output.
 
 *Satisfies*: §5, §9.2.
-*Acceptance*: `dev-gateway list --json` is machine-readable; every command
+*Acceptance*: `gatewarden list --json` is machine-readable; every command
 has a test; the old command names still work as aliases.
 
 ### S5 — The MCP server
 
-`src/integrations/mcp/server.ts` and `bin/dev-gateway-mcp.js`, speaking
+`src/integrations/mcp/server.ts` and `bin/gatewarden-mcp.js`, speaking
 stdio JSON-RPC directly, plus the conformance test.
 
 *Satisfies*: D4, D5, §6.
@@ -1143,7 +1175,7 @@ line shows the live route count.
 
 ### S7 — The skill, the agent instructions and the documentation
 
-`skills/dev-gateway/SKILL.md`, `docs/AGENTS.md`, the package `README.md` and
+`skills/gatewarden/SKILL.md`, `docs/AGENTS.md`, the package `README.md` and
 the proxy wiring guide.
 
 *Satisfies*: §8.
@@ -1176,7 +1208,7 @@ The published `package.json`, the `pi` manifest, the licence, the
 
 *Satisfies*: §2.
 *Acceptance*: `npm pack` contents are exactly the allow-list; installing the
-tarball into a temporary directory gives a working `dev-gateway` binary, a
+tarball into a temporary directory gives a working `gatewarden` binary, a
 working MCP server and a pi extension pi can load.
 
 ### S16 — The installation, written out for the user
@@ -1191,7 +1223,7 @@ start, and it names the prerequisites (must and can), the steps in order, a
 complete configuration file with a line about every field, a verification
 checklist (the command, and what the answer is) and a troubleshooting table
 (symptom, cause, fix); the setup guide holds the same in detail, with the
-commands, their flags, and what every check of `dev-gateway doctor` means;
+commands, their flags, and what every check of `gatewarden doctor` means;
 the Traefik guide holds the wiring snippet and what the proxy side must have
 (the `http` provider, the file provider of the shared middlewares, the
 routers the gateway adds); the quick start is short — install, wire,
@@ -1231,7 +1263,7 @@ from `feat/npm-package` after the slices are merged.
 The live system is not touched by this work. The running gateway is a
 separate copy under `/opt/`, and the user's proxy already has the HTTP
 provider wired. Migrating the live system to the package is a separate,
-deliberate step: install the package, run `dev-gateway setup`, verify, and
+deliberate step: install the package, run `gatewarden setup`, verify, and
 only then remove the old copy.
 
 ---
@@ -1243,7 +1275,7 @@ only then remove the old copy.
 | R1 | Is the hand-written MCP transport worth it, or should the SDK be a runtime dependency? | Open. S5 decides by measurement, and the fallback is one line in `package.json` |
 | R2 | Does `rewriteRelativeImportExtensions` emit correct relative specifiers for every import shape in the tree? | Open. S0 proves it with a pack-and-run check |
 | R3 | What is the second proxy adapter, and does the `ProxyAdapter` interface actually generalise? | Open. Caddy is the candidate; the interface is not proven until a second implementation exists |
-| R4 | Should `dev-gateway` be able to publish to a tunnel (Cloudflare, Tailscale) instead of a proxy? | Open. Out of scope for now (§15) |
+| R4 | Should `gatewarden` be able to publish to a tunnel (Cloudflare, Tailscale) instead of a proxy? | Open. Out of scope for now (§15) |
 | R5 | The npm organisation `malarstrom` must exist before the first publish | Open. Confirm the npm account and the 2FA setup |
 
 ---

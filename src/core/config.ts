@@ -7,6 +7,7 @@ import type { Config } from './types.ts';
 import {
   configFileOverride,
   homeOverride,
+  legacyAppPaths,
   legacyDir,
   logFileFor,
   resolvePaths,
@@ -15,7 +16,13 @@ import {
   type PathEnv,
   type PathOptions,
 } from './paths.ts';
-import { migrateLegacyLayout, type MigrationReport } from './migrate.ts';
+import {
+  legacyAppLayout,
+  migrateLegacyAppLayout,
+  migrateLegacyLayout,
+  type LegacyAppMigrationReport,
+  type MigrationReport,
+} from './migrate.ts';
 
 /**
  * The built-in defaults.
@@ -129,11 +136,11 @@ export interface ConfigPathOptions extends PathOptions {
 /**
  * Resolve the configuration file (§3.1).
  *
- * The order: an explicit path, `DEV_GATEWAY_HOME` (everything in one
- * directory), `DEV_GATEWAY_CONFIG`, the old `TRAEFIK_DEV_CONFIG`, and
+ * The order: an explicit path, `GATEWARDEN_HOME` (everything in one
+ * directory), `GATEWARDEN_CONFIG`, the old `TRAEFIK_DEV_CONFIG`, and
  * finally the XDG configuration directory.
  *
- * `DEV_GATEWAY_HOME` wins over the configuration file override: it says
+ * `GATEWARDEN_HOME` wins over the configuration file override: it says
  * that everything lives in one directory, and the configuration file is in
  * it.
  */
@@ -170,8 +177,8 @@ export interface StateDirOptions extends PathOptions {
 /**
  * Resolve the state directory (§3.1).
  *
- * The order: an explicit path, `DEV_GATEWAY_STATE_DIR`, the old
- * `TRAEFIK_DEV_STATE_DIR`, `DEV_GATEWAY_HOME` (everything in one directory),
+ * The order: an explicit path, `GATEWARDEN_STATE_DIR`, the old
+ * `TRAEFIK_DEV_STATE_DIR`, `GATEWARDEN_HOME` (everything in one directory),
  * and finally the XDG state directory.
  */
 export function resolveStateDir(opts: StateDirOptions = {}): string {
@@ -217,6 +224,8 @@ export interface LoadedConfig {
   paths: GatewayPaths;
   /** What the migration from the old layout did, when it ran. */
   migration?: MigrationReport;
+  /** What the migration from the layout of the old name did, when it ran. */
+  oldNameMigration?: LegacyAppMigrationReport;
 }
 
 /**
@@ -248,6 +257,13 @@ export function loadConfigWithReport(opts: LoadConfigOptions = {}): LoadedConfig
   const legacyRaw = useLegacy && fs.existsSync(legacyConfigFile) ? readJsonObject(legacyConfigFile) : undefined;
   const mayMigrate = opts.migrate !== false && useLegacy;
 
+  // The layout of the name the directories had before the rename. It is
+  // read the same way as the pre-package layout: only when the new
+  // configuration file does not exist yet.
+  const oldName = legacyAppLayout(legacyAppPaths(opts));
+  const oldNameRaw =
+    useLegacy && fs.existsSync(oldName.configFile) ? readJsonObject(oldName.configFile) : undefined;
+
   let fileConfig: Partial<Config> = {};
   if (fs.existsSync(configPath)) {
     try {
@@ -259,11 +275,25 @@ export function loadConfigWithReport(opts: LoadConfigOptions = {}): LoadedConfig
     }
   }
 
-  const stateDir = resolveStateDirFor(opts, env, paths, fileConfig.stateDir, legacyRaw?.['stateDir'], legacy);
+  const stateDir = resolveStateDirFor(
+    opts,
+    env,
+    paths,
+    fileConfig.stateDir,
+    legacyRaw?.['stateDir'],
+    [legacy, oldName.stateDir],
+  );
 
   // Before the migration the new file does not exist; the old values are
-  // what the configuration is built from.
-  const source = Object.keys(fileConfig).length > 0 ? fileConfig : (legacyRaw as Partial<Config> | undefined) ?? {};
+  // what the configuration is built from. The layout of the old name is
+  // the newer of the two: an installation that was made under that name
+  // is the one that came last.
+  const source =
+    Object.keys(fileConfig).length > 0
+      ? fileConfig
+      : ((oldNameRaw as Partial<Config> | undefined) ??
+        (legacyRaw as Partial<Config> | undefined) ??
+        {});
 
   const merged: Config = normaliseConfig({
     ...DEFAULT_CONFIG,
@@ -282,16 +312,29 @@ export function loadConfigWithReport(opts: LoadConfigOptions = {}): LoadedConfig
     }
   }
 
-  // The first run: move the old layout to the new one (§3.4).
+  const targetPaths: GatewayPaths = {
+    configFile: configPath,
+    stateDir,
+    logFile: logFileFor(stateDir, opts),
+    cacheDir: paths.cacheDir,
+  };
+
+  // The first run: move the old layouts to the new one (§3.4). The
+  // layout of the old name comes first: it is the newer of the two, and
+  // the one that wins when both hold something.
+  let oldNameMigration: LegacyAppMigrationReport | undefined;
+  if (mayMigrate && (oldNameRaw !== undefined || fs.existsSync(oldName.routesFile))) {
+    oldNameMigration = migrateLegacyAppLayout({
+      paths: targetPaths,
+      legacy: oldName,
+      config: configFileContent(merged),
+    });
+  }
+
   let migration: MigrationReport | undefined;
   if (mayMigrate && (legacyRaw !== undefined || fs.existsSync(legacyRoutesFile))) {
     migration = migrateLegacyLayout({
-      paths: {
-        configFile: configPath,
-        stateDir,
-        logFile: logFileFor(stateDir, opts),
-        cacheDir: paths.cacheDir,
-      },
+      paths: targetPaths,
       legacyDir: legacy,
       config: configFileContent(merged),
     });
@@ -300,8 +343,9 @@ export function loadConfigWithReport(opts: LoadConfigOptions = {}): LoadedConfig
   return {
     config: merged,
     configPath,
-    paths: { configFile: configPath, stateDir, logFile: logFileFor(stateDir, opts), cacheDir: paths.cacheDir },
+    paths: targetPaths,
     migration,
+    oldNameMigration,
   };
 }
 
@@ -322,14 +366,16 @@ function resolveStateDirFor(
   paths: GatewayPaths,
   fileStateDir: string | undefined,
   legacyStateDir: unknown,
-  legacy: string,
+  excluded: string[],
 ): string {
   if (opts.stateDir) return path.resolve(opts.stateDir);
   if (environmentNamesStateDir(env, opts.platform ?? process.platform)) return paths.stateDir;
   for (const candidate of [fileStateDir, legacyStateDir]) {
-    if (typeof candidate === 'string' && candidate.length > 0 && !isInside(legacy, candidate)) {
-      return path.resolve(candidate);
-    }
+    if (typeof candidate !== 'string' || candidate.length === 0) continue;
+    // A state directory inside one of the old layouts is not kept: the
+    // route store moves out of it.
+    if (excluded.some((dir) => isInside(dir, candidate))) continue;
+    return path.resolve(candidate);
   }
   return paths.stateDir;
 }
@@ -454,7 +500,7 @@ export function zoneOf(config: Pick<Config, 'zone'>): string {
 export function requireZone(config: Pick<Config, 'zone'>): string {
   const zone = zoneOf(config);
   if (!zone) {
-    throw new Error('no DNS zone is configured: run "dev-gateway setup" to derive one, or write it in the configuration file');
+    throw new Error('no DNS zone is configured: run "gatewarden setup" to derive one, or write it in the configuration file');
   }
   return zone;
 }

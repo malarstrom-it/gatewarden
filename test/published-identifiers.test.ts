@@ -142,7 +142,7 @@ describe('the published package', () => {
   let files: string[] = [];
 
   before(async () => {
-    workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-identifiers-'));
+    workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-identifiers-'));
 
     // 1. Pack the package, the way `test/packaging.test.ts` does. The
     //    `prepare` script builds it, so the tarball carries the compiled
@@ -175,7 +175,7 @@ describe('the published package', () => {
     // ones that carried the data of the installation, and they have to be
     // in the tarball for the guard to mean anything.
     assert.ok(files.length > 50, `the tarball holds ${files.length} files — the guard would read nothing`);
-    for (const file of ['README.md', 'LICENSE', 'docs/traefik.md', 'docs/setup.md', 'skills/dev-gateway/SKILL.md', 'dist/core/config.js']) {
+    for (const file of ['README.md', 'LICENSE', 'docs/traefik.md', 'docs/setup.md', 'skills/gatewarden/SKILL.md', 'dist/core/config.js']) {
       assert.ok(files.includes(file), `the tarball does not hold ${file}`);
     }
   });

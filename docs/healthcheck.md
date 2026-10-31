@@ -1,6 +1,6 @@
 # The healthcheck of the package
 
-`dev-gateway doctor` is the healthcheck of the package. It reads the
+`gatewarden doctor` is the healthcheck of the package. It reads the
 installation and reports every check it made, with the reason for it.
 
 It has to work everywhere: in a container that has no proxy, no zone, no
@@ -26,7 +26,7 @@ does not start a daemon.
 when a check is `warn` or `fail`. That is for the one who wants the whole
 installation to be complete, not only unbroken.
 
-The JSON form (`dev-gateway doctor --json`) holds the same report as one
+The JSON form (`gatewarden doctor --json`) holds the same report as one
 object, with a top-level `ok` that is `false` when a check failed:
 
 ```json
@@ -37,18 +37,18 @@ object, with a top-level `ok` that is `false` when a check failed:
     {
       "name": "config file",
       "status": "ok",
-      "detail": "/home/user/.config/dev-gateway/config.json"
+      "detail": "/home/user/.config/gatewarden/config.json"
     },
     {
       "name": "daemon",
       "status": "warn",
-      "detail": "not running (pidfile /home/user/.local/state/dev-gateway/daemon.pid): it starts with the first route, or run \"dev-gateway start\""
+      "detail": "not running (pidfile /home/user/.local/state/gatewarden/daemon.pid): it starts with the first route, or run \"gatewarden start\""
     }
   ],
   "paths": {
-    "configPath": "/home/user/.config/dev-gateway/config.json",
-    "stateDir": "/home/user/.local/state/dev-gateway",
-    "logFile": "/home/user/.local/state/dev-gateway/daemon.log"
+    "configPath": "/home/user/.config/gatewarden/config.json",
+    "stateDir": "/home/user/.local/state/gatewarden",
+    "logFile": "/home/user/.local/state/gatewarden/daemon.log"
   }
 }
 ```
@@ -67,8 +67,10 @@ object, with a top-level `ok` that is `false` when a check failed:
 | `routes` | the routes are counted | — | — |
 | `routes and zone` | the routes have a zone | there are no routes, or the configuration has no zone yet: a new route cannot be named | — |
 | `proxy` | the proxy answers | no proxy answers: it runs on another machine | the proxy answers and is not the one of the configuration, or the adapter does not exist |
-| `service` | the unit is installed | it is not installed: run `dev-gateway install-service` | — |
+| `service` | the unit is installed | it is not installed: run `gatewarden install-service` | — |
 | `legacy layout` | — | there is nothing to migrate | — (it is still there: a warning) |
+| `old name layout` | — | there is nothing to migrate | — (it is still there: a warning) |
+| `old service` | — | there is no unit of the old name | — (it is still there: a warning) |
 
 Two of them are worth reading twice:
 
@@ -84,7 +86,7 @@ Two of them are worth reading twice:
   that is a failure. A file that declares a zone has declared an
   installation, and its daemon has to run.
 
-## `dev-gateway status`
+## `gatewarden status`
 
 The status is a report, not a check. It runs everywhere — on a machine
 with an installation and on one without — and its exit code is 0 in both
@@ -92,9 +94,9 @@ cases. A configuration file that cannot be read is reported in the output
 (and in the `error` key of the JSON form), not thrown.
 
 A script that wants to know whether the gateway serves reads
-`daemon.healthy` of `dev-gateway status --json`.
+`daemon.healthy` of `gatewarden status --json`.
 
-## The verification of `dev-gateway setup`
+## The verification of `gatewarden setup`
 
 The wizard tells two things apart:
 
@@ -102,7 +104,7 @@ The wizard tells two things apart:
   public URL from, there is no zone to build it from, the name does not
   resolve, nothing listens on the port, or the proxy does not serve the
   route yet. The status is `skipped`, the reason says which, and the exit
-  code of `dev-gateway setup` is 0.
+  code of `gatewarden setup` is 0.
 * **The verification ran, and the chain answered with an error** — the
   relay refused the request (the trust list), the proxy refused it (its
   own middleware), the public URL answered with an error (a 500, say), the

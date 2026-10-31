@@ -1,20 +1,20 @@
-# Coordination brief — the agent dev gateway package
+# Coordination brief — the gatewarden package
 
 This is the brief the board's coordinator works from. It points at the
 specification; the specification is the contract.
 
-Read `specs/tech-architecture/agent-dev-gateway.md` first. It holds the
+Read `specs/tech-architecture/gatewarden.md` first. It holds the
 decisions, the acceptance criteria for every slice, and the list of
 `PRODUCT.md` constraints this work supersedes.
 
 The branch `feat/npm-package` holds the specification. Its tip is the commit
-`8bcea4e` ("docs(spec): the agent dev gateway package specification").
+`8bcea4e` ("docs(spec): the package specification").
 
 ---
 
 ## 1. The goal
 
-Turn this repository into the npm package `@malarstrom/agent-dev-gateway`:
+Turn this repository into the npm package `@malarstrom/gatewarden`:
 a proxy-agnostic core, an MCP server as the primary agent surface, and
 adapters for pi, the CLI, an Agent Skill and `AGENTS.md`.
 

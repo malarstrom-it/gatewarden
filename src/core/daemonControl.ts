@@ -187,8 +187,8 @@ export async function ensureDaemon(
     stdio: ['ignore', out, out],
     env: {
       ...process.env,
-      DEV_GATEWAY_CONFIG: configPath,
-      DEV_GATEWAY_STATE_DIR: config.stateDir,
+      GATEWARDEN_CONFIG: configPath,
+      GATEWARDEN_STATE_DIR: config.stateDir,
       // The old names are still read by the daemon, so they travel with it.
       TRAEFIK_DEV_CONFIG: configPath,
       TRAEFIK_DEV_STATE_DIR: config.stateDir,
@@ -267,7 +267,7 @@ export function processState(pid: number): string | null {
  * Is this process the gateway daemon?
  *
  * The daemon is started through one of its launchers: `daemon.ts` (the
- * lazy start), `dev-gateway-daemon.js` and `traefik-devd.js` (the names
+ * lazy start), `gatewarden-daemon.js` and `traefik-devd.js` (the names
  * the package installs, the last one the old name of the second). All of
  * them are the daemon; a process that is none of them is not.
  *

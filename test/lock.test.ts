@@ -28,7 +28,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const WRITER = path.join(REPO_ROOT, 'test', 'helpers', 'lock-writer.ts');
 
 function makeStateDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-lock-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-lock-'));
 }
 
 /** Spawn a writer and wait for it to finish. */

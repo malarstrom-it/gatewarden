@@ -1,5 +1,5 @@
 /**
- * The healthcheck of the package: `dev-gateway doctor` (§9.9).
+ * The healthcheck of the package: `gatewarden doctor` (§9.9).
  *
  * The doctor is the one command that has to work everywhere. It runs in a
  * container that has no proxy, no zone, no daemon and no public URL, and
@@ -28,6 +28,7 @@
  */
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import {
   listenHost,
@@ -36,14 +37,14 @@ import {
   resolveStateDir,
   zoneOf,
 } from '../core/config.ts';
-import { legacyDir, logFileFor } from '../core/paths.ts';
+import { legacyAppPaths, legacyDir, logFileFor } from '../core/paths.ts';
 import { daemonStatus } from '../core/daemonControl.ts';
 import { RegistrationStore } from '../core/state.ts';
 import { isPortListening } from '../core/util/net.ts';
 import { moduleDirectory } from '../core/util/module.ts';
 import { requireAdapter } from '../adapters/index.ts';
 import type { Config } from '../core/types.ts';
-import { serviceUnitFor, type ServiceUnit } from './service.ts';
+import { legacyServiceUnitFor, serviceUnitFor, type ServiceUnit } from './service.ts';
 
 /**
  * What a check found.
@@ -105,7 +106,7 @@ export function daemonLauncherPath(): string {
   // `src/cli/index.ts` (or `dist/cli/index.js`) sits two levels under the
   // package root, next to `bin/`.
   const root = path.resolve(moduleDirectory(import.meta.url), '..', '..');
-  return path.join(root, 'bin', 'dev-gateway-daemon.js');
+  return path.join(root, 'bin', 'gatewarden-daemon.js');
 }
 
 /** Is a service unit installed for this platform? */
@@ -178,7 +179,7 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
       stateDir: opts.stateDir,
       env,
       // The doctor reads the installation, it does not move it: the
-      // migration is the job of `dev-gateway migrate`.
+      // migration is the job of `gatewarden migrate`.
       migrate: false,
     });
     config = loaded.config;
@@ -195,6 +196,11 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
   const legacy = legacyDir({ env });
   const legacyConfig = path.join(legacy, 'config.json');
   const legacyHasConfig = exists(legacyConfig);
+
+  // The layout of the name the directories had before the rename.
+  const oldName = legacyAppPaths({ env });
+  const oldNameConfig = path.join(oldName.configDir, 'config.json');
+  const oldNameHasConfig = exists(oldNameConfig);
 
   // The fields the configuration file declares.
   //
@@ -221,7 +227,7 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
    * service are checked like the ones of any other installation. The
    * doctor says that the migration is waiting.
    */
-  const here = (configExists || legacyHasConfig) && configError === undefined;
+  const here = (configExists || legacyHasConfig || oldNameHasConfig) && configError === undefined;
 
   /**
    * Has the installation declared itself here?
@@ -262,7 +268,15 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
     // doctor says that the migration is waiting.
     missing(
       'config file',
-      `${configPath} (not written yet: the installation is in the old layout, ${legacyConfig} — run "dev-gateway migrate")`,
+      `${configPath} (not written yet: the installation is in the old layout, ${legacyConfig} — run "gatewarden migrate")`,
+    );
+  } else if (!configExists && oldNameHasConfig) {
+    // The installation is here, but it lives in the directories of the
+    // name the package had before the rename. The same thing: the
+    // values are read, and the migration is waiting.
+    missing(
+      'config file',
+      `${configPath} (not written yet: the installation is in the layout of the old name, ${oldNameConfig} — run "gatewarden migrate")`,
     );
   } else if (!configExists) {
     skipped('config file', `${configPath} (not written yet: ${NOT_SET_UP})`);
@@ -288,7 +302,9 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
       'routes and zone',
       'proxy',
       'service',
+      'old service',
       'legacy layout',
+      'old name layout',
     ]) {
       skipped(name, reason);
     }
@@ -344,12 +360,12 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
     checks.push({
       name: 'daemon',
       status: 'fail',
-      detail: `not running (pidfile ${status.pidFile}): the installation is set up here, so the daemon has to run (run "dev-gateway start")`,
+      detail: `not running (pidfile ${status.pidFile}): the installation is set up here, so the daemon has to run (run "gatewarden start")`,
     });
   } else {
     missing(
       'daemon',
-      `not running (pidfile ${status.pidFile}): it starts with the first route, or run "dev-gateway start"`,
+      `not running (pidfile ${status.pidFile}): it starts with the first route, or run "gatewarden start"`,
     );
   }
 
@@ -371,12 +387,12 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
     checks.push({
       name: 'dns zone',
       status: 'fail',
-      detail: 'the configuration file declares a zone, and it is empty: the host names of the routes are built from it (run "dev-gateway setup", or write it in the configuration file)',
+      detail: 'the configuration file declares a zone, and it is empty: the host names of the routes are built from it (run "gatewarden setup", or write it in the configuration file)',
     });
   } else if (here) {
     missing(
       'dns zone',
-      'not configured: the host names of the routes are built from it (run "dev-gateway setup", or write it in the configuration file)',
+      'not configured: the host names of the routes are built from it (run "gatewarden setup", or write it in the configuration file)',
     );
   } else {
     skipped('dns zone', 'not configured: there are no routes to name on this machine');
@@ -399,7 +415,7 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
   } else {
     missing(
       'shared middlewares',
-      'the shared middlewares are on, but no provider owns them (run "dev-gateway setup")',
+      'the shared middlewares are on, but no provider owns them (run "gatewarden setup")',
     );
   }
 
@@ -473,12 +489,12 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
     checks.push({
       name: 'routes and zone',
       status: 'fail',
-      detail: `${registrations.length} registered, but the configuration has no zone: a new route cannot be named (run "dev-gateway setup")`,
+      detail: `${registrations.length} registered, but the configuration has no zone: a new route cannot be named (run "gatewarden setup")`,
     });
   } else {
     missing(
       'routes and zone',
-      `${registrations.length} registered, but the configuration has no zone: a new route cannot be named (run "dev-gateway setup")`,
+      `${registrations.length} registered, but the configuration has no zone: a new route cannot be named (run "gatewarden setup")`,
     );
   }
 
@@ -532,18 +548,52 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
       detail: `${unit.path ?? unit.name} (installed)`,
     });
   } else {
-    missing('service', 'not installed: run "dev-gateway install-service" so the daemon survives a reboot');
+    missing('service', 'not installed: run "gatewarden install-service" so the daemon survives a reboot');
   }
 
-  // 11. The old layout.
+  // 11. The unit of the old name.
+  //
+  // A unit that was installed before the rename is still on the machine,
+  // and it names a launcher that does not exist any more: the daemon it
+  // would start is never started, and the service of this installation
+  // is not there either. The doctor says so, and the way out is to
+  // install the service again and to remove the old unit.
+  const legacyUnit = legacyServiceUnitFor({ home: env['HOME'] ?? os.homedir() });
+  if (legacyUnit.path !== null && exists(legacyUnit.path)) {
+    checks.push({
+      name: 'old service',
+      status: 'warn',
+      detail: `${legacyUnit.path} is still there: it runs the daemon of the old name; run "gatewarden install-service" and remove the old unit`,
+    });
+  } else {
+    skipped('old service', 'there is no unit of the old name');
+  }
+
+  // 12. The old layout.
   if (exists(legacy)) {
     checks.push({
       name: 'legacy layout',
       status: 'warn',
-      detail: `${legacy} is still there: run "dev-gateway migrate"`,
+      detail: `${legacy} is still there: run "gatewarden migrate"`,
     });
   } else {
     skipped('legacy layout', 'there is no old layout to migrate');
+  }
+
+  // 13. The layout of the name the directories had before the rename.
+  //
+  // An installation that was made under the old name keeps its
+  // configuration and its route store in the directories of that name.
+  // The migration moves them; until it has run, the old layout is still
+  // there, and the doctor says so.
+  if (exists(oldName.configDir) || exists(oldName.stateDir)) {
+    checks.push({
+      name: 'old name layout',
+      status: 'warn',
+      detail: `${oldName.configDir} is still there: run "gatewarden migrate"`,
+    });
+  } else {
+    skipped('old name layout', 'there is no old name layout to migrate');
   }
 
   return {

@@ -51,7 +51,7 @@ test('the handshake answers with the version the client asked for', async () => 
   };
   assert.equal(result.protocolVersion, '2025-06-18');
   assert.ok(result.capabilities.tools);
-  assert.equal(result.serverInfo.name, 'dev-gateway');
+  assert.equal(result.serverInfo.name, 'gatewarden');
 });
 
 test('the handshake answers with the newest version when the client asks for another', async () => {
@@ -166,7 +166,7 @@ test('the source does not import the MCP SDK (D5)', () => {
 });
 
 test('the project is the name of the working directory', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-project-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-project-'));
   try {
     assert.equal(inferProject(dir), path.basename(dir).toLowerCase());
     assert.equal(inferProject('/tmp/My Project'), 'my-project');
@@ -176,7 +176,7 @@ test('the project is the name of the working directory', () => {
 });
 
 test('the branch is the branch of the working directory', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-branch-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-branch-'));
   try {
     execFileSync('git', ['init', '--quiet'], { cwd: dir, stdio: 'ignore' });
     execFileSync('git', ['checkout', '--quiet', '-b', 'feature/One'], { cwd: dir, stdio: 'ignore' });
@@ -189,7 +189,7 @@ test('the branch is the branch of the working directory', () => {
 });
 
 test('a directory that is not a repository falls back to main', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-nogit-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-nogit-'));
   try {
     // A directory that is not inside a repository: git answers with an
     // error, and the fallback is used.

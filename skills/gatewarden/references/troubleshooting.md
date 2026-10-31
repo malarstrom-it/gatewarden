@@ -1,4 +1,4 @@
-# Troubleshooting the dev gateway
+# Troubleshooting the gateway
 
 The failures that actually happen, with symptom → cause → fix.
 
@@ -24,7 +24,7 @@ gateway runs on.
 ## 502 from the URL
 
 The dev server is not listening yet, or it listens on a different port than the
-registered one. Check with `dev-gateway list` — it prints `up`/`down` per
+registered one. Check with `gatewarden list` — it prints `up`/`down` per
 registration.
 
 ## TLS error on the first request
@@ -36,7 +36,7 @@ covers `*.<project>.<zone>`, so it covers every branch of the project.
 ## The daemon is not running
 
 ```bash
-dev-gateway status
+gatewarden status
 ```
 
 It prints the pid file, the log file and the state directory. The log is
@@ -58,7 +58,7 @@ hard-coding an IPv4 address.
 The user can remove a registration by hand from the shell:
 
 ```bash
-dev-gateway unregister --project <project> --branch <branch>
+gatewarden unregister --project <project> --branch <branch>
 ```
 
 The route is gone on the proxy's next poll (≈5 s). It is a manual fallback — an
@@ -77,12 +77,12 @@ addresses in `allowedCidrs`. A request from anywhere else is refused.
 The relay forwards the request to `127.0.0.1:<port>`. If the dev server binds
 only `127.0.0.1`, that is fine. If it binds a specific other address, or it
 died right after registering, the route will fail — check the port with
-`dev-gateway list`.
+`gatewarden list`.
 
 ## Nothing works after an install
 
 ```bash
-dev-gateway doctor
+gatewarden doctor
 ```
 
 It checks the configuration file, the state directory, the daemon, the DNS zone,

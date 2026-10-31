@@ -1,5 +1,5 @@
 /**
- * The healthcheck of the package: `dev-gateway doctor` (§9.9).
+ * The healthcheck of the package: `gatewarden doctor` (§9.9).
  *
  * The doctor has to work everywhere: in a container without a proxy, a
  * zone, a daemon and a public URL, and on a machine with an installation
@@ -42,7 +42,7 @@ interface Report {
 
 /** A throwaway directory that holds nothing. */
 function makeEmptyDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-health-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-health-'));
 }
 
 /**
@@ -59,7 +59,7 @@ async function runCli(dir: string, args: string[], opts: { configPath?: boolean 
     XDG_CONFIG_HOME: path.join(dir, 'config'),
     XDG_STATE_HOME: path.join(dir, 'state'),
     XDG_CACHE_HOME: path.join(dir, 'cache'),
-    DEV_GATEWAY_STATE_DIR: path.join(dir, 'state'),
+    GATEWARDEN_STATE_DIR: path.join(dir, 'state'),
   };
   const cliArgs = [...args];
   if (opts.configPath !== false) {
@@ -188,7 +188,7 @@ test('the doctor does not fail because the daemon has not started', async (t) =>
 
   const daemon = report.checks.find((check) => check.name === 'daemon');
   assert.equal(daemon?.status, 'warn', `the doctor says: ${daemon?.detail}`);
-  assert.match(daemon?.detail ?? '', /dev-gateway start/);
+  assert.match(daemon?.detail ?? '', /gatewarden start/);
   assert.equal(run.code, 0, `the exit code was ${run.code}: ${run.stdout}${run.stderr}`);
   assert.equal(report.ok, true);
 });
@@ -238,7 +238,7 @@ test('the doctor says every reason in clear text', async (t) => {
   assert.equal(run.code, 0, `the exit code was ${run.code}: ${run.stdout}${run.stderr}`);
   // The service is not installed here, and the doctor says what to do
   // about it.
-  assert.match(run.stdout, /not installed: run "dev-gateway install-service"/);
+  assert.match(run.stdout, /not installed: run "gatewarden install-service"/);
   // Every check is on a line of its own, with its status and its reason.
   const lines = run.stdout.split('\n').filter((line) => line.trim().length > 0);
   assert.ok(lines.length > 5, `the report is ${lines.length} lines long`);
@@ -280,7 +280,7 @@ test('the doctor does not fail because the zone is not set', async (t) => {
 
   const zone = report.checks.find((check) => check.name === 'dns zone');
   assert.equal(zone?.status, 'warn', `the doctor says: ${zone?.detail}`);
-  assert.match(zone?.detail ?? '', /dev-gateway setup/);
+  assert.match(zone?.detail ?? '', /gatewarden setup/);
   assert.equal(report.ok, true);
   assert.equal(run.code, 0, `the exit code was ${run.code}: ${run.stdout}${run.stderr}`);
 });
@@ -298,7 +298,7 @@ test('the doctor checks an installation that has declared itself', async (t) => 
 
   const zone = report.checks.find((check) => check.name === 'dns zone');
   assert.equal(zone?.status, 'fail', `the doctor says: ${zone?.detail}`);
-  assert.match(zone?.detail ?? '', /dev-gateway setup/);
+  assert.match(zone?.detail ?? '', /gatewarden setup/);
 
   const daemon = report.checks.find((check) => check.name === 'daemon');
   assert.equal(daemon?.status, 'fail', `the doctor says: ${daemon?.detail}`);
@@ -333,13 +333,77 @@ test('the doctor checks an installation that lives in the old layout', async (t)
 
   const config = report.checks.find((check) => check.name === 'config file');
   assert.equal(config?.status, 'warn', `the doctor says: ${config?.detail}`);
-  assert.match(config?.detail ?? '', /dev-gateway migrate/);
+  assert.match(config?.detail ?? '', /gatewarden migrate/);
 
   const zone = report.checks.find((check) => check.name === 'dns zone');
   assert.equal(zone?.status, 'ok', `the doctor says: ${zone?.detail}`);
 
   const daemon = report.checks.find((check) => check.name === 'daemon');
   assert.equal(daemon?.status, 'warn', `the doctor says: ${daemon?.detail}`);
+});
+
+test('the doctor says that the layout of the old name is still there', async (t) => {
+  // An installation that was made under the name the directories had
+  // before the rename is an installation: it is checked, and the doctor
+  // says that the migration is waiting.
+  const dir = makeEmptyDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const oldConfigDir = path.join(dir, 'config', 'dev-gateway');
+  fs.mkdirSync(oldConfigDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(oldConfigDir, 'config.json'),
+    JSON.stringify({
+      proxy: 'traefik',
+      registryPort: 45102,
+      relayPort: 45101,
+      zone: 'oldname.test',
+      stateDir: path.join(dir, 'state'),
+    }),
+  );
+
+  const run = await runCli(dir, ['doctor', '--json'], { configPath: false });
+  const report = JSON.parse(run.stdout) as Report;
+
+  const layout = report.checks.find((check) => check.name === 'old name layout');
+  assert.equal(layout?.status, 'warn', `the doctor says: ${layout?.detail}`);
+  assert.match(layout?.detail ?? '', /gatewarden migrate/);
+
+  const config = report.checks.find((check) => check.name === 'config file');
+  assert.equal(config?.status, 'warn', `the doctor says: ${config?.detail}`);
+  assert.match(config?.detail ?? '', /gatewarden migrate/);
+
+  // The installation is here: its zone is read from the old file.
+  const zone = report.checks.find((check) => check.name === 'dns zone');
+  assert.equal(zone?.status, 'ok', `the doctor says: ${zone?.detail}`);
+});
+
+test('the doctor says that the unit of the old name is still there', async (t) => {
+  // A unit that was installed before the rename is still on the machine.
+  // It names a launcher that does not exist any more, so the daemon it
+  // would start is never started: the doctor has to say so.
+  if (process.platform === 'win32') {
+    t.skip('the scheduled task of the old name is not a file on the disk');
+    return;
+  }
+
+  const dir = makeEmptyDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const unitPath =
+    process.platform === 'darwin'
+      ? path.join(dir, 'home', 'Library', 'LaunchAgents', 'dev.mal.arstrom.dev-gateway.plist')
+      : path.join(dir, 'home', '.config', 'systemd', 'user', 'dev-gateway.service');
+  fs.mkdirSync(path.dirname(unitPath), { recursive: true });
+  fs.writeFileSync(unitPath, '[Unit]\nDescription=dev-gateway\n');
+
+  const run = await runCli(dir, ['doctor', '--json'], { configPath: false });
+  const report = JSON.parse(run.stdout) as Report;
+
+  const service = report.checks.find((check) => check.name === 'old service');
+  assert.equal(service?.status, 'warn', `the doctor says: ${service?.detail}`);
+  assert.match(service?.detail ?? '', /dev-gateway/);
+  assert.match(service?.detail ?? '', /gatewarden install-service/);
 });
 
 test('the status keeps its shape when the configuration file cannot be read', async (t) => {
@@ -365,7 +429,7 @@ test('the status keeps its shape when the configuration file cannot be read', as
 });
 
 test('the setup tells a script that the chain answered with an error', async (t) => {
-  const certificate = makeCertificate('*.dev-gateway-setup.localhost');
+  const certificate = makeCertificate('*.gatewarden-setup.localhost');
   if (!certificate) {
     t.skip('openssl is not there to make a certificate with');
     return;

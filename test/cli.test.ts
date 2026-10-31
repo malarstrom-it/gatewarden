@@ -9,6 +9,7 @@
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { RegistrationStore } from '../src/core/state.ts';
@@ -76,7 +77,7 @@ test('register refuses when no zone is configured', async (t) => {
   const result = await cli.runFail(['register', '--project', 'probe', '--branch', 'main', '--port', '3999']);
   assert.equal(result.code, 1, `${result.stdout}${result.stderr}`);
   assert.match(result.stderr, /no DNS zone is configured/);
-  assert.match(result.stderr, /dev-gateway setup/, 'the error does not say how to get a zone');
+  assert.match(result.stderr, /gatewarden setup/, 'the error does not say how to get a zone');
 
   // Nothing was registered: a route without a zone has no name.
   const store = new RegistrationStore(cli.dir);
@@ -318,6 +319,20 @@ test('the old binary name still works, and so do the old command names', async (
   assert.match(migrated, /nothing to migrate/);
 });
 
+test('the environment names of the rename still work, and they say they are deprecated', async (t) => {
+  // The names the variables had before the rename are deprecated, not
+  // dead: the CLI reads them, and it says once that they are on their
+  // way out.
+  const cli = await makeCliFixture({ env: { DEV_GATEWAY_HOME: path.join(os.tmpdir(), 'gatewarden-old-home') } });
+  t.after(() => cli.cleanup());
+
+  const result = await cli.runFail(['status']);
+
+  assert.equal(result.code, 0, `${result.stdout}${result.stderr}`);
+  assert.match(result.stderr, /DEV_GATEWAY_HOME is deprecated: use GATEWARDEN_HOME instead/);
+  assert.match(result.stdout, /daemon:/);
+});
+
 test('version prints the version of the package', async (t) => {
   const cli = await makeCliFixture();
   t.after(() => cli.cleanup());
@@ -346,6 +361,6 @@ test('help lists the commands of the specification', async (t) => {
     'install-service',
     'migrate',
   ]) {
-    assert.match(output, new RegExp(`dev-gateway ${command}`), `${command} is missing from the help`);
+    assert.match(output, new RegExp(`gatewarden ${command}`), `${command} is missing from the help`);
   }
 });

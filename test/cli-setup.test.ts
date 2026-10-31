@@ -1,5 +1,5 @@
 /**
- * The setup wizard (`dev-gateway setup`, §9).
+ * The setup wizard (`gatewarden setup`, §9).
  *
  * The wizard runs against a throwaway installation: a temporary directory
  * for the configuration, the state and the home directory, and free ports.
@@ -256,7 +256,7 @@ test('the gateway serves the document while the wizard verifies', async (t) => {
         }
         served += 1;
         const body = await response.text();
-        if (body.includes('check.dev-gateway-setup')) sawTheThrowawayRoute = true;
+        if (body.includes('check.gatewarden-setup')) sawTheThrowawayRoute = true;
       } catch {
         refused += 1;
       }
@@ -297,7 +297,7 @@ test('the gateway serves the document while the wizard verifies', async (t) => {
 });
 
 test('the wizard asks for the values it cannot derive', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-wizard-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-wizard-'));
   const registryPort = await freePort();
   const relayPort = await freePort();
   const deadPort = await freePort();
@@ -489,7 +489,7 @@ test('the advice of the wizard fits what happened', async (t) => {
 });
 
 test('the wizard keeps the answers that arrive before their question', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-wizard-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-wizard-'));
   const registryPort = await freePort();
   const relayPort = await freePort();
   const deadPort = await freePort();
@@ -648,7 +648,7 @@ test('the wiring the wizard emits is one the proxy accepts', async (t) => {
 });
 
 test('the end-to-end verification passes against a proxy that serves the route', async (t) => {
-  const certificate = makeCertificate('*.dev-gateway-setup.localhost');
+  const certificate = makeCertificate('*.gatewarden-setup.localhost');
   if (!certificate) {
     t.skip('openssl is not there to make a certificate with');
     return;
@@ -698,11 +698,11 @@ test('the end-to-end verification passes against a proxy that serves the route',
   // The public URL was fetched on the port of the entry point of the
   // proxy: the certificate of that URL was checked, and it was trusted.
   const publicUrl = report.verification.steps.find((step) => step.name === 'public URL');
-  assert.match(publicUrl?.detail ?? '', new RegExp(`https://check\\.dev-gateway-setup\\.localhost:${proxy.publicPort}`));
+  assert.match(publicUrl?.detail ?? '', new RegExp(`https://check\\.gatewarden-setup\\.localhost:${proxy.publicPort}`));
 
   // The proxy served the public URL of the throwaway route.
   assert.ok(
-    proxy.served.some((entry) => entry.startsWith('check.dev-gateway-setup.localhost')),
+    proxy.served.some((entry) => entry.startsWith('check.gatewarden-setup.localhost')),
     `the proxy did not serve the public URL (${proxy.served.join(', ')})`,
   );
 
@@ -714,7 +714,7 @@ test('the end-to-end verification passes against a proxy that serves the route',
 });
 
 test('the verification waits for a proxy that picks the route up late', async (t) => {
-  const certificate = makeCertificate('*.dev-gateway-setup.localhost');
+  const certificate = makeCertificate('*.gatewarden-setup.localhost');
   if (!certificate) {
     t.skip('openssl is not there to make a certificate with');
     return;
@@ -764,13 +764,13 @@ test('the verification waits for a proxy that picks the route up late', async (t
       .join(' | ')}`,
   );
   assert.ok(
-    proxy.served.some((entry) => entry.startsWith('check.dev-gateway-setup.localhost')),
+    proxy.served.some((entry) => entry.startsWith('check.gatewarden-setup.localhost')),
     'the proxy did not serve the public URL',
   );
 });
 
 test('the verification says why the public URL did not answer', async (t) => {
-  const certificate = makeCertificate('*.dev-gateway-setup.localhost');
+  const certificate = makeCertificate('*.gatewarden-setup.localhost');
   if (!certificate) {
     t.skip('openssl is not there to make a certificate with');
     return;
@@ -954,7 +954,7 @@ test('a proxy that says nothing about the middlewares leaves the value alone', a
 });
 
 test('the trust list keeps what the wizard offered when the user answers with a list of their own', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-trust-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-trust-'));
   const registryPort = await freePort();
   const relayPort = await freePort();
   const deadPort = await freePort();
@@ -1057,7 +1057,7 @@ test('the verification is skipped when there is no zone', async (t) => {
 });
 
 test('the verification says that the relay refused the request', async (t) => {
-  const certificate = makeCertificate('*.dev-gateway-setup.localhost');
+  const certificate = makeCertificate('*.gatewarden-setup.localhost');
   if (!certificate) {
     t.skip('openssl is not there to make a certificate with');
     return;
@@ -1113,7 +1113,7 @@ test('the verification says that the relay refused the request', async (t) => {
 });
 
 test('a 403 from the proxy is not the refusal of the relay', async (t) => {
-  const certificate = makeCertificate('*.dev-gateway-setup.localhost');
+  const certificate = makeCertificate('*.gatewarden-setup.localhost');
   if (!certificate) {
     t.skip('openssl is not there to make a certificate with');
     return;
@@ -1223,7 +1223,7 @@ test('the setup does not fail when the verification could not run', async (t) =>
 });
 
 test('a configuration file that cannot be written is a clear error', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-readonly-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-readonly-'));
   t.after(() => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
@@ -1262,7 +1262,7 @@ test('a configuration file that cannot be written is a clear error', async (t) =
 });
 
 test('a new installation does not get the zone of another project', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-fresh-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-fresh-'));
   const registryPort = await freePort();
   const relayPort = await freePort();
 
@@ -1305,7 +1305,7 @@ test('a new installation does not get the zone of another project', async (t) =>
 });
 
 test('a question nobody answers is a value nobody confirmed', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-timeout-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-timeout-'));
   const registryPort = await freePort();
   const relayPort = await freePort();
   const configPath = path.join(dir, 'config.json');
@@ -1359,7 +1359,7 @@ test('a question nobody answers is a value nobody confirmed', async (t) => {
 });
 
 test('a plain HTTP answer does not verify a public URL with an untrusted certificate', async (t) => {
-  const certificate = makeCertificate('*.dev-gateway-setup.localhost');
+  const certificate = makeCertificate('*.gatewarden-setup.localhost');
   if (!certificate) {
     t.skip('openssl is not there to make a certificate with');
     return;
@@ -1466,7 +1466,7 @@ test('the verification puts a route of the user back', async (t) => {
   // A route of the user that has the same name as the throwaway route of
   // the verification.
   const devPort = await freePort();
-  await cli.run(['register', '--project', 'dev-gateway-setup', '--branch', 'check', '--port', String(devPort)]);
+  await cli.run(['register', '--project', 'gatewarden-setup', '--branch', 'check', '--port', String(devPort)]);
 
   const proxy = new FakeTraefik();
   await proxy.start();

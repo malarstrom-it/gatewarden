@@ -31,7 +31,7 @@ import { listenHost } from '../src/core/config.ts';
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const SKILL_DIR = path.join(REPO_ROOT, 'skills', 'dev-gateway');
+const SKILL_DIR = path.join(REPO_ROOT, 'skills', 'gatewarden');
 const SKILL_FILE = path.join(SKILL_DIR, 'SKILL.md');
 const README = path.join(REPO_ROOT, 'README.md');
 const AGENTS = path.join(REPO_ROOT, 'docs', 'AGENTS.md');
@@ -142,7 +142,7 @@ test('the skill names the MCP tool first and the CLI as the fallback', () => {
   const body = fs.readFileSync(SKILL_FILE, 'utf8');
 
   const tool = body.indexOf('publish_dev_server');
-  const cli = body.indexOf('dev-gateway register');
+  const cli = body.indexOf('gatewarden register');
   assert.ok(tool !== -1, 'the skill does not mention the MCP tool');
   assert.ok(cli !== -1, 'the skill does not mention the CLI');
   assert.ok(tool < cli, 'the CLI comes before the MCP tool — the fallback is the first path');
@@ -157,7 +157,7 @@ test('the agent instructions are a short, portable block', () => {
   const text = fs.readFileSync(AGENTS, 'utf8');
 
   assert.match(text, /publish_dev_server/, 'the block does not name the MCP tool');
-  assert.match(text, /dev-gateway register/, 'the block does not name the CLI');
+  assert.match(text, /gatewarden register/, 'the block does not name the CLI');
   assert.match(text, /Give the user the returned URL verbatim/, 'the block does not say to hand over the URL');
   assert.match(text, /Do not compose the host name yourself/, 'the block does not forbid composing the host name');
   assert.match(text, /remove_dev_server/, 'the block does not say to remove the route');
@@ -183,15 +183,15 @@ test('the README documents every command the CLI has', () => {
   ];
 
   for (const command of commands) {
-    assert.match(readme, new RegExp(`dev-gateway ${command}\\b`), `the README does not document "dev-gateway ${command}"`);
+    assert.match(readme, new RegExp(`gatewarden ${command}\\b`), `the README does not document "gatewarden ${command}"`);
   }
 
   // Every command the README names has to be a command the CLI has.
   const known = new Set([...commands, 'version', 'help']);
-  for (const match of readme.matchAll(/\bdev-gateway ([a-z-]+)/g)) {
+  for (const match of readme.matchAll(/\bgatewarden ([a-z-]+)/g)) {
     const word = match[1] as string;
     if (word.endsWith('.js') || word.endsWith('.mjs')) continue;
-    assert.ok(known.has(word), `the README names a command the CLI does not have: "dev-gateway ${word}"`);
+    assert.ok(known.has(word), `the README names a command the CLI does not have: "gatewarden ${word}"`);
   }
 });
 
@@ -207,9 +207,9 @@ function quickStart(): string {
 test('the quick start names the commands it needs', () => {
   const section = quickStart();
 
-  assert.match(section, /npm install -g @malarstrom\/agent-dev-gateway/, 'the quick start does not install the package');
-  assert.match(section, /dev-gateway setup/, 'the quick start does not set the gateway up');
-  assert.match(section, /dev-gateway register/, 'the quick start does not publish a dev server');
+  assert.match(section, /npm install -g @malarstrom\/gatewarden/, 'the quick start does not install the package');
+  assert.match(section, /gatewarden setup/, 'the quick start does not set the gateway up');
+  assert.match(section, /gatewarden register/, 'the quick start does not publish a dev server');
 });
 
 /**
@@ -231,7 +231,7 @@ function npmEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
 
 /** The register command of the quick start, as it is written there. */
 function quickStartRegister(): string {
-  const match = /^dev-gateway register .*$/m.exec(quickStart());
+  const match = /^gatewarden register .*$/m.exec(quickStart());
   assert.ok(match, 'the quick start has no register command');
   return match[0].trim();
 }
@@ -249,7 +249,7 @@ describe('the quick start from a clean install', () => {
       version: string;
     };
 
-    workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-docs-'));
+    workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-docs-'));
 
     // 1. Pack the package. `prepare` builds it, so the tarball carries the
     //    compiled output the package ships.
@@ -281,8 +281,8 @@ describe('the quick start from a clean install', () => {
 
     fs.mkdirSync(path.join(install, 'bin'), { recursive: true });
     fs.symlinkSync(
-      path.join(packageDir, 'bin', 'dev-gateway.js'),
-      path.join(install, 'bin', 'dev-gateway'),
+      path.join(packageDir, 'bin', 'gatewarden.js'),
+      path.join(install, 'bin', 'gatewarden'),
     );
 
     // 3. A throwaway installation: free ports, its own state.
@@ -312,8 +312,8 @@ describe('the quick start from a clean install', () => {
     if (workdir === '') return;
     // The daemon the quick start started has to go before the directory does.
     try {
-      await execFileAsync(path.join(install, 'bin', 'dev-gateway'), ['stop'], {
-        env: { ...process.env, DEV_GATEWAY_HOME: home },
+      await execFileAsync(path.join(install, 'bin', 'gatewarden'), ['stop'], {
+        env: { ...process.env, GATEWARDEN_HOME: home },
         timeout: 30_000,
       });
     } catch {
@@ -331,8 +331,8 @@ describe('the quick start from a clean install', () => {
   });
 
   test('the installed binary runs', async () => {
-    const { stdout } = await execFileAsync(path.join(install, 'bin', 'dev-gateway'), ['--version'], {
-      env: { ...process.env, DEV_GATEWAY_HOME: home },
+    const { stdout } = await execFileAsync(path.join(install, 'bin', 'gatewarden'), ['--version'], {
+      env: { ...process.env, GATEWARDEN_HOME: home },
       timeout: 60_000,
     });
 
@@ -342,8 +342,8 @@ describe('the quick start from a clean install', () => {
   test('the quick start publishes a dev server', async () => {
     const command = quickStartRegister();
 
-    const { stdout } = await execFileAsync(path.join(install, 'bin', 'dev-gateway'), command.split(' ').slice(1), {
-      env: { ...process.env, DEV_GATEWAY_HOME: home },
+    const { stdout } = await execFileAsync(path.join(install, 'bin', 'gatewarden'), command.split(' ').slice(1), {
+      env: { ...process.env, GATEWARDEN_HOME: home },
       cwd: workdir,
       timeout: 120_000,
     });
@@ -351,8 +351,8 @@ describe('the quick start from a clean install', () => {
     assert.match(stdout, /^registered /m, 'the register command did not report a registration');
     assert.match(stdout, /^url: https:\/\/main\.my-app\.gwtest\.local$/m, 'the register command printed no address');
 
-    const listed = await execFileAsync(path.join(install, 'bin', 'dev-gateway'), ['list', '--json'], {
-      env: { ...process.env, DEV_GATEWAY_HOME: home },
+    const listed = await execFileAsync(path.join(install, 'bin', 'gatewarden'), ['list', '--json'], {
+      env: { ...process.env, GATEWARDEN_HOME: home },
       timeout: 60_000,
     });
     const routes = (JSON.parse(listed.stdout) as { routes: Array<{ project: string; branch: string; url: string }> })

@@ -6,7 +6,7 @@
  *   - the contents of `npm pack` are exactly the allow-list of the
  *     manifest: no more, and no less;
  *   - the tarball, installed into a temporary directory, gives a working
- *     `dev-gateway` binary, a working MCP server and a pi extension pi
+ *     `gatewarden` binary, a working MCP server and a pi extension pi
  *     can load.
  *
  * The install is hermetic, and it needs no network: the packaging layer
@@ -58,6 +58,24 @@ const MANIFEST = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json')
 
 /** The four tools the MCP server offers (§6.2). */
 const MCP_TOOLS = ['dev_gateway_status', 'list_dev_servers', 'publish_dev_server', 'remove_dev_server'];
+
+/**
+ * The files that may name the old layout.
+ *
+ * They are the compatibility: the modules move the directories of the name
+ * the package had before the rename and know the names of the service
+ * units of that name, and the documents describe how the migration and the
+ * deprecated environment variables work.
+ */
+const OLD_NAME_FILES = [
+  'dist/core/paths.',
+  'dist/core/migrate.',
+  'dist/cli/service.',
+  'dist/cli/healthcheck.',
+  'README.md',
+  'docs/setup.md',
+  'docs/healthcheck.md',
+];
 
 /** The three tools the pi extension registers (§7). */
 const PI_TOOLS = ['list_dev_servers', 'publish_dev_server', 'remove_dev_server'];
@@ -159,7 +177,7 @@ describe('the published package', () => {
   let relayPort = 0;
 
   before(async () => {
-    workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-packaging-'));
+    workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-packaging-'));
     home = path.join(workdir, 'home');
     install = path.join(workdir, 'install');
     fs.mkdirSync(home, { recursive: true });
@@ -218,7 +236,7 @@ describe('the published package', () => {
       timeout: 120_000,
       env: npmEnv({
         HOME: home,
-        DEV_GATEWAY_HOME: home,
+        GATEWARDEN_HOME: home,
         XDG_CONFIG_HOME: path.join(home, '.config'),
         XDG_STATE_HOME: path.join(home, '.local', 'state'),
         XDG_CACHE_HOME: path.join(home, '.cache'),
@@ -260,14 +278,14 @@ describe('the published package', () => {
   });
 
   test('the manifest is the published one', () => {
-    assert.equal(MANIFEST.name, '@malarstrom/agent-dev-gateway');
+    assert.equal(MANIFEST.name, '@malarstrom/gatewarden');
     assert.equal(MANIFEST.private, undefined, 'a private package is never published');
     assert.equal(MANIFEST.license, 'MIT');
     assert.equal(MANIFEST.type, 'module');
     assert.equal(MANIFEST.exports['.'], './dist/core/index.js');
-    assert.equal(MANIFEST.bin['dev-gateway'], 'bin/dev-gateway.js');
-    assert.equal(MANIFEST.bin['dev-gateway-mcp'], 'bin/dev-gateway-mcp.js');
-    assert.equal(MANIFEST.bin['dev-gateway-daemon'], 'bin/dev-gateway-daemon.js');
+    assert.equal(MANIFEST.bin['gatewarden'], 'bin/gatewarden.js');
+    assert.equal(MANIFEST.bin['gatewarden-mcp'], 'bin/gatewarden-mcp.js');
+    assert.equal(MANIFEST.bin['gatewarden-daemon'], 'bin/gatewarden-daemon.js');
     assert.equal(MANIFEST.engines['node'], '>=20.11');
 
     // The allow-list, not an ignore list (§2.1). The bin files are
@@ -275,9 +293,9 @@ describe('the published package', () => {
     // of §2.1 and nothing else.
     assert.deepEqual(MANIFEST.files, [
       'dist',
-      'bin/dev-gateway.js',
-      'bin/dev-gateway-mcp.js',
-      'bin/dev-gateway-daemon.js',
+      'bin/gatewarden.js',
+      'bin/gatewarden-mcp.js',
+      'bin/gatewarden-daemon.js',
       'bin/entry.mjs',
       'scripts',
       'skills',
@@ -309,7 +327,7 @@ describe('the published package', () => {
     // repository. The compiled output is not in the repository, so the
     // clone has to build itself — npm does that with `prepare`, when it
     // installs a package that comes from a git repository.
-    const clone = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-git-'));
+    const clone = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-git-'));
     t.after(() => fs.rmSync(clone, { recursive: true, force: true }));
 
     // The clone: the working tree, without the files that are not in
@@ -356,7 +374,7 @@ describe('the published package', () => {
       'the tarball of the clone does not carry the compiled output',
     );
     assert.ok(
-      contents.includes('bin/dev-gateway.js'),
+      contents.includes('bin/gatewarden.js'),
       'the tarball of the clone does not carry the launcher',
     );
   });
@@ -372,13 +390,39 @@ describe('the published package', () => {
     assert.deepEqual(missing, [], 'the tarball does not hold files the allow-list names');
   });
 
+  test('the tarball holds no name of the old package', async () => {
+    // The package was renamed. What is published carries the new name
+    // and nothing of the old one: not a file name, not a line of text.
+    // The two modules that implement the compatibility are the one
+    // exception: they name the directories the migration moves.
+    const actual = await tarballContents(tarball);
+    const hits: string[] = [];
+
+    for (const file of actual) {
+      if (/dev-gateway/i.test(file)) hits.push(`${file}: a file of the old name`);
+    }
+
+    for (const file of actual) {
+      if (!/\.(md|mjs|js|json|ts|map)$/.test(file)) continue;
+      const text = fs.readFileSync(path.join(packageDir, file), 'utf8');
+      // The old package name ends in the old product name, so this one
+      // check covers both.
+      if (!text.includes('dev-gateway')) continue;
+      if (!OLD_NAME_FILES.some((prefix) => file.startsWith(prefix))) {
+        hits.push(`${file}: the old name`);
+      }
+    }
+
+    assert.deepEqual(hits, [], 'the published package still carries the old name:\n' + hits.join('\n'));
+  });
+
   test('the tarball holds the licence and the readme', async () => {
     const actual = await tarballContents(tarball);
 
     assert.ok(actual.includes('LICENSE'), 'the licence is not in the tarball');
     assert.ok(actual.includes('README.md'), 'the readme is not in the tarball');
     assert.ok(actual.includes('dist/core/index.js'), 'the exported entry point is not in the tarball');
-    assert.ok(actual.includes('skills/dev-gateway/SKILL.md'), 'the skill is not in the tarball');
+    assert.ok(actual.includes('skills/gatewarden/SKILL.md'), 'the skill is not in the tarball');
     assert.ok(actual.includes('docs/AGENTS.md'), 'the agent instructions are not in the tarball');
   });
 
@@ -408,10 +452,10 @@ describe('the published package', () => {
   });
 
   test('the installed binary runs', async () => {
-    const binary = path.join(install, 'node_modules', '.bin', 'dev-gateway');
+    const binary = path.join(install, 'node_modules', '.bin', 'gatewarden');
 
     const { stdout } = await execFileAsync(binary, ['--version'], {
-      env: { ...process.env, HOME: home, DEV_GATEWAY_HOME: home },
+      env: { ...process.env, HOME: home, GATEWARDEN_HOME: home },
       timeout: 60_000,
     });
 
@@ -419,13 +463,13 @@ describe('the published package', () => {
   });
 
   test('the installed binary registers a route', async () => {
-    const binary = path.join(install, 'node_modules', '.bin', 'dev-gateway');
+    const binary = path.join(install, 'node_modules', '.bin', 'gatewarden');
 
     const { stdout } = await execFileAsync(
       binary,
       ['register', '--project', 'packaged', '--branch', 'main', '--port', '4321'],
       {
-        env: { ...process.env, HOME: home, DEV_GATEWAY_HOME: home },
+        env: { ...process.env, HOME: home, GATEWARDEN_HOME: home },
         cwd: workdir,
         timeout: 120_000,
       },
@@ -434,7 +478,7 @@ describe('the published package', () => {
     assert.match(stdout, /^registered /m, 'the register command did not report a registration');
 
     const listed = await execFileAsync(binary, ['list', '--json'], {
-      env: { ...process.env, HOME: home, DEV_GATEWAY_HOME: home },
+      env: { ...process.env, HOME: home, GATEWARDEN_HOME: home },
       timeout: 60_000,
     });
     const routes = (JSON.parse(listed.stdout) as { routes: Array<{ fqdn: string }> }).routes;
@@ -450,8 +494,8 @@ describe('the published package', () => {
     fs.writeFileSync(
       script,
       [
-        "const core = await import('@malarstrom/agent-dev-gateway');",
-        "const adapters = await import('@malarstrom/agent-dev-gateway/adapters');",
+        "const core = await import('@malarstrom/gatewarden');",
+        "const adapters = await import('@malarstrom/gatewarden/adapters');",
         'console.log(JSON.stringify({',
         '  core: Object.keys(core).length,',
         '  adapters: Object.keys(adapters).length,',
@@ -462,7 +506,7 @@ describe('the published package', () => {
     const { stdout } = await execFileAsync(process.execPath, [script], {
       cwd: install,
       timeout: 60_000,
-      env: npmEnv({ HOME: home, DEV_GATEWAY_HOME: home }),
+      env: npmEnv({ HOME: home, GATEWARDEN_HOME: home }),
     });
 
     const imported = JSON.parse(stdout.trim()) as { core: number; adapters: number };
@@ -471,8 +515,8 @@ describe('the published package', () => {
   });
 
   test('the installed MCP server answers', async () => {
-    const server = spawn(process.execPath, [path.join(packageDir, 'bin', 'dev-gateway-mcp.js')], {
-      env: { ...process.env, HOME: home, DEV_GATEWAY_HOME: home },
+    const server = spawn(process.execPath, [path.join(packageDir, 'bin', 'gatewarden-mcp.js')], {
+      env: { ...process.env, HOME: home, GATEWARDEN_HOME: home },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
@@ -513,7 +557,7 @@ describe('the published package', () => {
       });
       const result = handshake['result'] as { serverInfo: { name: string }; capabilities: { tools: unknown } };
 
-      assert.equal(result.serverInfo.name, 'dev-gateway');
+      assert.equal(result.serverInfo.name, 'gatewarden');
       assert.ok(result.capabilities.tools, 'the server offers no tools');
 
       const listed = await ask({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
@@ -607,7 +651,7 @@ describe('the published package', () => {
     const resolved = await packages.resolve();
 
     const extension = path.join(packageDir, 'dist', 'integrations', 'pi', 'extension.js');
-    const skill = path.join(packageDir, 'skills', 'dev-gateway', 'SKILL.md');
+    const skill = path.join(packageDir, 'skills', 'gatewarden', 'SKILL.md');
 
     assert.ok(
       resolved.extensions.some((resource: { path: string }) => resource.path === extension),

@@ -5,7 +5,7 @@ There are two ways to a working installation:
 1. **By hand.** Four steps: install the package, wire the proxy, write the
    configuration file, start the daemon. This is the way that works
    everywhere, and it is the way this guide describes first.
-2. **With the wizard.** `dev-gateway setup` reads your proxy, derives the
+2. **With the wizard.** `gatewarden setup` reads your proxy, derives the
    values it can derive, asks for the ones it cannot, writes the
    configuration file and starts the daemon.
 
@@ -35,10 +35,10 @@ The short version is in the README: [Vad som krävs](../README.md#vad-som-krävs
 
 | What | What it gives |
 | --- | --- |
-| `dev-gateway setup` | writes the configuration file for you |
+| `gatewarden setup` | writes the configuration file for you |
 | a shared secret (`"secret"`) | the proxy has to present it to the registry and to the relay |
 | the shared middlewares of your proxy | the dev routers get them too, when you name the provider that owns them |
-| `dev-gateway install-service` | the daemon starts again after a reboot |
+| `gatewarden install-service` | the daemon starts again after a reboot |
 
 ---
 
@@ -47,20 +47,20 @@ The short version is in the README: [Vad som krävs](../README.md#vad-som-krävs
 On the machine that runs the dev servers:
 
 ```bash
-npm install -g @malarstrom/agent-dev-gateway
+npm install -g @malarstrom/gatewarden
 ```
 
 Check that it arrived:
 
 ```bash
-dev-gateway --version
+gatewarden --version
 ```
 
 It prints the version of the package. The same package is a pi
 package, and pi installs it like any other:
 
 ```bash
-pi install npm:@malarstrom/agent-dev-gateway
+pi install npm:@malarstrom/gatewarden
 ```
 
 ---
@@ -95,9 +95,9 @@ docker restart <the traefik container>
 
 The gateway process cannot make this change for you: the proxy's
 configuration lives on another machine, and the gateway runs without the
-privileges to write it. `dev-gateway setup` prints the same snippet with your
+privileges to write it. `gatewarden setup` prints the same snippet with your
 values filled in and writes it to `<state>/wiring/traefik.yml`, so that you
-can copy it. `dev-gateway status` prints the state directory it uses.
+can copy it. `gatewarden status` prints the state directory it uses.
 
 **Reachability.** From the proxy's machine, the two ports of the gateway have
 to be reachable:
@@ -130,19 +130,24 @@ The file is:
 
 | Platform | Path |
 | --- | --- |
-| Linux | `~/.config/dev-gateway/config.json` |
-| macOS | `~/Library/Preferences/dev-gateway/config.json` |
-| Windows | `%APPDATA%\dev-gateway\Config\config.json` |
+| Linux | `~/.config/gatewarden/config.json` |
+| macOS | `~/Library/Preferences/gatewarden/config.json` |
+| Windows | `%APPDATA%\gatewarden\Config\config.json` |
 
-Three environment variables move it: `DEV_GATEWAY_HOME` (everything in one
-directory), `DEV_GATEWAY_CONFIG` (the configuration file only) and
-`DEV_GATEWAY_STATE_DIR` (the state directory only).
+Three environment variables move it: `GATEWARDEN_HOME` (everything in one
+directory), `GATEWARDEN_CONFIG` (the configuration file only) and
+`GATEWARDEN_STATE_DIR` (the state directory only).
+
+The names these variables had before the rename (`DEV_GATEWAY_HOME`,
+`DEV_GATEWAY_CONFIG`, `DEV_GATEWAY_STATE_DIR`) still work. They are
+deprecated: the CLI reads them, and it says once that they are on their way
+out. The current name wins when both are set.
 
 The commands below use the file the installation actually has:
 
 ```bash
-dev-gateway config          # the path, and every key with its value and a line about it
-dev-gateway config --write  # writes the file with the values of this moment
+gatewarden config          # the path, and every key with its value and a line about it
+gatewarden config --write  # writes the file with the values of this moment
 ```
 
 `--write` is a starting point, not the answer: it writes the built-in
@@ -184,7 +189,7 @@ What you write on top of it is step four's example.
 | `relayPort` | `45001` | the port the requests of the user arrive on | free on the machine; it has to be open to the proxy |
 | `advertisedIp` | detected | the IP the proxy reaches this machine on | empty = detected from the network interfaces on every run |
 | `advertisedHost` | detected | the host name the proxy reaches this machine on | the name the proxy can resolve — **must** agree with the `endpoint` of the provider in step two |
-| `zone` | `""` | the DNS zone the host names are built from: `<branch>.<project>.<zone>` | **must** — the zone your proxy already serves; without it there is no host name and `dev-gateway register` refuses |
+| `zone` | `""` | the DNS zone the host names are built from: `<branch>.<project>.<zone>` | **must** — the zone your proxy already serves; without it there is no host name and `gatewarden register` refuses |
 | `entryPoints` | `["websecure"]` | the entry points of the proxy the dev routers attach to | the entry points your own routers use |
 | `certResolver` | `""` | the name of the certificate resolver of your proxy | the name in the `tls` blocks of your own routers; empty = no TLS block, and the address is plain HTTP |
 | `tlsMode` | `"wildcard"` | `wildcard` = one certificate per project (`*.<project>.<zone>`), `fqdn` = one per address | `wildcard` covers every branch of a project with one certificate |
@@ -210,7 +215,7 @@ not have any more.
 ## 5. Step four — start the daemon
 
 ```bash
-dev-gateway start
+gatewarden start
 ```
 
 It prints `started the daemon (pid 12345)` and returns. The daemon is
@@ -225,14 +230,14 @@ The other commands of the lifecycle:
 
 | Command | What it does |
 | --- | --- |
-| `dev-gateway start` | starts the daemon and waits for it to answer |
-| `dev-gateway stop` | stops the daemon; it removes its own pid file |
-| `dev-gateway status` | the daemon, the ports, the files and the values of the configuration |
-| `dev-gateway install-service` | writes the unit of the platform and enables it, so the daemon survives a reboot (`--no-enable` writes the unit without enabling it) |
-| `dev-gateway migrate` | moves the old layout (`~/.traefik-dev/`) to the new one (`--dry-run` only reports) |
+| `gatewarden start` | starts the daemon and waits for it to answer |
+| `gatewarden stop` | stops the daemon; it removes its own pid file |
+| `gatewarden status` | the daemon, the ports, the files and the values of the configuration |
+| `gatewarden install-service` | writes the unit of the platform and enables it, so the daemon survives a reboot (`--no-enable` writes the unit without enabling it) |
+| `gatewarden migrate` | moves the old layouts (`~/.traefik-dev/` and `~/.config/dev-gateway/`) to the new one (`--dry-run` only reports) |
 
 The log of the daemon is `daemon.log` in the state directory; the routes live
-in `routes.json` next to it. `dev-gateway status` prints both paths.
+in `routes.json` next to it. `gatewarden status` prints both paths.
 
 ### The options every command takes
 
@@ -243,7 +248,7 @@ in `routes.json` next to it. `dev-gateway status` prints both paths.
 | `--json` | machine-readable output: one JSON object on the standard output and nothing else |
 
 They are global: they work before the command and after it.
-`dev-gateway --json doctor` and `dev-gateway doctor --json` are the same
+`gatewarden --json doctor` and `gatewarden doctor --json` are the same
 command.
 
 ---
@@ -254,12 +259,12 @@ Run these in the order below. The first one is the one to start with.
 
 | # | Command | A working installation answers |
 | --- | --- | --- |
-| 1 | `dev-gateway doctor` | `nothing is broken`, and the exit code is 0 |
-| 2 | `dev-gateway status` | `daemon: running (pid …)`, `zone: example.com` |
+| 1 | `gatewarden doctor` | `nothing is broken`, and the exit code is 0 |
+| 2 | `gatewarden status` | `daemon: running (pid …)`, `zone: example.com` |
 | 3 | `curl -sS http://<the machine>:45002/healthz` | `ok` |
 | 4 | `curl -sS http://<the machine>:45002/traefik` | the configuration document, in YAML — the same thing the proxy polls |
 | 5 | from the proxy's machine: `curl -sS http://<the machine>:45002/healthz` | `ok` — the proxy reaches the machine |
-| 6 | `dev-gateway register --project probe --branch main --port 3999` | `url: https://main.probe.example.com` |
+| 6 | `gatewarden register --project probe --branch main --port 3999` | `url: https://main.probe.example.com` |
 | 7 | open that address | the dev server that listens on `3999` |
 
 For step 6, run a server first — otherwise the route is registered and the
@@ -275,18 +280,18 @@ the proxy has picked the route up.
 Remove the probe again:
 
 ```bash
-dev-gateway unregister --project probe --branch main
+gatewarden unregister --project probe --branch main
 ```
 
 ---
 
-## 7. What `dev-gateway doctor` checks
+## 7. What `gatewarden doctor` checks
 
 The doctor reads the installation and writes one line per check:
 
 ```text
-ok    config file      /home/user/.config/dev-gateway/config.json
-ok    state directory  /home/user/.local/state/dev-gateway
+ok    config file      /home/user/.config/gatewarden/config.json
+ok    state directory  /home/user/.local/state/gatewarden
 ok    daemon           running (pid 4711)
 ok    dns zone         example.com
 ok    registry port    :::45002
@@ -294,7 +299,7 @@ ok    relay port       :::45001
 ok    routes           1 registered
 ok    routes and zone  1 registered, the zone is example.com
 warn  proxy            no traefik API answered
-warn  service          not installed: run "dev-gateway install-service" to survive a reboot
+warn  service          not installed: run "gatewarden install-service" to survive a reboot
 nothing is broken
 ```
 
@@ -304,7 +309,7 @@ The columns are the status, the name of the check and what it saw.
 | --- | --- | --- | --- | --- |
 | `config file` | the configuration file of this installation | the file exists | the file does not exist yet — the built-in defaults are used | — |
 | `state directory` | the state directory | it exists and is writable | it does not exist yet — it is created when the first route is written | it exists and is not writable — the routes cannot be written |
-| `daemon` | the daemon of this installation, by its pid file and the health probe | it answers | — | it does not answer: `dev-gateway start` |
+| `daemon` | the daemon of this installation, by its pid file and the health probe | it answers | — | it does not answer: `gatewarden start` |
 | `dns zone` | the `zone` of the configuration | a zone is configured | — | no zone: the host names are built from it, so no route can be named |
 | `shared middlewares` | the `middlewareProvider` — only when `securityHeaders` or `compressMiddleware` is on | a provider is named | — | the middlewares are on, but no provider owns them: the routers would point at middlewares that do not exist |
 | `registry port` | something listening on the registry port | something listens | — | nothing listens: the proxy cannot poll the document |
@@ -312,14 +317,16 @@ The columns are the status, the name of the check and what it saw.
 | `routes` | the route store | always `ok`; the detail says how many routes there are | — | — |
 | `routes and zone` | the routes and the zone together — only when there is at least one route | the zone is there | — | there are routes but no zone: a new route cannot be named |
 | `proxy` | the API of the proxy (`/api/version` and `/api/http/routers`) | the API answered | no API answered — the gateway works without it, but the proxy is not reachable from here | the adapter failed: the detail says why |
-| `legacy layout` | the old directory `~/.traefik-dev/` | — | it is still there: `dev-gateway migrate` moves it | — |
-| `service` | the unit of the platform | it is installed | it is not installed: `dev-gateway install-service` makes the daemon survive a reboot | — |
+| `legacy layout` | the old directory `~/.traefik-dev/` | — | it is still there: `gatewarden migrate` moves it | — |
+| `old name layout` | the directories of the name the package had before the rename (`~/.config/dev-gateway/`) | — | it is still there: `gatewarden migrate` moves it | — |
+| `old service` | the unit of the name the package had before the rename (`dev-gateway.service`, the old launchd label) | — | it is still there: it runs a launcher that does not exist any more — `gatewarden install-service` writes the new one | — |
+| `service` | the unit of the platform | it is installed | it is not installed: `gatewarden install-service` makes the daemon survive a reboot | — |
 
 The exit code is 1 when a check failed, and 0 otherwise. A `warn` does not
 fail the doctor: the installation can work with a warning (no service unit,
 no proxy API in reach).
 
-`dev-gateway doctor --json` writes the same report as one JSON object:
+`gatewarden doctor --json` writes the same report as one JSON object:
 
 ```json
 {
@@ -335,7 +342,7 @@ no proxy API in reach).
 
 The README has a table of symptom → cause → fix for the common failures:
 [Vad som krävs](../README.md#vad-som-krävs-what-you-need). The skill's
-[troubleshooting reference](../skills/dev-gateway/references/troubleshooting.md)
+[troubleshooting reference](../skills/gatewarden/references/troubleshooting.md)
 has the rest, with the reason each failure happens.
 
 ---
@@ -343,7 +350,7 @@ has the rest, with the reason each failure happens.
 ## 9. The setup wizard (optional)
 
 ```bash
-dev-gateway setup
+gatewarden setup
 ```
 
 Six steps, five of them automatic. The wizard never pretends: when it cannot
@@ -486,7 +493,7 @@ it.
 #### 6. Write the configuration and start
 
 The derived values are written to the configuration file, the daemon is
-started, and the wizard recommends `dev-gateway install-service` for
+started, and the wizard recommends `gatewarden install-service` for
 surviving a reboot.
 
 Both happen before the verification of step five, because the verification
@@ -507,7 +514,7 @@ in its configuration file. They are listed in `config.omitted`.
 
 ### The report
 
-`dev-gateway setup --json` writes one object with:
+`gatewarden setup --json` writes one object with:
 
 | Field | What it holds |
 | --- | --- |
@@ -543,5 +550,5 @@ The wizard does not touch the ports or the secret: they are the
 installation's own, not the proxy's.
 
 Without a zone there is no host name: the verification is skipped with that
-reason, and the wizard says that the zone has to be set. `dev-gateway
+reason, and the wizard says that the zone has to be set. `gatewarden
 register` refuses a route without a zone and says how to get one.

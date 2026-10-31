@@ -4,14 +4,14 @@
  * The package ships the compiled core under `dist/`, and this module is
  * what an importer gets:
  *
- *   import { loadConfig, RegistrationStore } from '@malarstrom/agent-dev-gateway';
+ *   import { loadConfig, RegistrationStore } from '@malarstrom/gatewarden';
  *
  * Everything here is proxy-agnostic (D3): the core knows about routes,
  * ports, host names and reachability, and about the configuration and the
  * state that hold them. The Traefik adapter is one implementation of the
  * `ProxyAdapter` contract, and it lives outside the core — the core does
  * not import an adapter, not even here. The adapters are reachable under
- * their own export path, `@malarstrom/agent-dev-gateway/adapters`.
+ * their own export path, `@malarstrom/gatewarden/adapters`.
  *
  * The adapters over the core — the MCP server, the pi extension, the CLI
  * and the skill — are not exported here: they are entry points of their

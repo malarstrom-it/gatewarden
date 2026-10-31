@@ -34,7 +34,7 @@ test('the settings of the test environment are the ones of the specification', (
   assert.equal(settings.domain, 'gwtest.local');
   assert.equal(settings.registryPort, 46002);
   assert.equal(settings.relayPort, 46001);
-  assert.equal(settings.root, '/tmp/dev-gateway-test');
+  assert.equal(settings.root, '/tmp/gatewarden-test');
   assert.equal(settings.traefikVersion, '3.7.16');
 });
 
@@ -49,10 +49,10 @@ test('the settings of the test environment are not the ones of the live system',
 
 test('the environment names its own ports, and the live ports cannot be moved', () => {
   const settings = testEnvSettings({
-    DEV_GATEWAY_TESTENV_REGISTRY_PORT: '47100',
-    DEV_GATEWAY_TESTENV_RELAY_PORT: '47101',
-    DEV_GATEWAY_TESTENV_PROXY_PORT: '47102',
-    DEV_GATEWAY_TESTENV_API_PORT: '47103',
+    GATEWARDEN_TESTENV_REGISTRY_PORT: '47100',
+    GATEWARDEN_TESTENV_RELAY_PORT: '47101',
+    GATEWARDEN_TESTENV_PROXY_PORT: '47102',
+    GATEWARDEN_TESTENV_API_PORT: '47103',
   });
   assert.equal(settings.registryPort, 47100);
   assert.equal(settings.relayPort, 47101);
@@ -63,7 +63,7 @@ test('the environment names its own ports, and the live ports cannot be moved', 
 });
 
 test('a port that is not a port is refused', () => {
-  assert.throws(() => testEnvSettings({ DEV_GATEWAY_TESTENV_REGISTRY_PORT: 'http' }), /not a port/);
+  assert.throws(() => testEnvSettings({ GATEWARDEN_TESTENV_REGISTRY_PORT: 'http' }), /not a port/);
 });
 
 test('the configuration of the gateway under test names its own values', () => {
@@ -115,18 +115,18 @@ test('the certificate of the test is handed to the proxy in the default store', 
 
 test('the names of the route and of the certificate belong to the test domain', () => {
   const settings = testEnvSettings({});
-  assert.equal(testRouteFqdn(settings), 'main.dev-gateway-e2e.gwtest.local');
-  assert.equal(testWildcardDomain(settings), '*.dev-gateway-e2e.gwtest.local');
+  assert.equal(testRouteFqdn(settings), 'main.gatewarden-e2e.gwtest.local');
+  assert.equal(testWildcardDomain(settings), '*.gatewarden-e2e.gwtest.local');
 });
 
 test('the name of the route is slugified, like the name the store builds', () => {
-  const settings = testEnvSettings({ DEV_GATEWAY_TESTENV_BRANCH: 'feature/x' });
-  assert.equal(testRouteFqdn(settings), 'feature-x.dev-gateway-e2e.gwtest.local');
-  assert.equal(testWildcardDomain(settings), '*.dev-gateway-e2e.gwtest.local');
+  const settings = testEnvSettings({ GATEWARDEN_TESTENV_BRANCH: 'feature/x' });
+  assert.equal(testRouteFqdn(settings), 'feature-x.gatewarden-e2e.gwtest.local');
+  assert.equal(testWildcardDomain(settings), '*.gatewarden-e2e.gwtest.local');
 });
 
 test('the teardown removes the files of an interrupted run, and keeps the files of the user', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-testenv-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-testenv-'));
   try {
     fs.writeFileSync(path.join(root, 'keep.txt'), 'precious');
     // The files of an earlier run: they carry the names of the
@@ -143,7 +143,7 @@ test('the teardown removes the files of an interrupted run, and keeps the files 
 });
 
 test('the teardown removes the directory it created itself', () => {
-  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-testenv-'));
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-testenv-'));
   const root = path.join(base, 'environment');
   try {
     fs.mkdirSync(root);
@@ -209,9 +209,9 @@ test('a port that nothing listens on is free', async () => {
 });
 
 test('the environment writes nothing outside its own directory', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-testenv-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-testenv-'));
   try {
-    const settings = testEnvSettings({ DEV_GATEWAY_TESTENV_ROOT: root });
+    const settings = testEnvSettings({ GATEWARDEN_TESTENV_ROOT: root });
     const paths = testEnvPaths(settings);
     for (const file of [paths.configFile, paths.proxyConfigFile, paths.certificatesFile]) {
       assert.ok(file.startsWith(root), `${file} is outside ${root}`);

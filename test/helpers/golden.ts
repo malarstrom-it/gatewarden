@@ -39,7 +39,7 @@ const BASE_CONFIG: Config = {
   middlewareProvider: 'file',
   allowedCidrs: ['127.0.0.1/32', '::1/128'],
   secret: '',
-  stateDir: '/tmp/dev-gateway-golden',
+  stateDir: '/tmp/gatewarden-golden',
   documentFormat: 'yaml',
   logMaxBytes: 5 * 1024 * 1024,
   logKeep: 3,

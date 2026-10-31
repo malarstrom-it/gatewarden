@@ -70,7 +70,7 @@ export function generateCertificates(dir: string, names: string[]): TestCertific
       'x509_extensions=v3',
       'prompt=no',
       '[dn]',
-      'CN=dev-gateway test CA',
+      'CN=gatewarden test CA',
       '[v3]',
       `subjectAltName=${san}`,
       'basicConstraints=critical,CA:TRUE',

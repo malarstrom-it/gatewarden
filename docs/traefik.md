@@ -1,6 +1,6 @@
 # Wiring the proxy: Traefik
 
-This guide is for the **Traefik adapter** of the dev gateway. The core of the
+This guide is for the **Traefik adapter** of the gateway. The core of the
 package is proxy-agnostic (D3); everything below is what the Traefik adapter
 needs from the machine the proxy runs on.
 
@@ -140,7 +140,7 @@ and under nothing else.
 ## 2. What the setup wizard derives from the proxy
 
 The wizard is optional. When you would rather not write the values of your
-own installation by hand, `dev-gateway setup` reads the running proxy and
+own installation by hand, `gatewarden setup` reads the running proxy and
 derives four of them from the routers it finds:
 
 | Value | Derived from | Written to |
@@ -168,7 +168,7 @@ The document the registry serves points at the relay:
 ```
 
 To use the IP address instead, set `"advertisedHost": "<ip>"` in the
-configuration file (`~/.config/dev-gateway/config.json` on Linux) — the
+configuration file (`~/.config/gatewarden/config.json` on Linux) — the
 `endpoint` in the provider must then match.
 
 The name is verified, not assumed: the proxy may reach this machine under a
@@ -205,7 +205,7 @@ providers:
 node -e 'require("http").createServer((q,s)=>s.end("probe-ok")).listen(3999,"127.0.0.1")' &
 
 # 2. register it
-dev-gateway register --project probe --branch main --port 3999
+gatewarden register --project probe --branch main --port 3999
 
 # 3. wait one poll interval, then open the URL
 curl -sS https://main.probe.<zone>/     # → probe-ok
@@ -215,16 +215,16 @@ curl -sS https://<proxy dashboard>/api/http/routers | grep dev-probe
 curl -sS https://<proxy dashboard>/api/http/services | grep dev-probe
 
 # 5. clean up
-dev-gateway unregister --project probe --branch main
+gatewarden unregister --project probe --branch main
 ```
 
 The registry answers two paths and nothing else: the dynamic configuration
 document (`/traefik`, which the provider polls) and the health probe
 (`/healthz`). There is no write endpoint and no page: the routes are written
 to the state file by the CLI and by the agents, and the route list is read
-with `dev-gateway list`.
+with `gatewarden list`.
 
-`dev-gateway setup` runs this check itself, with a throwaway server, and
+`gatewarden setup` runs this check itself, with a throwaway server, and
 reports every step it could not verify. The check is optional: the
 installation works without it.
 
@@ -233,7 +233,7 @@ installation works without it.
 Remove the `http:` block from `providers:` in the proxy's static configuration
 and restart the proxy. The gateway keeps running; it only stops being polled.
 
-The routes themselves are removed with `dev-gateway unregister`, one by one, or
+The routes themselves are removed with `gatewarden unregister`, one by one, or
 by emptying the route store.
 
 ## 7. An example configuration
@@ -351,7 +351,7 @@ rest belongs to the installation, and you write it in the configuration file
 | Your file | What goes in it |
 | --- | --- |
 | the proxy's static configuration | the `http` provider: the endpoint the proxy polls (the registry's port, under the address the proxy reaches you under) |
-| `~/.config/dev-gateway/config.json` | `zone`, `entryPoints`, `certResolver`, `middlewareProvider`, `advertisedHost` and `allowedCidrs` — the values of *your* installation |
+| `~/.config/gatewarden/config.json` | `zone`, `entryPoints`, `certResolver`, `middlewareProvider`, `advertisedHost` and `allowedCidrs` — the values of *your* installation |
 | the proxy's own environment | the credentials of the certificate resolver (the gateway never reads them) |
 
 Every one of those values comes from your proxy or from you: the zone from the
@@ -360,7 +360,7 @@ resolver and the provider of the shared middlewares from the `tls` and
 `middleware` blocks, the address from the name your proxy knows you by, and
 the trust list from the networks your proxy reaches you from.
 
-You write them, or `dev-gateway setup` reads them, asks for what it cannot
+You write them, or `gatewarden setup` reads them, asks for what it cannot
 derive, and writes them into your own configuration file. A package for
 anybody cannot start with somebody else's zone: the built-in defaults are
 empty, and the values are yours to write.

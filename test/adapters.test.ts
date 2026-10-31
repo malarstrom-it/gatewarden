@@ -223,7 +223,7 @@ test('the wiring snippet names the endpoint the proxy has to poll', () => {
 });
 
 test('the registry serves the document under the id of the adapter', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-adapter-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-adapter-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
   const store = new RegistrationStore(dir);

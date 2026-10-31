@@ -41,7 +41,7 @@ export function hasOpenssl(): boolean {
  */
 export function makeCertificate(hostName: string): TestCertificate | undefined {
   if (!hasOpenssl()) return undefined;
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-cert-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-cert-'));
   const keyFile = path.join(dir, 'key.pem');
   const certFile = path.join(dir, 'cert.pem');
   try {

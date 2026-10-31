@@ -15,7 +15,7 @@ import test from 'node:test';
 import { RegistrationStore, ROUTES_FILE } from '../src/core/state.ts';
 
 function tempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-state-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-state-'));
 }
 
 test('the routes live in routes.json in the state directory', (t) => {

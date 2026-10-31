@@ -73,8 +73,8 @@ class Supervisor {
       execArgv: [],
       env: {
         ...process.env,
-        DEV_GATEWAY_CONFIG: this.configPath,
-        DEV_GATEWAY_STATE_DIR: this.stateDir,
+        GATEWARDEN_CONFIG: this.configPath,
+        GATEWARDEN_STATE_DIR: this.stateDir,
         TRAEFIK_DEV_CONFIG: this.configPath,
         TRAEFIK_DEV_STATE_DIR: this.stateDir,
       },
@@ -113,7 +113,13 @@ export async function runDaemon(): Promise<void> {
   // so that the daemon and its workers cannot read different ones.
   const configPath = configPathFromArgv(process.argv) ?? resolveConfigPath();
   const config = loadConfig({ configPath });
-  setLogLevel(process.env['TRAEFIK_DEV_LOG_LEVEL'] === 'debug' ? 'debug' : 'info');
+  setLogLevel(
+    (process.env['GATEWARDEN_LOG_LEVEL'] ??
+      process.env['DEV_GATEWAY_LOG_LEVEL'] ??
+      process.env['TRAEFIK_DEV_LOG_LEVEL']) === 'debug'
+      ? 'debug'
+      : 'info',
+  );
 
   fs.mkdirSync(config.stateDir, { recursive: true });
   const logFile = logFileFor(config.stateDir);

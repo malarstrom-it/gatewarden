@@ -143,7 +143,7 @@ export function addHostEntry(domain: string): boolean {
   const line = `127.0.0.1 ${domain}`;
   if (text.split('\n').some((entry) => entry.trim() === line)) return true;
   try {
-    fs.appendFileSync(HOSTS_FILE, `\n${line} # dev-gateway test environment\n`);
+    fs.appendFileSync(HOSTS_FILE, `\n${line} # gatewarden test environment\n`);
   } catch {
     return false;
   }
@@ -157,7 +157,7 @@ export function removeHostEntry(domain: string): void {
     const text = fs.readFileSync(HOSTS_FILE, 'utf8');
     const kept = text
       .split('\n')
-      .filter((entry) => !entry.includes(` ${domain} # dev-gateway test environment`))
+      .filter((entry) => !entry.includes(` ${domain} # gatewarden test environment`))
       .join('\n');
     fs.writeFileSync(HOSTS_FILE, kept);
   } catch {
@@ -323,7 +323,7 @@ export async function tearDown(
     removeHostEntry(env.settings.domain);
     log(`the domain ${env.settings.domain} is removed from the hosts file`);
   }
-  if (process.env['DEV_GATEWAY_TESTENV_KEEP'] === '1') {
+  if ((process.env['GATEWARDEN_TESTENV_KEEP'] ?? process.env['DEV_GATEWAY_TESTENV_KEEP']) === '1') {
     log(`the directory ${env.settings.root} is kept`);
     return;
   }

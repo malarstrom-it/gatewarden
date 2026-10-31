@@ -1,4 +1,4 @@
-/** Shared types for the dev gateway. */
+/** Shared types for the gateway. */
 
 export interface Registration {
   /** Stable dispatch id, also used as the `X-Dev-Target` header value. */

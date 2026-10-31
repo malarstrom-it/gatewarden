@@ -12,9 +12,9 @@
  *
  * | Platform | Unit |
  * | --- | --- |
- * | Linux | `~/.config/systemd/user/dev-gateway.service` |
- * | macOS | `~/Library/LaunchAgents/dev.mal.arstrom.dev-gateway.plist` |
- * | Windows | a scheduled task running `dev-gateway-daemon.js` |
+ * | Linux | `~/.config/systemd/user/gatewarden.service` |
+ * | macOS | `~/Library/LaunchAgents/com.malarstrom.gatewarden.plist` |
+ * | Windows | a scheduled task running `gatewarden-daemon.js` |
  *
  * The unit runs the daemon directly, not the CLI: the CLI is a client, and
  * a client that starts a client is a supervisor of supervisors.
@@ -34,20 +34,36 @@ import { spawnSync } from 'node:child_process';
 export type ServicePlatform = 'linux' | 'darwin' | 'win32';
 
 /** The name of the systemd unit. */
-export const SYSTEMD_UNIT_NAME = 'dev-gateway.service';
+export const SYSTEMD_UNIT_NAME = 'gatewarden.service';
 
 /** The label of the launchd agent. */
-export const LAUNCHD_LABEL = 'dev.mal.arstrom.dev-gateway';
+export const LAUNCHD_LABEL = 'com.malarstrom.gatewarden';
 
 /** The name of the Windows scheduled task. */
-export const WINDOWS_TASK_NAME = 'dev-gateway';
+export const WINDOWS_TASK_NAME = 'gatewarden';
+
+/**
+ * The names the service had before the rename.
+ *
+ * A unit that was installed under the old name is still on the machine:
+ * it names a launcher that does not exist any more, and the daemon it
+ * would start is never started. The doctor has to say so, and the unit
+ * has to be replaced by `install-service`.
+ */
+export const LEGACY_SYSTEMD_UNIT_NAME = 'dev-gateway.service';
+
+/** The label the launchd agent had before the rename. */
+export const LEGACY_LAUNCHD_LABEL = 'dev.mal.arstrom.dev-gateway';
+
+/** The name the Windows scheduled task had before the rename. */
+export const LEGACY_WINDOWS_TASK_NAME = 'dev-gateway';
 
 export interface ServiceUnitOptions {
   /** The platform to write the unit for. Defaults to the running platform. */
   platform?: NodeJS.Platform;
   /** The user's home directory. Defaults to `os.homedir()`. */
   home?: string;
-  /** The launcher that runs the daemon (`bin/dev-gateway-daemon.js`). */
+  /** The launcher that runs the daemon (`bin/gatewarden-daemon.js`). */
   daemonPath: string;
   /** The configuration file the daemon reads. */
   configPath: string;
@@ -102,14 +118,14 @@ function systemdUnit(opts: Required<Pick<ServiceUnitOptions, 'daemonPath' | 'con
   const unitPath = path.join(opts.home, '.config', 'systemd', 'user', SYSTEMD_UNIT_NAME);
   const content = [
     '[Unit]',
-    'Description=dev-gateway - the agent dev gateway (registry and relay)',
+    'Description=gatewarden - the gateway of the dev servers (registry and relay)',
     'After=network.target',
     '',
     '[Service]',
     'Type=simple',
     `ExecStart=${systemdQuote(opts.nodePath)} ${systemdQuote(opts.daemonPath)} --config ${systemdQuote(opts.configPath)}`,
-    `Environment=DEV_GATEWAY_CONFIG=${opts.configPath}`,
-    `Environment=DEV_GATEWAY_STATE_DIR=${opts.stateDir}`,
+    `Environment=GATEWARDEN_CONFIG=${opts.configPath}`,
+    `Environment=GATEWARDEN_STATE_DIR=${opts.stateDir}`,
     'Restart=on-failure',
     'RestartSec=5',
     '',
@@ -153,9 +169,9 @@ function launchdUnit(opts: Required<Pick<ServiceUnitOptions, 'daemonPath' | 'con
     '  </array>',
     '  <key>EnvironmentVariables</key>',
     '  <dict>',
-    `    <key>DEV_GATEWAY_CONFIG</key>`,
+    `    <key>GATEWARDEN_CONFIG</key>`,
     `    <string>${plistQuote(opts.configPath)}</string>`,
-    `    <key>DEV_GATEWAY_STATE_DIR</key>`,
+    `    <key>GATEWARDEN_STATE_DIR</key>`,
     `    <string>${plistQuote(opts.stateDir)}</string>`,
     '  </dict>',
     '  <key>RunAtLoad</key>',
@@ -207,6 +223,34 @@ function windowsTask(opts: Required<Pick<ServiceUnitOptions, 'daemonPath' | 'con
       },
     ],
     status: { command: 'schtasks', args: ['/query', '/tn', WINDOWS_TASK_NAME] },
+  };
+}
+
+/**
+ * The unit of the old name, for the platform.
+ *
+ * The unit of the old name is a file on Linux and macOS, and a scheduled
+ * task on Windows. The file is what can be looked for; the task lives in
+ * the task scheduler, and its path is `null` here.
+ */
+export function legacyServiceUnitFor(opts: {
+  platform?: NodeJS.Platform;
+  home?: string;
+} = {}): { name: string; path: string | null } {
+  const platform = (opts.platform ?? process.platform) as ServicePlatform;
+  const home = opts.home ?? os.homedir();
+  if (platform === 'darwin') {
+    return {
+      name: LEGACY_LAUNCHD_LABEL,
+      path: path.join(home, 'Library', 'LaunchAgents', `${LEGACY_LAUNCHD_LABEL}.plist`),
+    };
+  }
+  if (platform === 'win32') {
+    return { name: LEGACY_WINDOWS_TASK_NAME, path: null };
+  }
+  return {
+    name: LEGACY_SYSTEMD_UNIT_NAME,
+    path: path.join(home, '.config', 'systemd', 'user', LEGACY_SYSTEMD_UNIT_NAME),
   };
 }
 

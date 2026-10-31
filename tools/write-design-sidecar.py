@@ -68,7 +68,7 @@ def main() -> None:
     sidecar = {
         "schemaVersion": 2,
         "generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "title": "Design System: Traefik dev gateway",
+        "title": "Design System: Gatewarden",
         "extensions": {
             "colorMeta": color_meta,
             "typographyMeta": {

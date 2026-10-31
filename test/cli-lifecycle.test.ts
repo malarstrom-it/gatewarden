@@ -160,7 +160,7 @@ test('doctor says that the zone is missing', async (t) => {
   };
   const zone = parsed.checks.find((check) => check.name === 'dns zone');
   assert.equal(zone?.status, 'fail', 'the doctor does not say that the zone is missing');
-  assert.match(zone?.detail ?? '', /dev-gateway setup/);
+  assert.match(zone?.detail ?? '', /gatewarden setup/);
   assert.equal(parsed.ok, false);
 });
 
@@ -225,7 +225,7 @@ test('doctor does not crash on a configuration file with a zone that is not a st
   };
   const zone = parsed.checks.find((check) => check.name === 'dns zone');
   assert.equal(zone?.status, 'fail', 'the doctor does not say that the zone is missing');
-  assert.match(zone?.detail ?? '', /dev-gateway setup/);
+  assert.match(zone?.detail ?? '', /gatewarden setup/);
 });
 
 test('install-service writes the unit of the platform and enables it', async (t) => {
@@ -249,11 +249,11 @@ test('install-service writes the unit of the platform and enables it', async (t)
   assert.ok(result.manualEnable.length > 0);
 
   if (process.platform === 'linux') {
-    const unit = path.join(cli.dir, '.config', 'systemd', 'user', 'dev-gateway.service');
+    const unit = path.join(cli.dir, '.config', 'systemd', 'user', 'gatewarden.service');
     assert.equal(result.path, unit);
     assert.ok(fs.existsSync(unit), 'the unit was not written');
     const content = fs.readFileSync(unit, 'utf8');
-    assert.match(content, /ExecStart=.*dev-gateway-daemon\.js/);
+    assert.match(content, /ExecStart=.*gatewarden-daemon\.js/);
     assert.match(content, /--config/);
   }
 });

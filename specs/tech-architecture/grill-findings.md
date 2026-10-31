@@ -1,4 +1,4 @@
-# Grill findings — "Traefik dev gateway" plan vs. official docs
+# Grill findings — the Traefik plan vs. official docs
 
 Every row was checked against an official source that was actually fetched while writing this file
 (Traefik docs, Docker docs, the RFCs, the vendors' own docs, and public DNS via Cloudflare

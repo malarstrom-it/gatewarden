@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// traefik-dev — CLI for registering a dev server with the Traefik dev gateway.
+// traefik-dev — CLI for registering a dev server with the Traefik gateway.
 //
-// The old name of `dev-gateway`; it stays as an alias.
+// The name the CLI had before the package was published; it stays as an
+// alias (R6), and it works exactly like `gatewarden`.
 import { resolveEntry } from './entry.mjs';
 
 const entry = resolveEntry(import.meta.url, '../src/cli/index.ts', '../dist/cli/index.js');

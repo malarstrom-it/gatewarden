@@ -1,9 +1,14 @@
 /**
- * The migration from the old layout (§3.4).
+ * The migration from the old layouts (§3.4).
  *
- * The old installation kept everything in `~/.traefik-dev/`. The migration
- * moves the configuration and the route store to the layout of §3.1, and it
- * never deletes anything.
+ * Two installations came before this one: the pre-package layout, which
+ * kept everything in `~/.traefik-dev/`, and the layout of the name the
+ * directories had before the rename, which kept the configuration in
+ * `~/.config/dev-gateway/` and the route store in
+ * `~/.local/state/dev-gateway/`.
+ *
+ * The migration moves the configuration and the route store to the layout of
+ * §3.1, and it never deletes anything.
  */
 
 import assert from 'node:assert/strict';
@@ -18,7 +23,7 @@ import { loadConfig } from '../src/core/config.ts';
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const CLI = path.join(REPO_ROOT, 'bin', 'dev-gateway.js');
+const CLI = path.join(REPO_ROOT, 'bin', 'gatewarden.js');
 
 interface Legacy {
   home: string;
@@ -28,7 +33,7 @@ interface Legacy {
 }
 
 function makeLegacy(): Legacy {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-home-'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-home-'));
   const dir = path.join(home, '.traefik-dev');
   fs.mkdirSync(dir, { recursive: true });
   const configFile = path.join(dir, 'config.json');
@@ -96,7 +101,7 @@ test('an existing ~/.traefik-dev/config.json is picked up on the first run', () 
     assert.equal(config.advertisedIp, '10.1.2.3');
 
     // The configuration now lives in the XDG configuration directory.
-    const configFile = path.join(legacy.home, '.config', 'dev-gateway', 'config.json');
+    const configFile = path.join(legacy.home, '.config', 'gatewarden', 'config.json');
     assert.ok(fs.existsSync(configFile), 'the configuration was not written to the new place');
     const written = JSON.parse(fs.readFileSync(configFile, 'utf8'));
     assert.equal(written.zone, 'legacy.example');
@@ -104,7 +109,7 @@ test('an existing ~/.traefik-dev/config.json is picked up on the first run', () 
     assert.equal(written.autostart, true);
 
     // The route store was imported into the new state directory.
-    const routes = path.join(legacy.home, '.local', 'state', 'dev-gateway', 'routes.json');
+    const routes = path.join(legacy.home, '.local', 'state', 'gatewarden', 'routes.json');
     assert.ok(fs.existsSync(routes), 'the route store was not imported');
     const store = JSON.parse(fs.readFileSync(routes, 'utf8'));
     assert.equal(store.registrations.length, 1);
@@ -132,7 +137,7 @@ test('the migration runs once: a new configuration file is left alone', () => {
   const legacy = makeLegacy();
   try {
     loadConfig({ home: legacy.home, env: {} });
-    const configFile = path.join(legacy.home, '.config', 'dev-gateway', 'config.json');
+    const configFile = path.join(legacy.home, '.config', 'gatewarden', 'config.json');
     const written = JSON.parse(fs.readFileSync(configFile, 'utf8'));
     fs.writeFileSync(configFile, JSON.stringify({ ...written, zone: 'changed.example' }, null, 2));
 
@@ -149,7 +154,7 @@ test('the state directory of the old layout is not kept: the routes move to the 
   try {
     const config = loadConfig({ home: legacy.home, env: {} });
 
-    assert.equal(config.stateDir, path.join(legacy.home, '.local', 'state', 'dev-gateway'));
+    assert.equal(config.stateDir, path.join(legacy.home, '.local', 'state', 'gatewarden'));
   } finally {
     fs.rmSync(legacy.home, { recursive: true, force: true });
   }
@@ -157,7 +162,7 @@ test('the state directory of the old layout is not kept: the routes move to the 
 
 test('a state directory outside the old layout is kept', () => {
   const legacy = makeLegacy();
-  const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-state-'));
+  const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-state-'));
   try {
     const raw = JSON.parse(fs.readFileSync(legacy.configFile, 'utf8'));
     raw.stateDir = elsewhere;
@@ -172,12 +177,12 @@ test('a state directory outside the old layout is kept', () => {
   }
 });
 
-test('DEV_GATEWAY_HOME keeps the migration inside one directory', () => {
+test('GATEWARDEN_HOME keeps the migration inside one directory', () => {
   const legacy = makeLegacy();
   const home = path.join(legacy.home, 'one-directory');
   fs.mkdirSync(home, { recursive: true });
   try {
-    const config = loadConfig({ home: legacy.home, env: { DEV_GATEWAY_HOME: home } });
+    const config = loadConfig({ home: legacy.home, env: { GATEWARDEN_HOME: home } });
 
     assert.equal(config.stateDir, home);
     assert.ok(fs.existsSync(path.join(home, 'config.json')));
@@ -187,7 +192,7 @@ test('DEV_GATEWAY_HOME keeps the migration inside one directory', () => {
   }
 });
 
-test('dev-gateway migrate reports what it moved', async () => {
+test('gatewarden migrate reports what it moved', async () => {
   const legacy = makeLegacy();
   try {
     const { stdout } = await execFileAsync(process.execPath, [CLI, 'migrate'], {
@@ -207,8 +212,8 @@ test('dev-gateway migrate reports what it moved', async () => {
     assert.match(stdout, /the old layout was migrated/);
 
     // What it reported, it did.
-    const configFile = path.join(legacy.home, '.config', 'dev-gateway', 'config.json');
-    const routes = path.join(legacy.home, '.local', 'state', 'dev-gateway', 'routes.json');
+    const configFile = path.join(legacy.home, '.config', 'gatewarden', 'config.json');
+    const routes = path.join(legacy.home, '.local', 'state', 'gatewarden', 'routes.json');
     assert.ok(fs.existsSync(configFile));
     assert.ok(fs.existsSync(routes));
     assert.ok(fs.existsSync(legacy.configFile), 'the old directory must stay');
@@ -217,7 +222,7 @@ test('dev-gateway migrate reports what it moved', async () => {
   }
 });
 
-test('dev-gateway migrate --dry-run moves nothing', async () => {
+test('gatewarden migrate --dry-run moves nothing', async () => {
   const legacy = makeLegacy();
   try {
     const { stdout } = await execFileAsync(process.execPath, [CLI, 'migrate', '--dry-run'], {
@@ -232,15 +237,15 @@ test('dev-gateway migrate --dry-run moves nothing', async () => {
     });
 
     assert.match(stdout, /dry run: nothing was moved/);
-    assert.ok(!fs.existsSync(path.join(legacy.home, '.config', 'dev-gateway', 'config.json')));
-    assert.ok(!fs.existsSync(path.join(legacy.home, '.local', 'state', 'dev-gateway', 'routes.json')));
+    assert.ok(!fs.existsSync(path.join(legacy.home, '.config', 'gatewarden', 'config.json')));
+    assert.ok(!fs.existsSync(path.join(legacy.home, '.local', 'state', 'gatewarden', 'routes.json')));
   } finally {
     fs.rmSync(legacy.home, { recursive: true, force: true });
   }
 });
 
-test('dev-gateway migrate says when there is nothing to migrate', async () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-home-'));
+test('gatewarden migrate says when there is nothing to migrate', async () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-home-'));
   try {
     const { stdout } = await execFileAsync(process.execPath, [CLI, 'migrate'], {
       env: {
@@ -254,6 +259,300 @@ test('dev-gateway migrate says when there is nothing to migrate', async () => {
     });
 
     assert.match(stdout, /nothing to migrate/);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+interface OldName {
+  home: string;
+  configFile: string;
+  routesFile: string;
+}
+
+/**
+ * An installation that was made under the name the directories had before
+ * the rename.
+ */
+function makeOldName(): OldName {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-old-name-'));
+  const configDir = path.join(home, '.config', 'dev-gateway');
+  const stateDir = path.join(home, '.local', 'state', 'dev-gateway');
+  fs.mkdirSync(configDir, { recursive: true });
+  fs.mkdirSync(stateDir, { recursive: true });
+
+  const configFile = path.join(configDir, 'config.json');
+  const routesFile = path.join(stateDir, 'routes.json');
+  fs.writeFileSync(
+    configFile,
+    JSON.stringify(
+      {
+        registryPort: 45002,
+        relayPort: 45001,
+        advertisedIp: '10.1.2.4',
+        advertisedHost: 'devbox',
+        zone: 'oldname.example',
+        entryPoints: ['websecure'],
+        certResolver: 'cloudflare',
+        stateDir,
+        documentFormat: 'yaml',
+      },
+      null,
+      2,
+    ),
+  );
+  fs.writeFileSync(
+    routesFile,
+    JSON.stringify(
+      {
+        version: 1,
+        registrations: [
+          {
+            id: 'probe/main',
+            project: 'probe',
+            branch: 'main',
+            projectSlug: 'probe',
+            branchSlug: 'main',
+            fqdn: 'main.probe.oldname.example',
+            devPort: 3998,
+            createdAt: '2024-01-01T00:00:00.000Z',
+            updatedAt: '2024-01-01T00:00:00.000Z',
+          },
+        ],
+      },
+      null,
+      2,
+    ),
+  );
+  return { home, configFile, routesFile };
+}
+
+test('the configuration of the old name is picked up on the first run', () => {
+  // An installation that was made before the rename must not lose its
+  // configuration: the loader reads it, and the migration moves it.
+  const old = makeOldName();
+  try {
+    const config = loadConfig({ home: old.home, env: {} });
+
+    assert.equal(config.zone, 'oldname.example');
+    assert.equal(config.advertisedIp, '10.1.2.4');
+
+    const configFile = path.join(old.home, '.config', 'gatewarden', 'config.json');
+    assert.ok(fs.existsSync(configFile), 'the configuration was not written to the new place');
+
+    const routes = path.join(old.home, '.local', 'state', 'gatewarden', 'routes.json');
+    assert.ok(fs.existsSync(routes), 'the route store was not imported');
+    const store = JSON.parse(fs.readFileSync(routes, 'utf8'));
+    assert.equal(store.registrations.length, 1);
+    assert.equal(store.registrations[0].fqdn, 'main.probe.oldname.example');
+
+    // The old directories are left in place: nothing is ever deleted.
+    assert.ok(fs.existsSync(old.configFile));
+    assert.ok(fs.existsSync(old.routesFile));
+  } finally {
+    fs.rmSync(old.home, { recursive: true, force: true });
+  }
+});
+
+test('the state directory of the old name is not kept: the routes move to the new one', () => {
+  const old = makeOldName();
+  try {
+    const config = loadConfig({ home: old.home, env: {} });
+
+    assert.equal(config.stateDir, path.join(old.home, '.local', 'state', 'gatewarden'));
+  } finally {
+    fs.rmSync(old.home, { recursive: true, force: true });
+  }
+});
+
+test('gatewarden migrate moves the layout of the old name', async () => {
+  const old = makeOldName();
+  try {
+    const { stdout } = await execFileAsync(process.execPath, [CLI, 'migrate'], {
+      env: {
+        PATH: process.env['PATH'] ?? '',
+        HOME: old.home,
+        XDG_CONFIG_HOME: path.join(old.home, '.config'),
+        XDG_STATE_HOME: path.join(old.home, '.local', 'state'),
+        XDG_CACHE_HOME: path.join(old.home, '.cache'),
+      },
+      cwd: REPO_ROOT,
+    });
+
+    assert.match(stdout, /old name layout/);
+    assert.match(stdout, /the old name layout was migrated/);
+
+    const configFile = path.join(old.home, '.config', 'gatewarden', 'config.json');
+    const routes = path.join(old.home, '.local', 'state', 'gatewarden', 'routes.json');
+    assert.ok(fs.existsSync(configFile), 'the configuration was not moved');
+    assert.ok(fs.existsSync(routes), 'the route store was not moved');
+    assert.ok(fs.existsSync(old.configFile), 'the old directory must stay');
+  } finally {
+    fs.rmSync(old.home, { recursive: true, force: true });
+  }
+});
+
+test('gatewarden migrate --dry-run leaves the layout of the old name alone', async () => {
+  const old = makeOldName();
+  try {
+    const { stdout } = await execFileAsync(process.execPath, [CLI, 'migrate', '--dry-run'], {
+      env: {
+        PATH: process.env['PATH'] ?? '',
+        HOME: old.home,
+        XDG_CONFIG_HOME: path.join(old.home, '.config'),
+        XDG_STATE_HOME: path.join(old.home, '.local', 'state'),
+        XDG_CACHE_HOME: path.join(old.home, '.cache'),
+      },
+      cwd: REPO_ROOT,
+    });
+
+    assert.match(stdout, /old name layout/);
+    assert.match(stdout, /dry run: nothing was moved/);
+    assert.ok(!fs.existsSync(path.join(old.home, '.config', 'gatewarden', 'config.json')));
+    assert.ok(!fs.existsSync(path.join(old.home, '.local', 'state', 'gatewarden', 'routes.json')));
+  } finally {
+    fs.rmSync(old.home, { recursive: true, force: true });
+  }
+});
+
+/** One registration, for a route store. */
+function registration(project: string, port: number): Record<string, unknown> {
+  return {
+    id: `${project}/main`,
+    project,
+    branch: 'main',
+    projectSlug: project,
+    branchSlug: 'main',
+    fqdn: `main.${project}.example`,
+    devPort: port,
+    createdAt: '2024-01-01T00:00:00.000Z',
+    updatedAt: '2024-01-01T00:00:00.000Z',
+  };
+}
+
+/**
+ * A home that holds both old layouts.
+ *
+ * The pre-package layout (`~/.traefik-dev/`) is the older one; the layout
+ * of the name the directories had before the rename
+ * (`~/.config/dev-gateway/`) is the newer one. The newer one has to win:
+ * it is the one the first run reads, and the command has to agree.
+ */
+function makeBothLayouts(): { home: string } {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-both-'));
+
+  const legacy = path.join(home, '.traefik-dev');
+  fs.mkdirSync(legacy, { recursive: true });
+  fs.writeFileSync(
+    path.join(legacy, 'config.json'),
+    JSON.stringify({ zone: 'older.example', stateDir: legacy, registryPort: 45002, relayPort: 45001 }, null, 2),
+  );
+  fs.writeFileSync(
+    path.join(legacy, 'registrations.json'),
+    JSON.stringify({ version: 1, registrations: [registration('older-project', 3997)] }, null, 2),
+  );
+
+  const configDir = path.join(home, '.config', 'dev-gateway');
+  const stateDir = path.join(home, '.local', 'state', 'dev-gateway');
+  fs.mkdirSync(configDir, { recursive: true });
+  fs.mkdirSync(stateDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(configDir, 'config.json'),
+    JSON.stringify({ zone: 'newer.example', stateDir, registryPort: 45002, relayPort: 45001 }, null, 2),
+  );
+  fs.writeFileSync(
+    path.join(stateDir, 'routes.json'),
+    JSON.stringify({ version: 1, registrations: [registration('newer-project', 3998)] }, null, 2),
+  );
+
+  return { home };
+}
+
+/** The environment the CLI runs in, with the home of the test. */
+function cliEnv(home: string): NodeJS.ProcessEnv {
+  return {
+    PATH: process.env['PATH'] ?? '',
+    HOME: home,
+    XDG_CONFIG_HOME: path.join(home, '.config'),
+    XDG_STATE_HOME: path.join(home, '.local', 'state'),
+    XDG_CACHE_HOME: path.join(home, '.cache'),
+  };
+}
+
+test('the newer of the two old layouts wins in the migrate command', async () => {
+  // The command and the first run have to move the same files to the
+  // same place. The layout of the old name is the newer one, so its
+  // routes are the ones that belong in the active store.
+  const { home } = makeBothLayouts();
+  try {
+    const { stdout } = await execFileAsync(process.execPath, [CLI, 'migrate'], {
+      env: cliEnv(home),
+      cwd: REPO_ROOT,
+    });
+
+    assert.match(stdout, /old name layout/);
+    assert.match(stdout, /the old name layout was migrated/);
+
+    const routes = path.join(home, '.local', 'state', 'gatewarden', 'routes.json');
+    assert.ok(fs.existsSync(routes), 'the route store was not written');
+    const store = JSON.parse(fs.readFileSync(routes, 'utf8')) as {
+      registrations: Array<{ project: string }>;
+    };
+    assert.equal(store.registrations.length, 1);
+    assert.equal(
+      store.registrations[0]?.project,
+      'newer-project',
+      'the older layout won the store: the two paths disagree',
+    );
+
+    const configFile = path.join(home, '.config', 'gatewarden', 'config.json');
+    const written = JSON.parse(fs.readFileSync(configFile, 'utf8')) as { zone: string };
+    assert.equal(written.zone, 'newer.example');
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('the newer of the two old layouts wins in the first run', async () => {
+  const { home } = makeBothLayouts();
+  try {
+    const config = loadConfig({ home, env: {} });
+
+    assert.equal(config.zone, 'newer.example');
+
+    const routes = path.join(home, '.local', 'state', 'gatewarden', 'routes.json');
+    assert.ok(fs.existsSync(routes), 'the route store was not written');
+    const store = JSON.parse(fs.readFileSync(routes, 'utf8')) as {
+      registrations: Array<{ project: string }>;
+    };
+    assert.equal(store.registrations.length, 1);
+    assert.equal(store.registrations[0]?.project, 'newer-project');
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('the dry run of a home with both old layouts says the same thing twice', async () => {
+  // The dry run reports what would move. Both layouts point at the same
+  // target file, so only the newer one is moved — the report has to say
+  // that, not two migrations into one file.
+  const { home } = makeBothLayouts();
+  try {
+    const { stdout } = await execFileAsync(process.execPath, [CLI, 'migrate', '--dry-run'], {
+      env: cliEnv(home),
+      cwd: REPO_ROOT,
+    });
+
+    assert.match(stdout, /old name layout/);
+    assert.match(stdout, /legacy layout/);
+    assert.match(stdout, /dry run: nothing was moved/);
+    assert.ok(!fs.existsSync(path.join(home, '.local', 'state', 'gatewarden', 'routes.json')));
+
+    // Only the newer layout claims the route store: the older one finds
+    // the target spoken for, in a dry run as well.
+    const claims = stdout.split('\n').filter((line) => line.startsWith('routes:'));
+    assert.equal(claims.length, 1, `the dry run claims the route store twice:\n${claims.join('\n')}`);
+    assert.match(claims[0] ?? '', /dev-gateway/);
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

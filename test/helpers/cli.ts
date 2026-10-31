@@ -22,7 +22,7 @@ const execFileAsync = promisify(execFile);
 export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 /** The CLI of the package. */
-export const CLI = path.join(REPO_ROOT, 'bin', 'dev-gateway.js');
+export const CLI = path.join(REPO_ROOT, 'bin', 'gatewarden.js');
 
 /** The CLI under its old name. */
 export const LEGACY_CLI = path.join(REPO_ROOT, 'bin', 'traefik-dev.js');
@@ -92,7 +92,7 @@ export interface FixtureOptions {
  * A throwaway installation the CLI can be run against.
  */
 export async function makeCliFixture(options: FixtureOptions = {}): Promise<CliFixture> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-cli-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-cli-'));
   const registryPort = await freePort();
   const relayPort = await freePort();
   const configPath = path.join(dir, 'config.json');
@@ -127,7 +127,7 @@ export async function makeCliFixture(options: FixtureOptions = {}): Promise<CliF
   // (`~/.traefik-dev/`) is looked for there, and not in the home of the
   // user the tests run as.
   //
-  // `DEV_GATEWAY_STATE_DIR` names the state directory outright, so the
+  // `GATEWARDEN_STATE_DIR` names the state directory outright, so the
   // daemon a test starts keeps its state in the throwaway directory and
   // not in the state directory of the machine the tests run on. It also
   // keeps the tests independent of the XDG variables of that machine:
@@ -139,7 +139,7 @@ export async function makeCliFixture(options: FixtureOptions = {}): Promise<CliF
     XDG_CONFIG_HOME: path.join(dir, '.config'),
     XDG_STATE_HOME: path.join(dir, '.local', 'state'),
     XDG_CACHE_HOME: path.join(dir, '.cache'),
-    DEV_GATEWAY_STATE_DIR: dir,
+    GATEWARDEN_STATE_DIR: dir,
     ...(options.env ?? {}),
   };
 

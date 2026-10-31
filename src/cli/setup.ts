@@ -1,7 +1,7 @@
 /**
  * The setup wizard (§9).
  *
- * `dev-gateway setup` walks a new installation through six steps, five of
+ * `gatewarden setup` walks a new installation through six steps, five of
  * them automatic:
  *
  * 1. read the environment (§9.1);
@@ -120,7 +120,7 @@ export const NOT_SERVED_REASON = 'the proxy does not serve the route: the wiring
  * request for a route with a successful response (the dashboard of the
  * proxy does), and that is not the route.
  */
-export const THROWAWAY_MARKER = 'dev-gateway setup check';
+export const THROWAWAY_MARKER = 'gatewarden setup check';
 
 /** One step of the end-to-end verification (§9.5). */
 export interface VerificationStep {
@@ -814,7 +814,7 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
   }
   if (unconfirmed.length > 0) {
     nextSteps.push(
-      `confirm ${unconfirmed.join(', ')}: run "dev-gateway setup" again, or write them in ${opts.configPath}`,
+      `confirm ${unconfirmed.join(', ')}: run "gatewarden setup" again, or write them in ${opts.configPath}`,
     );
   }
   if (verification.status === 'skipped' && verification.reason === NO_PROXY_REASON) {
@@ -844,7 +844,7 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
       'the public URL did not answer: the proxy has to route the route, and the certificate of the public URL has to be trusted by this machine',
     );
   }
-  nextSteps.push('run "dev-gateway install-service" so the daemon survives a reboot');
+  nextSteps.push('run "gatewarden install-service" so the daemon survives a reboot');
 
   return {
     environment,
@@ -948,7 +948,7 @@ async function verifyEndToEnd(opts: VerifyOptions): Promise<SetupReport['verific
     return { status: 'skipped', reason: NO_ZONE_REASON, steps };
   }
 
-  const project = 'dev-gateway-setup';
+  const project = 'gatewarden-setup';
   const branch = 'check';
   const zone = zoneOf(opts.config);
   const fqdn = buildFqdn(project, branch, zone);

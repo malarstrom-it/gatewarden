@@ -1,17 +1,17 @@
 /**
- * `dev-gateway` — the CLI an agent uses.
+ * `gatewarden` — the CLI an agent uses.
  *
- *   dev-gateway register --project <p> --branch <b> --port <port> [--label <text>]
- *   dev-gateway unregister --project <p> --branch <b>
- *   dev-gateway list [--json]
- *   dev-gateway status [--json]
- *   dev-gateway config [--write] [--json]
- *   dev-gateway setup [--json]
- *   dev-gateway start [--json]
- *   dev-gateway stop [--json]
- *   dev-gateway doctor [--json] [--strict]
- *   dev-gateway install-service [--no-enable] [--json]
- *   dev-gateway migrate [--dry-run] [--json]
+ *   gatewarden register --project <p> --branch <b> --port <port> [--label <text>]
+ *   gatewarden unregister --project <p> --branch <b>
+ *   gatewarden list [--json]
+ *   gatewarden status [--json]
+ *   gatewarden config [--write] [--json]
+ *   gatewarden setup [--json]
+ *   gatewarden start [--json]
+ *   gatewarden stop [--json]
+ *   gatewarden doctor [--json] [--strict]
+ *   gatewarden install-service [--no-enable] [--json]
+ *   gatewarden migrate [--dry-run] [--json]
  *
  * The commands of the old CLI (`register`, `unregister`, `list`, `status`,
  * `config`, `migrate`) keep their names and their behaviour. The commands
@@ -37,8 +37,15 @@ import {
   zoneOf,
   CONFIG_KEYS,
 } from '../core/config.ts';
-import { legacyDir, logFileFor, resolvePaths, type GatewayPaths } from '../core/paths.ts';
-import { migrateLegacyLayout } from '../core/migrate.ts';
+import {
+  deprecatedEnvNotices,
+  legacyAppPaths,
+  legacyDir,
+  logFileFor,
+  resolvePaths,
+  type GatewayPaths,
+} from '../core/paths.ts';
+import { legacyAppLayout, migrateLegacyAppLayout, migrateLegacyLayout } from '../core/migrate.ts';
 import { RegistrationStore } from '../core/state.ts';
 import { withRouteLock } from '../core/lock.ts';
 import { ensureDaemon, daemonStatus, isGatewayDaemon, isProcessAlive, pidFilePath, stopDaemon } from '../core/daemonControl.ts';
@@ -147,21 +154,21 @@ export type { HealthCheck };
 export type DoctorCheck = HealthCheck;
 
 function usage(): string {
-  return `dev-gateway — expose a dev server running on this machine through the proxy
+  return `gatewarden — expose a dev server running on this machine through the proxy
 
 Usage:
-  dev-gateway register   --project <p> --branch <b> --port <port> [--label <text>]
-  dev-gateway unregister --project <p> --branch <b>
-  dev-gateway list
-  dev-gateway status
-  dev-gateway config [--write]
-  dev-gateway setup
-  dev-gateway start
-  dev-gateway stop
-  dev-gateway doctor [--strict]
-  dev-gateway install-service
-  dev-gateway migrate [--dry-run]
-  dev-gateway version
+  gatewarden register   --project <p> --branch <b> --port <port> [--label <text>]
+  gatewarden unregister --project <p> --branch <b>
+  gatewarden list
+  gatewarden status
+  gatewarden config [--write]
+  gatewarden setup
+  gatewarden start
+  gatewarden stop
+  gatewarden doctor [--strict]
+  gatewarden install-service
+  gatewarden migrate [--dry-run]
+  gatewarden version
 
 Global options:
   --config <path>      configuration file (default: the XDG configuration directory)
@@ -187,9 +194,11 @@ The healthcheck:
   are reported as warnings. Only a thing that is there and broken fails.
 
 Environment:
-  DEV_GATEWAY_HOME         everything in one directory
-  DEV_GATEWAY_CONFIG       the configuration file
-  DEV_GATEWAY_STATE_DIR    the state directory
+  GATEWARDEN_HOME         everything in one directory
+  GATEWARDEN_CONFIG       the configuration file
+  GATEWARDEN_STATE_DIR    the state directory
+
+  The old DEV_GATEWAY_* names still work, but they are deprecated.
 `;
 }
 
@@ -357,7 +366,7 @@ export async function statusOf(
     // The four things the MCP tool `dev_gateway_status` returns (§6.2).
     ...status,
     // The keys the old CLI wrote, at the top level: a script written
-    // against `dev-gateway status --json` keeps reading them.
+    // against `gatewarden status --json` keeps reading them.
     configPath,
     stateDir: config.stateDir,
     logFile: paths.logFile,
@@ -499,19 +508,59 @@ function commandConfig(flags: Record<string, string | boolean>): number {
 function commandMigrate(flags: Record<string, string | boolean>): number {
   const dryRun = flags['dry-run'] === true;
   const { config, configPath, paths } = resolveConfig(flags, { migrate: false });
-  const report = migrateLegacyLayout({
-    paths: { ...paths, configFile: configPath },
-    legacyDir: legacyDir(),
+  const targetPaths = { ...paths, configFile: configPath };
+
+  // The layout of the name the directories had before the rename is the
+  // newer of the two old layouts, so it is migrated first: in a home
+  // that holds both, its routes are the ones that belong in the active
+  // store. The pre-package layout is migrated after it, and finds its
+  // files in place already.
+  //
+  // The order is the one the first run uses (`loadConfigWithReport`),
+  // so that the two paths move the same files to the same place.
+  const oldNameReport = migrateLegacyAppLayout({
+    paths: targetPaths,
+    legacy: legacyAppLayout(legacyAppPaths()),
     config: configFileContent(config),
     dryRun,
   });
+  // What the newer layout has claimed is spoken for: the older layout
+  // must not claim the same target file. In a dry run the file is not
+  // there yet, and the claim is the only thing that says so.
+  const claimed = [oldNameReport.config?.to, oldNameReport.routes?.to].filter(
+    (file): file is string => typeof file === 'string',
+  );
+  const report = migrateLegacyLayout({
+    paths: targetPaths,
+    legacyDir: legacyDir(),
+    config: configFileContent(config),
+    dryRun,
+    claimed,
+  });
 
   if (wantsJson(flags)) {
-    emitJson(report);
+    emitJson({ ...report, oldName: oldNameReport });
     return 0;
   }
 
-  const lines: string[] = [`legacy layout:  ${report.legacyDir}`];
+  const lines: string[] = [`old name layout:  ${oldNameReport.legacyDir}`];
+  if (oldNameReport.config) {
+    lines.push(`configuration:  ${oldNameReport.config.from} -> ${oldNameReport.config.to}`);
+  }
+  if (oldNameReport.routes) {
+    lines.push(
+      `routes:         ${oldNameReport.routes.from} -> ${oldNameReport.routes.to} (${oldNameReport.routes.count} routes)`,
+    );
+  }
+  for (const file of oldNameReport.leftInPlace) lines.push(`left in place:  ${file}`);
+  for (const note of oldNameReport.notes) lines.push(`note:           ${note}`);
+  if (oldNameReport.migrated) {
+    lines.push(dryRun ? 'dry run: nothing was moved' : 'the old name layout was migrated');
+  } else {
+    lines.push('nothing to migrate in the old name layout');
+  }
+
+  lines.push(`legacy layout:  ${report.legacyDir}`);
   if (report.config) lines.push(`configuration:  ${report.config.from} -> ${report.config.to}`);
   if (report.routes) {
     lines.push(`routes:         ${report.routes.from} -> ${report.routes.to} (${report.routes.count} routes)`);
@@ -523,6 +572,7 @@ function commandMigrate(flags: Record<string, string | boolean>): number {
   } else {
     lines.push('nothing to migrate');
   }
+
   process.stdout.write(lines.join('\n') + '\n');
   return 0;
 }
@@ -631,7 +681,7 @@ async function commandStop(flags: Record<string, string | boolean>): Promise<num
 }
 
 /**
- * The healthcheck: `dev-gateway doctor` (§9.9).
+ * The healthcheck: `gatewarden doctor` (§9.9).
  *
  * The doctor reports where the installation stands. It fails only when
  * something is broken — never because the machine it runs on is a CI
@@ -762,6 +812,11 @@ async function commandSetup(flags: Record<string, string | boolean>): Promise<nu
 
 export async function main(argv: string[]): Promise<number> {
   const { command, flags } = parseArgs(argv);
+  // The environment variables that were renamed still work. They say so
+  // once, here, where the user can see it.
+  for (const notice of deprecatedEnvNotices()) {
+    process.stderr.write(`warning: ${notice}\n`);
+  }
   if (flags['version'] === true || command === 'version') {
     process.stdout.write(`${packageVersion()}\n`);
     return 0;
@@ -800,7 +855,7 @@ export async function main(argv: string[]): Promise<number> {
   }
 }
 
-/** Entry point used by bin/dev-gateway.js. */
+/** Entry point used by bin/gatewarden.js. */
 export async function run(): Promise<void> {
   const code = await main(process.argv.slice(2));
   process.exitCode = code;

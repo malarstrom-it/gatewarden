@@ -13,7 +13,7 @@ import { detectIpv6Prefixes, listenHost, loadConfig } from '../src/core/config.t
 const homes: string[] = [];
 
 function isolatedHome(): string {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-net-'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-net-'));
   homes.push(home);
   return home;
 }

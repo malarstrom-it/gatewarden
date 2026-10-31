@@ -18,7 +18,7 @@ boardens backlogg för repot ligger.
 ## Finns kvar i /home/node/.herdr-projects-legacy/traefik-api/
 
 - `AGENTS.md` (och `CLAUDE.md`, en symlänk dit) — projektets stående instruktioner. Det som
-  gäller dev-servern finns redan i repot: `skills/dev-gateway/SKILL.md`, `README.md` och
+  gäller dev-servern finns redan i repot: `skills/gatewarden/SKILL.md`, `README.md` och
   `docs/traefik.md`.
 - `PROJECT.md` — projektets namn, mål och rollinställningar (goal, `[[repos]]`).
 - `TASKS.md` — 0.2-projektets backlogg. Den var tom.

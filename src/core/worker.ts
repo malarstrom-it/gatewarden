@@ -30,7 +30,13 @@ export type WorkerRole = 'registry' | 'relay';
  * dispatches on the header the adapter stamps.
  */
 export async function runWorker(role: WorkerRole, adapter: ProxyAdapter, config: Config): Promise<void> {
-  setLogLevel(process.env['TRAEFIK_DEV_LOG_LEVEL'] === 'debug' ? 'debug' : 'info');
+  setLogLevel(
+    (process.env['GATEWARDEN_LOG_LEVEL'] ??
+      process.env['DEV_GATEWAY_LOG_LEVEL'] ??
+      process.env['TRAEFIK_DEV_LOG_LEVEL']) === 'debug'
+      ? 'debug'
+      : 'info',
+  );
   const store = new RegistrationStore(config.stateDir);
 
   const server = role === 'registry' ? createRegistryServer(store, config, adapter) : createRelayServer(store, config);

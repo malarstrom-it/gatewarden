@@ -1,6 +1,6 @@
 ---
-name: Traefik dev gateway
-description: The index page of the dev gateway — a quiet, daylight table of what the agents are running.
+name: Gatewarden
+description: The index page of the gateway — a quiet, daylight table of what the agents are running.
 colors:
   ground: "#f6f8fb"
   card: "#ffffff"

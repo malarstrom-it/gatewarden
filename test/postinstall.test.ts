@@ -205,7 +205,7 @@ function runScript(script: string, env: NodeJS.ProcessEnv, user: ScriptUser): Pr
 
 /** A throwaway installation the script may work on. */
 function makeHome(user: ScriptUser): { home: string; configPath: string; stateDir: string } {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-postinstall-'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-postinstall-'));
   const stateDir = path.join(home, 'state');
   fs.mkdirSync(stateDir, { recursive: true });
   giveTo(user, home);
@@ -248,13 +248,13 @@ function copyDependencies(from: string, to: string, names: string[], done = new 
  * dependencies, and a manifest that is not private.
  */
 function makeInstalledPackage(user: ScriptUser): { dir: string; script: string; cleanup: () => void } {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dev-gateway-package-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-package-'));
   fs.cpSync(path.join(REPO_ROOT, 'src'), path.join(dir, 'src'), { recursive: true });
   fs.cpSync(path.join(REPO_ROOT, 'scripts'), path.join(dir, 'scripts'), { recursive: true });
   fs.writeFileSync(
     path.join(dir, 'package.json'),
     JSON.stringify(
-      { name: '@malarstrom/agent-dev-gateway', version: '0.1.0', type: 'module' },
+      { name: '@malarstrom/gatewarden', version: '0.1.0', type: 'module' },
       null,
       2,
     ),
@@ -302,8 +302,8 @@ test('the script never fails the install', async (t) => {
     const result = await runScript(
       installed.script,
       environment(home.home, {
-        DEV_GATEWAY_CONFIG: home.configPath,
-        DEV_GATEWAY_STATE_DIR: home.stateDir,
+        GATEWARDEN_CONFIG: home.configPath,
+        GATEWARDEN_STATE_DIR: home.stateDir,
       }),
       user,
     );
@@ -352,7 +352,7 @@ test('the script does nothing when the autostart is turned off', async (t) => {
   const home = makeHome(user);
   const installed = makeInstalledPackage(user);
   try {
-    await runScript(installed.script, environment(home.home, { DEV_GATEWAY_AUTOSTART: '0' }), user);
+    await runScript(installed.script, environment(home.home, { GATEWARDEN_AUTOSTART: '0' }), user);
     assert.equal(fs.existsSync(path.join(home.home, '.config')), false, 'the script wrote something');
   } finally {
     installed.cleanup();
@@ -472,8 +472,8 @@ test('the script writes the configuration and starts the daemon', async (t) => {
   const result = await runScript(
     installed.script,
     environment(home.home, {
-      DEV_GATEWAY_CONFIG: home.configPath,
-      DEV_GATEWAY_STATE_DIR: home.stateDir,
+      GATEWARDEN_CONFIG: home.configPath,
+      GATEWARDEN_STATE_DIR: home.stateDir,
     }),
     user,
   );
@@ -494,8 +494,8 @@ test('the script writes the configuration and starts the daemon', async (t) => {
   const second = await runScript(
     installed.script,
     environment(home.home, {
-      DEV_GATEWAY_CONFIG: home.configPath,
-      DEV_GATEWAY_STATE_DIR: home.stateDir,
+      GATEWARDEN_CONFIG: home.configPath,
+      GATEWARDEN_STATE_DIR: home.stateDir,
     }),
     user,
   );
@@ -533,8 +533,8 @@ test('the install does not import the old layout', async (t) => {
     const result = await runScript(
       installed.script,
       environment(home.home, {
-        DEV_GATEWAY_CONFIG: path.join(home.home, 'config.json'),
-        DEV_GATEWAY_STATE_DIR: home.stateDir,
+        GATEWARDEN_CONFIG: path.join(home.home, 'config.json'),
+        GATEWARDEN_STATE_DIR: home.stateDir,
       }),
       user,
     );
@@ -542,7 +542,7 @@ test('the install does not import the old layout', async (t) => {
     assert.equal(result.code, 0, result.stderr);
 
     // The routes of the old layout are not copied: the migration is
-    // `dev-gateway migrate`'s job, not the install's.
+    // `gatewarden migrate`'s job, not the install's.
     assert.ok(fs.existsSync(path.join(legacy, 'registrations.json')));
     assert.equal(fs.existsSync(path.join(home.stateDir, 'routes.json')), false);
 

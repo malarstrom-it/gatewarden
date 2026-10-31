@@ -15,6 +15,7 @@
 import { createInterface } from 'node:readline';
 import process from 'node:process';
 import { ensureDaemon } from '../../core/daemonControl.ts';
+import { deprecatedEnvNotices } from '../../core/paths.ts';
 import { packageVersion } from '../../core/util/module.ts';
 import { createToolContext, TOOLS, type ToolDefinition } from './tools.ts';
 
@@ -123,7 +124,7 @@ export class McpServer {
   constructor(options: McpServerOptions = {}) {
     this.options = options;
     this.tools = new Map((options.tools ?? TOOLS).map((tool) => [tool.name, tool]));
-    this.serverInfo = options.serverInfo ?? { name: 'dev-gateway', version: packageVersion() };
+    this.serverInfo = options.serverInfo ?? { name: 'gatewarden', version: packageVersion() };
   }
 
   /** The names of the tools the server offers. */
@@ -338,10 +339,10 @@ export function parseServerArgs(argv: string[]): ServerArgs {
 }
 
 function usage(): string {
-  return `dev-gateway-mcp — the MCP server of the dev gateway (stdio JSON-RPC)
+  return `gatewarden-mcp — the MCP server of the gateway (stdio JSON-RPC)
 
 Usage:
-  dev-gateway-mcp [--config <path>] [--state-dir <path>]
+  gatewarden-mcp [--config <path>] [--state-dir <path>]
 
 The server speaks the Model Context Protocol over the standard input and the
 standard output. It offers four tools: publish_dev_server, remove_dev_server,
@@ -351,19 +352,25 @@ The daemon is not started when the server starts; the first tool call starts
 it.
 
 Environment:
-  DEV_GATEWAY_HOME         everything in one directory
-  DEV_GATEWAY_CONFIG       the configuration file
-  DEV_GATEWAY_STATE_DIR    the state directory
+  GATEWARDEN_HOME         everything in one directory
+  GATEWARDEN_CONFIG       the configuration file
+  GATEWARDEN_STATE_DIR    the state directory
 `;
 }
 
 /**
  * Run the server.
  *
- * This is what `bin/dev-gateway-mcp.js` calls.
+ * This is what `bin/gatewarden-mcp.js` calls.
  */
 export async function run(argv: string[] = process.argv.slice(2)): Promise<void> {
   const args = parseServerArgs(argv);
+
+  // The environment variables that were renamed still work. They say so
+  // once, on the standard error, where the protocol does not see it.
+  for (const notice of deprecatedEnvNotices()) {
+    process.stderr.write(`warning: ${notice}\n`);
+  }
 
   if (args.help) {
     process.stdout.write(usage());
@@ -381,7 +388,7 @@ export async function run(argv: string[] = process.argv.slice(2)): Promise<void>
     }),
     {
       onError: (error) => {
-        process.stderr.write(`dev-gateway-mcp: ${error.message}\n`);
+        process.stderr.write(`gatewarden-mcp: ${error.message}\n`);
       },
     },
   );

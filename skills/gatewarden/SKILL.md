@@ -1,5 +1,5 @@
 ---
-name: dev-gateway
+name: gatewarden
 description: Publish a development server running on this machine so the user
   can open it in a browser on their network. Use when a dev server is started
   (Vite, Next, Nuxt, python -m http.server, any local port) and the user needs
@@ -43,7 +43,7 @@ restarted development server keeps its address.
 ## Without MCP — the CLI
 
 ```bash
-dev-gateway register --project my-app --branch main --port 5173
+gatewarden register --project my-app --branch main --port 5173
 ```
 
 ```text
@@ -57,7 +57,7 @@ url: https://main.my-app.example.com
 
 ```bash
 remove_dev_server { "project": "my-app", "branch": "main" }
-dev-gateway unregister --project my-app --branch main
+gatewarden unregister --project my-app --branch main
 ```
 
 Do this when you stop the development server, so the route list does not keep
@@ -69,14 +69,14 @@ replacement for unregistering yourself.
 
 ```bash
 list_dev_servers      # the address of every route, and whether its port answers
-dev-gateway list      # the same list as a table
+gatewarden list         # the same list as a table
 dev_gateway_status    # the daemon, the proxy, the configuration
-dev-gateway status
+gatewarden status       # the same, as text
 ```
 
 ## When the gateway is not set up yet
 
-`dev-gateway setup` walks the installation through: it finds the proxy, writes
+`gatewarden setup` walks the installation through: it finds the proxy, writes
 the wiring the proxy needs, writes the configuration and starts the daemon. Run
 it once, on the machine that runs the gateway.
 

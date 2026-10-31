@@ -1,4 +1,4 @@
-# Publish the agent dev gateway to an npm registry.
+# Publish the gatewarden to an npm registry.
 #
 # The trigger is a tag: `v1.2.3` stages version 1.2.3. The tag and the
 # version in package.json must agree, or the run stops.

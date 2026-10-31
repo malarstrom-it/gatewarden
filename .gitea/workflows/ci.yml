@@ -1,4 +1,4 @@
-# CI for the agent dev gateway.
+# CI for the gatewarden.
 #
 # The steps are the ones the specification names: typecheck, tests, build,
 # and a package that a consumer can install and run.
@@ -119,6 +119,7 @@ jobs:
           npm install "$work/$tarball"
           # The binary is called by its path, never through npx: npx falls
           # back to the registry when it does not find a name locally, and
-          # there is a different package called dev-gateway on npm.
-          ./node_modules/.bin/dev-gateway --version
-          ./node_modules/.bin/dev-gateway --help
+          # the name of this package is close to a name another author has
+          # on npm.
+          ./node_modules/.bin/gatewarden --version
+          ./node_modules/.bin/gatewarden --help

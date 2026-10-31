@@ -22,7 +22,7 @@ import { renderRouteTable } from './table.ts';
 import { createPiTools, listRoutes } from './tools.ts';
 
 /** The key of the status line in the footer. */
-export const STATUS_KEY = 'dev-gateway';
+export const STATUS_KEY = 'gatewarden';
 
 /**
  * How often the status line is brought up to date, in milliseconds.
@@ -58,7 +58,7 @@ async function refreshStatus(ctx: PiExtensionContext): Promise<void> {
   } catch {
     // The gateway is not readable: say so instead of showing a number
     // that means nothing.
-    ctx.ui.setStatus(STATUS_KEY, 'dev-gateway unreachable');
+    ctx.ui.setStatus(STATUS_KEY, 'gatewarden unreachable');
   }
 }
 
@@ -72,9 +72,9 @@ async function ensureDaemonRunning(ctx: PiExtensionContext): Promise<void> {
   try {
     const context = createToolContext({ cwd: ctx.cwd });
     const started = await ensureDaemon(context.config, { configPath: context.configPath });
-    if (started.error) ctx.ui.notify(`dev-gateway: ${started.error}`, 'warning');
+    if (started.error) ctx.ui.notify(`gatewarden: ${started.error}`, 'warning');
   } catch (error) {
-    ctx.ui.notify(`dev-gateway: ${(error as Error).message}`, 'warning');
+    ctx.ui.notify(`gatewarden: ${(error as Error).message}`, 'warning');
   }
 }
 
@@ -100,7 +100,7 @@ function tableComponent(lines: string[], done: () => void): PiComponent {
  * pi calls this when it loads the extension: the tools are registered,
  * the command is registered, and the session start is listened for.
  */
-export default function devGatewayExtension(
+export default function gatewardenExtension(
   pi: PiExtensionApi,
   options: PiExtensionOptions = {},
 ): void {

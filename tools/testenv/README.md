@@ -1,7 +1,7 @@
 # The test environment
 
 The isolated environment the end-to-end test runs in (D11, §11 of
-`specs/tech-architecture/agent-dev-gateway.md`).
+`specs/tech-architecture/gatewarden.md`).
 
 ```bash
 npm run test:e2e
@@ -26,7 +26,7 @@ again.
 | the registry | port 45002 | port 46002 |
 | the relay | port 45001 | port 46001 |
 | the domain | `home.malarstrom.com` | `gwtest.local` |
-| the state directory | `~/.local/state/dev-gateway/` | `/tmp/dev-gateway-test/` |
+| the state directory | `~/.local/state/gatewarden/` | `/tmp/gatewarden-test/` |
 | the proxy | the Traefik of the user | a Traefik the test downloads and starts |
 | the certificates | the ACME certificates of the user | a CA and a certificate the test makes |
 
@@ -40,7 +40,7 @@ bound would show up.
 ## What the teardown removes
 
 The directory of the environment may be one the user pointed at
-(`DEV_GATEWAY_TESTENV_ROOT`), and it may hold files that are none of
+(`GATEWARDEN_TESTENV_ROOT`), and it may hold files that are none of
 the environment's business. The teardown therefore removes **only what
 the environment wrote**: the entries that were not there before the run,
 and the entries that carry one of the names of the environment
@@ -114,15 +114,19 @@ trusts the certificate of the test and nothing else.
 
 | Variable | What it changes |
 | --- | --- |
-| `DEV_GATEWAY_TESTENV_ROOT` | the directory the environment writes in |
-| `DEV_GATEWAY_TESTENV_CACHE` | where the Traefik binary is kept |
-| `DEV_GATEWAY_TESTENV_DOMAIN` | the domain the routes are served under |
-| `DEV_GATEWAY_TESTENV_REGISTRY_PORT` | the port of the registry |
-| `DEV_GATEWAY_TESTENV_RELAY_PORT` | the port of the relay |
-| `DEV_GATEWAY_TESTENV_PROXY_PORT` | the port of the test proxy |
-| `DEV_GATEWAY_TESTENV_API_PORT` | the port of the API of the test proxy |
-| `DEV_GATEWAY_TESTENV_TRAEFIK_VERSION` | the version of Traefik |
-| `DEV_GATEWAY_TESTENV_KEEP` | keep the files of the environment when it goes down |
+| `GATEWARDEN_TESTENV_ROOT` | the directory the environment writes in |
+| `GATEWARDEN_TESTENV_CACHE` | where the Traefik binary is kept |
+| `GATEWARDEN_TESTENV_DOMAIN` | the domain the routes are served under |
+| `GATEWARDEN_TESTENV_REGISTRY_PORT` | the port of the registry |
+| `GATEWARDEN_TESTENV_RELAY_PORT` | the port of the relay |
+| `GATEWARDEN_TESTENV_PROXY_PORT` | the port of the test proxy |
+| `GATEWARDEN_TESTENV_API_PORT` | the port of the API of the test proxy |
+| `GATEWARDEN_TESTENV_TRAEFIK_VERSION` | the version of Traefik |
+| `GATEWARDEN_TESTENV_KEEP` | keep the files of the environment when it goes down |
+
+The names these variables had before the rename (`DEV_GATEWAY_TESTENV_*`) are
+still read, below the current ones. They are deprecated: the current name
+wins when both are set.
 
 The ports of the live system are not overridable: they are the ports the
 test has to leave alone.
