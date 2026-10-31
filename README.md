@@ -1,5 +1,10 @@
 # @malarstrom/gatewarden
 
+[![npm version](https://img.shields.io/npm/v/@malarstrom/gatewarden)](https://www.npmjs.com/package/@malarstrom/gatewarden)
+[![license](https://img.shields.io/npm/l/@malarstrom/gatewarden)](https://www.npmjs.com/package/@malarstrom/gatewarden)
+[![node](https://img.shields.io/badge/node-%3E%3D20.11-5FA04E?logo=node&logoColor=white)](https://nodejs.org/)
+[![ci](https://gitea.home.malarstrom.com/malarstrom/traefik-api/actions/workflows/ci.yml/badge.svg)](https://gitea.home.malarstrom.com/malarstrom/traefik-api/actions)
+
 Give a development server that runs on this machine an https address on your
 own domain: a URL you can open in a browser, on your own network.
 
@@ -30,6 +35,28 @@ user laptop ──https://main.my-app.example.com──▶ the proxy
 The core is proxy-agnostic: Traefik is one adapter behind the `ProxyAdapter`
 contract, and the adapter is picked by the `proxy` key of the configuration.
 
+## What this is not
+
+The name says gateway, and it is worth saying what the package is not,
+because the expectation it raises is wrong in most cases.
+
+* **Not a tunnel.** No third party is in the path. The request goes from the
+  browser of the user to the proxy you already run, and from there to
+  `127.0.0.1:<port>` on the machine the dev server runs on. Nothing is
+  relayed through somebody else's server.
+* **Not hosting.** The gateway does not run your dev server, does not deploy
+  anything and does not keep your application alive. It registers a route
+  and, when you unregister it, the route is gone.
+* **Not TLS termination.** The proxy terminates TLS, with the certificate of
+  your own resolver. The gateway never holds a certificate and never sees a
+  private key.
+* **Not a process manager for dev servers.** It does not start, stop or
+  watch your dev server. It checks whether the port answers, so the route
+  table can say `up` or `down`.
+* **Not Traefik-specific.** Traefik is one adapter behind the `ProxyAdapter`
+  contract. The core, the CLI, the MCP server and the route store know
+  nothing about it.
+
 ## Install
 
 ```bash
@@ -39,6 +66,22 @@ npm install -g @malarstrom/gatewarden
 Node 20.11 or later. The package ships compiled JavaScript; the runtime
 dependencies are `env-paths`, the XDG path resolution, and `proper-lockfile`,
 the lock around the route store.
+
+**The package is ESM-only.** Its manifest says `"type": "module"` and it
+ships ES modules. A CommonJS consumer cannot `require()` it as an ES module:
+the tools that check a package report it as `ESM (dynamic import only)`, and
+on Node 20 the `require()` call ends in `ERR_REQUIRE_ESM`. Use a dynamic
+import instead:
+
+```js
+const gatewarden = await import('@malarstrom/gatewarden');
+```
+
+Node 22.12 and later can `require()` an ES module, so the call may work
+there. That is the `require(esm)` support of Node, not a CommonJS build of
+this package, and it is not available on every Node version the package
+supports. The CLI, the MCP server and the pi extension are started as their
+own processes, so this concerns only code that imports the package itself.
 
 The same package is a pi package. pi installs it like any other:
 
@@ -54,9 +97,7 @@ npm install git+https://gitea.home.malarstrom.com/malarstrom/traefik-api.git
 ```
 
 The source of the package lives at
-[gitea.home.malarstrom.com/malarstrom/traefik-api](https://gitea.home.malarstrom.com/malarstrom/traefik-api),
-and a bug is reported at
-[its issues](https://gitea.home.malarstrom.com/malarstrom/traefik-api/issues).
+[gitea.home.malarstrom.com/malarstrom/traefik-api](https://gitea.home.malarstrom.com/malarstrom/traefik-api).
 
 From a tarball — a checkout, or a build of your own — the same thing:
 
@@ -64,7 +105,17 @@ From a tarball — a checkout, or a build of your own — the same thing:
 npm install -g ./<the tarball>.tgz
 ```
 
-## Vad som krävs (what you need)
+The install starts nothing: no daemon, no open port, no process in the
+background. It writes a configuration file with the default values and leaves
+the machine the way it found it. The daemon starts itself the first time a
+command needs it, and `gatewarden install-service` is the way to get it back
+after a reboot:
+
+```bash
+gatewarden install-service
+```
+
+## What you need
 
 This section is the whole installation: what has to be there, the steps in
 the order you do them, a configuration file you can copy, a checklist that
@@ -86,7 +137,7 @@ file is the way. Nothing below needs the wizard to have succeeded.
 | A Traefik proxy (v2 or v3) on another machine | The proxy terminates TLS and forwards the request. The gateway never terminates TLS itself. |
 | A DNS zone the proxy already serves, e.g. `example.com` | Every route gets the host name `<branch>.<project>.<zone>`. Without a zone there is no host name, and `gatewarden register` refuses to register a route. |
 | TLS for that zone: a certificate resolver in the proxy | The user opens an `https://` address. The gateway asks the proxy's resolver for the certificate; the credentials stay in the proxy, and the gateway never reads them. |
-| A machine the proxy can reach, and an address the proxy knows it by (a host name or an IP) | The proxy polls the configuration document on port `45002` and sends the requests to the relay on port `45001`. Both ports have to be open from the proxy to that machine, and the address of the proxy has to be in `allowedCidrs`: both listeners answer the trust list and nobody else. |
+| A machine the proxy can reach, and an address the proxy knows it by (a host name or an IP) | The proxy polls the configuration document on port `45002` and sends the requests to the relay on port `45001`. Both ports have to be open from the proxy to that machine, and the address of the proxy has to be in `allowedCidrs`: both listeners answer the trust list and nobody else. The address of the proxy is not on that list by default — see [The trust list](#the-trust-list). |
 
 **Can** — every one of these is optional, and the gateway works without them
 
@@ -97,6 +148,7 @@ file is the way. Nothing below needs the wizard to have succeeded.
 | The shared middlewares of your proxy (`compress`, `default-security-headers`) | the dev routers get them too, when you name the provider that owns them |
 | `gatewarden install-service` | the daemon starts again after a reboot |
 | More addresses in `allowedCidrs` | the gateway accepts them: the relay takes the dispatch header from them, the registry serves the configuration document to them |
+| More addresses in `registryAllowedCidrs` | the registry serves the configuration document to them as well, on top of `allowedCidrs` — never instead of it |
 
 ### Step 1 — install the package
 
@@ -125,8 +177,10 @@ value you put in `advertisedHost` in the configuration file (step 3).
 Then restart the proxy: the static configuration is only read at start-up.
 
 ```bash
-docker restart <the traefik container>
+docker restart traefik
 ```
+
+The name in the command is the name of your container.
 
 This is the one change on the proxy side, and it is yours to make: the
 gateway runs on another machine and cannot write the proxy's configuration.
@@ -184,7 +238,7 @@ Every field, one line each:
 | `compressMiddleware` | also apply the shared `compress` middleware | `false` |
 | `middlewareProvider` | the provider that owns the shared middlewares — the name of your file provider, for example | empty = the shared middlewares are not used |
 | `allowedCidrs` | the addresses allowed to talk to the gateway: the relay takes the dispatch header from them, the registry serves the configuration document to them | the address of your proxy, and the loopback |
-| `registryAllowedCidrs` | the addresses allowed to read the configuration document, on top of `allowedCidrs` | empty = the same addresses as the relay |
+| `registryAllowedCidrs` | the addresses allowed to read the configuration document, on top of `allowedCidrs`; it widens the list of the registry and never narrows it | empty = the same addresses as the relay |
 | `secret` | a shared secret between the gateway and the proxy | empty = none |
 | `stateDir` | the directory with the routes and the pid file | empty = the XDG state directory |
 | `documentFormat` | `yaml` or `json` for the configuration document | `yaml` |
@@ -241,7 +295,7 @@ not.
 | the address answers `502` | the dev server is not listening on the port you registered | check it with `gatewarden list` — the state column says `up` or `down` |
 | the address answers `404` at the proxy | the proxy has not picked the route up yet, or the wiring is not in place | wait one poll interval; then check that the `http` provider is in the proxy's static configuration, and that the proxy was restarted after it was added |
 | the relay answers `403` | the address of the proxy is not in `allowedCidrs` | add the address of the proxy to `allowedCidrs` in the configuration file, and restart the daemon |
-| the registry answers `403` | the address that asks for the configuration document is not in the trust list | add the address to `allowedCidrs` (or to `registryAllowedCidrs`) in the configuration file, and restart the daemon — the answer says which address was refused |
+| the registry answers `403` | the address that asks for the configuration document is not in the trust list | add the address to `allowedCidrs` (or to `registryAllowedCidrs`) in the configuration file, and restart the daemon — the answer says which address was refused. [The trust list](#the-trust-list) says which key covers what. |
 | the certificate of the address is not trusted | the resolver was not asked for a wildcard of the project, or the zone is another one | look at the resolver in the log of the proxy; `"tlsMode": "fqdn"` asks for one certificate per address instead of one per project |
 | the host name does not resolve | the DNS zone has no wildcard record for the subdomains | add a `*` record for the zone to your DNS |
 | `gatewarden doctor` says `not running` | the daemon is not up | `gatewarden start`, and read the log file the command names |
@@ -274,7 +328,7 @@ gatewarden start
 ```
 
 Every field of the configuration file, and every command with its flags, is
-in [Vad som krävs](#vad-som-krävs-what-you-need) above.
+in [What you need](#what-you-need) above.
 `gatewarden setup` does this step for you when your proxy answers on its
 API: it derives the values, writes the configuration file and starts the
 daemon. It is optional — the wizard is not a requirement for anything.
@@ -358,7 +412,9 @@ Code, Codex and OpenCode read it; the description is what makes the agent load
 it when a dev server is started.
 
 ```json
-"skills": ["<the directory of the package>/skills"]
+{
+  "skills": ["<the directory of the package>/skills"]
+}
 ```
 
 ### The agent instructions
@@ -379,15 +435,19 @@ remove the route when the server is gone.
 | `gatewarden setup` | optional: walk a new installation through the six steps and write the configuration file ([`docs/setup.md`](docs/setup.md)) |
 | `gatewarden start` | start the daemon and wait for it |
 | `gatewarden stop` | stop the daemon |
-| `gatewarden doctor` | report what is broken, if anything |
+| `gatewarden doctor` | report what is broken, if anything (`--strict` turns the warnings into errors as well) |
 | `gatewarden install-service` | install the daemon as a service, so it survives a reboot |
 | `gatewarden migrate [--dry-run]` | move the old layouts (`~/.traefik-dev/` and `~/.config/dev-gateway/`) to the new one, and report what moved |
+| `gatewarden version` | print the version of the package |
 
-Global options: `--config <path>`, `--state-dir <path>`, `--json`. They are
-global: they work before the command and after it.
+Global options: `--config <path>`, `--state-dir <path>`, `--json`,
+`--version`, `--help`. They are global: they work before the command and
+after it.
 
-The old names of the commands still work: `register`, `unregister`, `list`,
-`status` and `config` are the same commands under the same names.
+The commands of the old CLI keep their names and their behaviour:
+`register`, `unregister`, `list`, `status`, `config` and `migrate` are the
+same commands they were. The commands the package adds (`setup`, `start`,
+`stop`, `doctor`, `install-service`) live next to them.
 
 Every command that reports something can report it as JSON: `--json` writes one
 object to the standard output and nothing else. `gatewarden list --json` writes
@@ -418,7 +478,7 @@ that is registered but dead cannot pass as working.
 ## The configuration
 
 The configuration file (`~/.config/gatewarden/config.json` on Linux).
-Every key, what it means and what to write in it: [Vad som krävs](#vad-som-krävs-what-you-need).
+Every key, what it means and what to write in it: [What you need](#what-you-need).
 `gatewarden config` prints the same list for the installation you are in,
 and `gatewarden config --write` writes the file.
 
@@ -429,8 +489,9 @@ you would rather it did.
 Not one value of one installation is in the defaults. The zone, the
 certificate resolver, the provider of the shared middlewares and the host name
 the proxy reaches this machine under are empty until you fill them in, and the
-trust list holds the loopback addresses of every machine. A route needs a
-zone: `gatewarden register` says so when there is none.
+trust list holds the loopback addresses of this machine and the IPv6 prefixes
+of its own networks — not the address of your proxy. A route needs a zone:
+`gatewarden register` says so when there is none.
 
 The values that are derived at runtime are not written to the file either: the
 address of this machine, the host name that is the address, and the IPv6
@@ -438,6 +499,56 @@ prefixes of the machine's own networks. They are derived again on every run,
 and a file that pins the address of the moment it was written keeps
 advertising an address the machine does not have any more. An empty value in
 the file means "derived".
+
+## The trust list
+
+Both listeners are bound on every address of the machine, so both of them
+answer only the addresses in the trust list. An address that is not on the
+list gets `403` and a body that says which address was refused and where the
+list is written:
+
+```text
+forbidden: the source address 192.0.2.7 is not in the trust list (allowedCidrs)
+```
+
+Two keys in the configuration file decide who is on the list:
+
+| Key | What it covers |
+| --- | --- |
+| `allowedCidrs` | the relay: it takes the `X-Dev-Target` dispatch header from these addresses. It covers the registry as well. |
+| `registryAllowedCidrs` | the registry alone: the addresses that may read the configuration document, **on top of** `allowedCidrs`. |
+
+`registryAllowedCidrs` only ever widens the list of the registry; it never
+takes an address away from it. An empty `registryAllowedCidrs` — the default
+— means that the registry trusts exactly the same addresses as the relay, and
+the two listeners cannot drift apart.
+
+The rules, in short:
+
+* the relay answers the addresses in `allowedCidrs`;
+* the registry answers the addresses in `allowedCidrs` **and** the addresses
+  in `registryAllowedCidrs`;
+* the health probe `/healthz` is answered to the trust list and always to the
+  machine itself: the loopback is the machine, not the network, and the
+  daemon has to be able to check its own liveness;
+* when `secret` is set, the caller has to present it as well — in
+  `X-Registry-Secret` at the registry and in `X-Relay-Secret` at the relay.
+  The proxy presents it; the two listeners check it separately.
+
+Where to write it: in the configuration file, under the keys `allowedCidrs`
+and `registryAllowedCidrs`, and restart the daemon afterwards
+(`gatewarden stop`, `gatewarden start`). The file is read when the daemon
+starts, not on every request.
+
+The default of `allowedCidrs` is the loopback of the machine (`127.0.0.1/32`,
+`::1/128`) plus the IPv6 prefixes of its own networks. **The address of your
+proxy is not on it.** A proxy on another machine has to be added, or every
+request it makes is refused with `403` and no route ever reaches the proxy.
+The example in [What you need](#what-you-need) writes it as `192.0.2.0/24`.
+
+Keep `127.0.0.1/32` on the list: the examples of this README read the
+configuration document over the loopback, and the loopback is the address the
+default list holds.
 
 ## The files
 
@@ -541,9 +652,13 @@ npm warn install-scripts   @malarstrom/gatewarden@0.1.0 (postinstall: node scrip
 ```
 
 The warning is about the *scripts*, not about what they do — it names every
-package that has them, however harmless they are. This package has two: the
-install script writes a default configuration file and starts nothing, and
-`prepare` builds the package when it is installed from a git repository.
+package that has them, however harmless they are. This package has two:
+
+* the install script (`postinstall`) writes the configuration file with the
+  default values. It starts **no daemon**, opens no port and leaves no
+  process behind — the install leaves the machine the way it found it;
+* `prepare` builds the package when it is installed from a git repository,
+  because the compiled output is not in the repository.
 
 Look at them, and let them run, with:
 
@@ -554,6 +669,14 @@ npm install-scripts approve @malarstrom/gatewarden
 
 Nothing breaks if you do not: the setup wizard writes the same configuration
 file, and the commands work without one.
+
+The daemon is started by the commands that need it — every command starts it
+when it is down — and by `gatewarden install-service`, which is the way to
+have it back after a reboot:
+
+```bash
+gatewarden install-service
+```
 
 ## When something does not work
 
@@ -570,7 +693,7 @@ lists the failures that actually happen.
 ```bash
 npm ci
 npm run build      # tsc -p tsconfig.build.json
-npm test           # node --test test/*.test.ts
+npm test           # node --test --test-concurrency=1 test/*.test.ts
 npm run typecheck  # tsc --noEmit
 npm run publish:dry-run   # what the publish would upload, without uploading it
 ```
@@ -594,19 +717,46 @@ The launchers in `bin/` are thin. In a checkout they run the TypeScript source,
 so the working tree is always what runs. In an installed package — under
 `node_modules`, where Node cannot strip types — they run the compiled `dist/`.
 
+## Support
+
+This is a one-person project. There is no support team, no on-call and no
+guaranteed response time: an issue is answered when the maintainer has time,
+usually within a few days. If you need a guaranteed answer, this package is
+not for you.
+
+Ask in the issue tracker of the repository:
+[gitea.home.malarstrom.com/malarstrom/traefik-api/issues](https://gitea.home.malarstrom.com/malarstrom/traefik-api/issues).
+
+What to write there: what you ran, what you expected, what happened instead,
+and the output of `gatewarden doctor`. The last one names every check the
+command made and every check that failed, and it is often the whole answer.
+Before you open an issue, read
+[`docs/setup.md`](docs/setup.md) — it says what every check of the doctor
+means.
+
 ## Security
 
-A security flaw is reported privately, never as a public issue. The security
-policy — how to report it, to whom, within what time, and what is already
-protected — is `SECURITY.md` in the
-[repository of the package](https://gitea.home.malarstrom.com/malarstrom/traefik-api).
+A hole in the package — a way to make a listener answer an address it should
+not, a way to read the route store of another installation, a secret that
+leaks — is reported privately, never as a public issue.
+
+The security policy is [`SECURITY.md`](SECURITY.md): how to report it, to
+whom, within what time, what to send with it, what the package already
+protects and what it does not.
+
+Do not open a public issue for a security flaw. The policy names the private
+channels, and they are the ones that do not tell the world about the hole
+before it is closed.
 
 ## Contributing
 
 How to build, test, typecheck and pack the package, which commits are taken,
 and what every change has to follow: [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+## Changelog
+
 What changed in each release: [`CHANGELOG.md`](CHANGELOG.md).
 
 ## License
 
-MIT.
+MIT — the full text is [`LICENSE`](LICENSE).
