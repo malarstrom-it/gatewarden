@@ -12,8 +12,43 @@ names. Every release gets a section, newest first.
 
 ## Unreleased
 
+## 0.1.1 - 2026-11-01
+
+The version before this one, `0.1.0`, was withdrawn from the registry on the
+day it was published: nobody could install it, so nobody has it. This is the
+first release of the package that is on the registry, and the first one a
+reader can install and use.
+
+### Added
+
+- **The install starts no daemon.** `npm install` writes the configuration
+  file with the default values and creates the three directories the gateway
+  uses. It opens no port, starts no process and leaves nothing behind. The
+  daemon starts itself the first time a command needs it, and
+  `gatewarden install-service` brings it back after a reboot.
+- **Both listeners answer only the addresses in the trust list.** The
+  registry and the relay answer an address that is not in the list with
+  `403`, and the answer says which address was refused and in which key the
+  list is written. `registryAllowedCidrs` widens the list of the registry on
+  top of `allowedCidrs`.
+- **The health check reports instead of failing.** `gatewarden doctor` names
+  every check it made, with the reason and the way out, and changes nothing.
+  A thing that is missing but not broken is a warning, not a failure, and
+  `--strict` turns the warnings into failures for the one who wants that.
+- **The manifest of the package is complete.** The files the package ships
+  are named one by one in the manifest, the entry points name their type
+  declarations before their JavaScript, the three binaries are named, the
+  version of node is declared, and the package is ESM-only.
+- **A release is gated.** A version that does not typecheck, does not build
+  or does not pass the tests never reaches the registry: the build and the
+  tests are the gate of the release.
+
 ### Changed
 
+- **The README is written for a reader who has never seen the tool.** It
+  says what the tool does, what it needs, how to install it, how to
+  configure it and what to do when something does not work. It does not
+  describe the installation it was written for any more.
 - **The published package names no repository.** The manifest fields
   `repository`, `homepage`, `bugs` and `funding` are gone, and the README,
   the changelog and the contributing guide no longer name the host of the
@@ -35,6 +70,11 @@ names. Every release gets a section, newest first.
   its own, and the relay attached its handler only after the refusals: a peer
   that reset a refused upgrade gave an unhandled `ECONNRESET` that stopped the
   worker.
+
+### Documentation
+
+- `docs/install-scripts.md` — the two install scripts of the package, the
+  warning npm prints for them, and the commands that review and approve them.
 
 ## 0.1.0 - 2026-10-31
 

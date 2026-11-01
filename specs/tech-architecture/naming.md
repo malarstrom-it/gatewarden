@@ -50,8 +50,9 @@ reasons:
    named the agent as the user of the tool rather than the tool itself.
 
 The name is free: `https://registry.npmjs.org/gatewarden` answers 404, and the
-npm search for `gatewarden` finds no package of that name. The package has
-never been published, so the version `0.1.0` is free as well.
+npm search for `gatewarden` finds no package of that name. The version
+`0.1.0` was published on 2026-11-01 and withdrawn the same day: a version
+that has been published is taken for good, so the next one is `0.1.1`.
 
 ---
 

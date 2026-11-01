@@ -37,7 +37,7 @@ A global install of this package says, with npm 11.19.0:
 
 ```text
 npm warn install-scripts 1 package has install scripts not yet covered by allowScripts:
-npm warn install-scripts   @malarstrom/gatewarden@0.1.0 (postinstall: node scripts/postinstall.mjs; prepare: npm run build)
+npm warn install-scripts   @malarstrom/gatewarden@0.1.1 (postinstall: node scripts/postinstall.mjs; prepare: npm run build)
 npm warn install-scripts Run `npm install -g --allow-scripts=@malarstrom/gatewarden` to allow these scripts once, or `npm config set allow-scripts=@malarstrom/gatewarden --location=user` to allow them for all global installs.
 ```
 
@@ -45,7 +45,7 @@ and with npm 12.2.1:
 
 ```text
 npm warn install-scripts 1 package had install scripts blocked because they are not covered by allowScripts:
-npm warn install-scripts   @malarstrom/gatewarden@0.1.0 (postinstall: node scripts/postinstall.mjs; prepare: npm run build)
+npm warn install-scripts   @malarstrom/gatewarden@0.1.1 (postinstall: node scripts/postinstall.mjs; prepare: npm run build)
 npm warn install-scripts Run `npm install -g --allow-scripts=@malarstrom/gatewarden` to allow these scripts once, or `npm config set allow-scripts=@malarstrom/gatewarden --location=user` to allow them for all global installs.
 ```
 
@@ -77,7 +77,7 @@ npm install-scripts deny @malarstrom/gatewarden         # write the denial
   under npm 12 it is blocked. Neither prints a warning.
 
 The key in the `allowScripts` field follows where the dependency comes from. A
-dependency from the registry gets a pinned `@malarstrom/gatewarden@0.1.0`. A
+dependency from the registry gets a pinned `@malarstrom/gatewarden@0.1.1`. A
 dependency from a tarball gets the path of the tarball.
 
 These commands need a project. With `-g` they stop with `EGLOBAL`.

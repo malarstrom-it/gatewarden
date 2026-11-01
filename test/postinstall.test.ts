@@ -280,7 +280,7 @@ function makeInstalledPackage(user: ScriptUser): { dir: string; script: string; 
   fs.writeFileSync(
     path.join(dir, 'package.json'),
     JSON.stringify(
-      { name: '@malarstrom/gatewarden', version: '0.1.0', type: 'module' },
+      { name: '@malarstrom/gatewarden', version: '0.1.1', type: 'module' },
       null,
       2,
     ),

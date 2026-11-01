@@ -23,8 +23,9 @@ Each decision records what was chosen, why, and what was rejected.
 The binary is `gatewarden`. The scope is the `malarstrom` organisation on npm.
 
 The name is free: `https://registry.npmjs.org/gatewarden` answers 404, and the
-npm search for `gatewarden` finds nothing. The package has never been
-published, so the version `0.1.0` is free as well.
+npm search for `gatewarden` finds nothing. The version `0.1.0` was published
+on 2026-11-01 and withdrawn the same day: a version that has been published
+is taken for good, so the next one is `0.1.1`.
 
 *Rejected*: the name the package had before this decision — it is taken on
 npm (version 0.3.0), and that package installs a binary of the same name, so
@@ -374,7 +375,7 @@ Published contents:
 ```json
 {
   "name": "@malarstrom/gatewarden",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -1393,8 +1394,10 @@ error — and the reason then is the answer that came.
 
 ## 13. Release
 
-The first release is `0.1.0` on the `malarstrom` npm organisation, published
-from `feat/npm-package` after the slices are merged.
+The release is `0.1.1` on the `malarstrom` npm organisation, published
+from `feat/npm-package` after the slices are merged. The version `0.1.0`
+was published on 2026-11-01 and withdrawn the same day, so it can never be
+used again, and the release after it is `0.1.1`.
 
 The live system is not touched by this work. The running gateway is a
 separate copy under `/opt/`, and the user's proxy already has the HTTP

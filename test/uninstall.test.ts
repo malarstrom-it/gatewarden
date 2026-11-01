@@ -69,7 +69,7 @@ function makeInstalledPackage(): { dir: string; tree: string; cleanup: () => voi
   fs.cpSync(path.join(REPO_ROOT, 'scripts'), path.join(dir, 'scripts'), { recursive: true });
   fs.writeFileSync(
     path.join(dir, 'package.json'),
-    JSON.stringify({ name: '@malarstrom/gatewarden', version: '0.1.0', type: 'module' }, null, 2),
+    JSON.stringify({ name: '@malarstrom/gatewarden', version: '0.1.1', type: 'module' }, null, 2),
   );
   const modules = path.join(dir, 'node_modules');
   fs.mkdirSync(modules, { recursive: true });
