@@ -31,8 +31,9 @@ The name says gateway, and the expectation it raises is wrong in most cases.
   watch your dev server. It registers a route, and the route is gone as soon as you remove it.
 - Not TLS termination. The proxy terminates TLS, with the certificate of your own
   resolver. The gateway never holds a certificate and never sees a private key.
-- Not Traefik-specific. Traefik is one adapter behind the `ProxyAdapter` contract. The
-  core, the CLI, the MCP server and the route store know nothing about it.
+- Not Traefik-specific. The core does not know what a router, a service or a middleware
+  is: it hands the routes to a proxy adapter and serves what the adapter renders. The
+  adapter contract is small, and the section below says how another adapter is written.
 
 ## Install
 
@@ -145,9 +146,6 @@ project and the branch. Never compose it by hand.
 | `gatewarden install-service [--no-enable]` | Install the daemon as a service, so it starts again after a reboot. |
 | `gatewarden version` | Print the version of the package. |
 
-The command `gatewarden migrate [--dry-run]` moves the files of an installation
-that uses an older layout, and reports what moved.
-
 Global options: `--config <path>`, `--state-dir <path>`, `--json`, `--version`,
 `--help`. They work before the command and after it.
 
@@ -204,6 +202,42 @@ The default of `allowedCidrs` is the loopback of the machine and the IPv6 prefix
 own networks. The address of your proxy is not on it: add it, or every request from the
 proxy is refused with `403`. The daemon reads the file at start-up, so restart it after
 a change.
+
+## The proxy adapter
+
+The core is proxy-agnostic. Everything that has to do with a route — the name it gets,
+the registry that publishes the document, the CLI and the MCP server — knows nothing
+about which proxy is in front of the machine. The trust list is about addresses, not
+about the proxy: it says who may talk to the gateway. The core knows routes, ports,
+host names and reachability, and asks an adapter for everything else.
+
+The package ships with one adapter: the Traefik adapter. It reads the routes and the
+configuration and renders the document Traefik polls, under the path `/traefik`. When
+it is asked, it reads the API of the proxy to find out which proxy it is talking to.
+
+The interface an adapter implements is small: an id, an optional address of the proxy's
+API, three methods and one that is optional:
+
+| What the adapter has | What it does |
+| --- | --- |
+| `id` | The name of the proxy. It is also the path the document is served under. |
+| `defaultApiBaseUrl` | Where the API of the proxy usually answers. Optional. |
+| `discover(options)` | Find the proxy, read its version and what it derives from its own configuration. |
+| `render(routes, config)` | Render the document the proxy polls: the relay the requests go to, and the id of the route that the proxy stamps on the request. The port of the dev server is not in the document — the relay looks it up when the request arrives. |
+| `wiringSnippet(config)` | The static configuration the user has to add to the proxy. |
+| `verify(route, config)` | Whether the proxy already knows the route. Optional. |
+
+An adapter for another proxy — Caddy, say — is a file of a few hundred lines against
+the contract the package exports (`ProxyAdapter`, from `@malarstrom/gatewarden`): the
+Traefik adapter that ships with the package is one such file, about five hundred lines.
+The package does not load an adapter at run time. The `proxy` key of the configuration
+file names one, and the daemon picks it from the adapters it is built with. An id it
+does not know is an error the worker dies of: it exits with `unknown proxy`, the daemon
+starts it again, and the gateway never answers — `gatewarden start` fails on the health
+check. A second adapter is therefore a change in the package, not a setting in the
+configuration file.
+
+No second adapter ships with the package. Writing the one you want is your own work.
 
 ## The agent surfaces
 
