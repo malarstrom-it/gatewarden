@@ -20,11 +20,14 @@
  *      says what leaked and in which file — and so that the next person
  *      can see what the guard is for;
  *   2. **the generic rules**: no address of a private network (the IPv4
- *      ranges of RFC 1918 and the IPv6 range that is their equivalent) and
+ *      ranges of RFC 1918 and the IPv6 range that are their equivalent) and
  *      no e-mail address outside the domains that are reserved for
  *      examples. They catch the leak that is not in the list above: the
  *      address that was added yesterday, the account of another
- *      installation.
+ *      installation;
+ *   3. **the one e-mail address the package may carry**: the support
+ *      address, which is named on purpose (see
+ *      `PUBLIC_CONTACT_ADDRESSES` below).
  *
  * What stays on purpose: the name of the package and the organisation it
  * belongs to. They are the name of the package, not the data of an
@@ -106,6 +109,48 @@ const PUBLIC_GIT_HOST: string = '';
  * the readme, in a link or in a path of a workflow file.
  */
 const GIT_SERVER_NAMES = ['gitea'];
+
+/**
+ * The contact addresses that the published package names on purpose.
+ *
+ * The support address of the package is the address a reader writes to, so
+ * it has to be public and it has to be in the published package: the README
+ * names it in the support section and in the security section. The
+ * maintainer of the package decided on 2026-11-01 that this address is the
+ * support channel of the package and that it may be published. It is the one
+ * e-mail address the published package carries, and the guard accepts it
+ * exactly.
+ *
+ * The allowance is narrow on purpose. The domain of the address is the
+ * personal domain of the installation the package was written for, and the
+ * guard keeps that domain forbidden everywhere else: only the places that
+ * lie inside this exact address are allowed.
+ *
+ * The address of the ACME account is not on this list. That account belongs
+ * to the installation the package was written for, and its address says
+ * nothing to a reader of the package. It stays forbidden, like every other
+ * identifier of that installation.
+ */
+const PUBLIC_CONTACT_ADDRESSES: string[] = ['npm@malarstrom.se'];
+
+/**
+ * Does the place at `index` lie inside one of the allowed contact
+ * addresses?
+ *
+ * The guard reads the files of the tarball as text, and the domain of the
+ * support address is a part of that text. A place inside an allowed address
+ * is not a leak: it is the address the package is allowed to carry.
+ */
+function insidePublicAddress(text: string, index: number): boolean {
+  for (const address of PUBLIC_CONTACT_ADDRESSES) {
+    let start = text.indexOf(address);
+    while (start !== -1) {
+      if (index >= start && index < start + address.length) return true;
+      start = text.indexOf(address, start + 1);
+    }
+  }
+  return false;
+}
 
 /**
  * The addresses of a private network.
@@ -222,7 +267,9 @@ describe('the published package', () => {
         while (index !== -1) {
           // A public mirror of the source, when there is one, is allowed.
           const onPublicHost = PUBLIC_GIT_HOST !== '' && text.startsWith(PUBLIC_GIT_HOST, index - PUBLIC_GIT_HOST.length + value.length);
-          if (!onPublicHost) hits.push(`${file}:${lineOf(text, index)}: "${value}" — ${what}`);
+          // The domain of the support address is a part of that address.
+          const inPublicAddress = insidePublicAddress(text, index);
+          if (!onPublicHost && !inPublicAddress) hits.push(`${file}:${lineOf(text, index)}: "${value}" — ${what}`);
           index = text.indexOf(value, index + value.length);
         }
       }
@@ -284,12 +331,18 @@ describe('the published package', () => {
     );
   });
 
-  test('the tarball holds no e-mail address of an account', () => {
+  test('the tarball holds no e-mail address of an account but the support address', () => {
     const hits: string[] = [];
+    let support = 0;
 
     for (const file of files) {
       const text = fs.readFileSync(path.join(packageDir, file), 'utf8');
       for (const match of text.matchAll(EMAIL)) {
+        // The support address is public on purpose and is allowed.
+        if (PUBLIC_CONTACT_ADDRESSES.includes(match[0].toLowerCase())) {
+          support += 1;
+          continue;
+        }
         const domain = (match[0].split('@')[1] ?? '').toLowerCase();
         const last = domain.split('.').pop() ?? '';
         if (EXAMPLE_DOMAINS.has(domain) || EXAMPLE_DOMAINS.has(last)) continue;
@@ -303,5 +356,9 @@ describe('the published package', () => {
       'the published package holds the address of an account; the examples use the domains that RFC 2606 and RFC 6761 reserve:\n' +
         hits.join('\n'),
     );
+
+    // The allowance is not a hole that may go quiet: the package has to
+    // name the support address, or a reader has nowhere to write.
+    assert.ok(support > 0, 'the published package names no support address');
   });
 });
