@@ -109,22 +109,52 @@ export function createRelayServer(store: RegistrationStore, config: Config): htt
   });
 
   // WebSocket / HMR upgrades are tunnelled raw.
-  server.on('upgrade', (req, socket, head) => {
+  //
+  // The relay owns the upgraded sockets: Node counts every accepted
+  // connection, and `close()` waits for that count to reach zero. An
+  // upgraded socket is not closed by `close()` — the relay has to close
+  // it itself, or the listener never finishes closing and the socket's
+  // handle keeps the process alive.
+  const upgraded = new Set<net.Socket>();
+  const upstreams = new Set<net.Socket>();
+
+  server.on('upgrade', (req, rawSocket, head) => {
+    // Node types the socket of an upgrade as a Duplex. It is the
+    // connection's own socket, and the relay handles it as one.
+    const socket = rawSocket as net.Socket;
+    upgraded.add(socket);
+    socket.once('close', () => upgraded.delete(socket));
+
+    // Node removes the error handler the HTTP server installed when a
+    // connection is upgraded: the socket is the application's from here
+    // on. Without a handler of its own, a peer that resets the
+    // connection takes the whole process down with an unhandled 'error'.
+    let upstream: net.Socket | undefined;
+    socket.on('error', (error: Error) => {
+      log('warn', SCOPE, 'upgrade socket error', error.message);
+      upstream?.destroy();
+      socket.destroy();
+    });
+
+    const refuse = (status: string) => {
+      socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\n\r\n`);
+    };
+
     const trusted = isTrusted({ address: req.socket.remoteAddress }, req.headers, config, trust(config));
     if (!trusted.ok) {
       log('warn', SCOPE, 'rejected upgrade', trusted.reason);
-      socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n');
+      refuse('403 Forbidden');
       return;
     }
 
     const id = readHeader(req.headers, DISPATCH_HEADER);
     if (!id) {
-      socket.end(`HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n`);
+      refuse('404 Not Found');
       return;
     }
     const registration = store.find(id);
     if (!registration) {
-      socket.end(`HTTP/1.1 404 Not Found\r\nConnection: close\r\n\r\n`);
+      refuse('404 Not Found');
       return;
     }
 
@@ -138,22 +168,37 @@ export function createRelayServer(store: RegistrationStore, config: Config): htt
       '',
     ].join('\r\n');
 
-    const upstream = net.connect({ host: '127.0.0.1', port: registration.devPort }, () => {
-      upstream.write(requestLine);
-      if (head && head.length > 0) upstream.write(head);
-      socket.pipe(upstream).pipe(socket);
+    const connection = net.connect({ host: '127.0.0.1', port: registration.devPort }, () => {
+      connection.write(requestLine);
+      if (head && head.length > 0) connection.write(head);
+      socket.pipe(connection).pipe(socket);
     });
+    upstream = connection;
+    upstreams.add(connection);
+    connection.once('close', () => upstreams.delete(connection));
 
-    upstream.on('error', (error: Error) => {
+    connection.on('error', (error: Error) => {
       log('warn', SCOPE, 'upgrade upstream error', `${registration.id}: ${error.message}`);
       socket.destroy();
     });
-    socket.on('error', () => upstream.destroy());
   });
 
   server.on('clientError', (_error, socket) => {
     if (socket.writable) socket.end('HTTP/1.1 400 Bad Request\r\n\r\n');
   });
+
+  // Closing the listener closes the upgraded sockets with it. The
+  // wrapper is the only way to reach them: `close()` waits for the
+  // connection count to reach zero, and an upgraded socket only leaves
+  // that count when it is destroyed.
+  const closeListener = server.close.bind(server);
+  server.close = ((callback?: (error?: Error) => void) => {
+    for (const socket of upgraded) socket.destroy();
+    for (const socket of upstreams) socket.destroy();
+    upgraded.clear();
+    upstreams.clear();
+    return closeListener(callback);
+  }) as typeof server.close;
 
   return server;
 }

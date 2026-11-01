@@ -12,7 +12,18 @@ names. Every release gets a section, newest first.
 
 ## [Unreleased]
 
-Nothing yet. The section stays here, empty, until the next change lands.
+### Fixed
+
+- **The relay closes its upgraded WebSocket sockets.** An upgraded socket is
+  not closed by `server.close()`, and the relay never closed it either: the
+  listener could therefore never finish its shutdown while a WebSocket was
+  open, and the socket's handle kept the process alive. The relay now owns
+  the upgraded sockets and closes them with the listener.
+- **A peer that resets a refused WebSocket no longer takes the gateway down.**
+  Node hands an upgraded socket to the application without an error handler of
+  its own, and the relay attached its handler only after the refusals: a peer
+  that reset a refused upgrade gave an unhandled `ECONNRESET` that stopped the
+  worker.
 
 ## [0.1.0] - 2026-10-31
 

@@ -636,7 +636,9 @@ use the same order, so they move the same files to the same place.
 - **registry** serves the dynamic configuration document. Two endpoints (D9).
   It answers the trust list and nobody else (D15).
 - **relay** resolves the dispatch header to `127.0.0.1:<port>` and proxies,
-  tunnelling WebSocket upgrades.
+  tunnelling WebSocket upgrades. The relay owns the upgraded sockets: it
+  closes them when the listener closes, and a peer that resets the
+  connection is an error the relay handles, not a crash of the worker.
 - **worker** is one supervised child process per listener, so a crash in one
   does not take the other down.
 - **daemon** supervises the workers, writes the pidfile, rotates the log.

@@ -79,6 +79,30 @@ export interface EchoServer {
   lastHandshake: () => Record<string, string>;
 }
 
+/**
+ * Close a socket and wait for it to be gone.
+ *
+ * The socket is ended first, so the peer sees a normal close, and
+ * destroyed when it does not close itself. A socket that is left open
+ * keeps a handle in the event loop, and the test process then never
+ * exits.
+ */
+export function closeSocket(socket: net.Socket, timeoutMs = 1000): Promise<void> {
+  if (socket.destroyed) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(() => {
+      socket.destroy();
+      resolve();
+    }, timeoutMs);
+    timer.unref();
+    socket.once('close', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+    socket.end();
+  });
+}
+
 /** Start a WebSocket echo server on an ephemeral port. */
 export function startEchoServer(): Promise<EchoServer> {
   let handshake: Record<string, string> = {};
@@ -132,7 +156,11 @@ export function startEchoServer(): Promise<EchoServer> {
         port,
         lastHandshake: () => handshake,
         close: async () => {
-          for (const socket of sockets) socket.destroy();
+          // The sockets first: the server only finishes closing when
+          // every connection it accepted is gone.
+          const open = [...sockets];
+          for (const socket of open) socket.destroy();
+          await Promise.all(open.map((socket) => closeSocket(socket)));
           await new Promise<void>((done) => server.close(() => done()));
         },
       });
@@ -140,16 +168,110 @@ export function startEchoServer(): Promise<EchoServer> {
   });
 }
 
+/** The result of a WebSocket round trip. */
+export interface WsRoundTrip {
+  /** The echoed message. */
+  reply: string;
+  /** The headers of the handshake the server answered with. */
+  handshake: Record<string, string>;
+  /** Close the connection and wait for it to be gone. */
+  close: () => Promise<void>;
+}
+
+/** The result of an opened WebSocket connection. */
+export interface WsConnection {
+  /** The headers of the handshake the server answered with. */
+  handshake: Record<string, string>;
+  /** The socket, still open. */
+  socket: net.Socket;
+  /** Close the connection and wait for it to be gone. */
+  close: () => Promise<void>;
+}
+
+/** Write the handshake request on an open socket. */
+function writeHandshake(
+  socket: net.Socket,
+  port: number,
+  path: string,
+  headers: Record<string, string>,
+): void {
+  const key = randomBytes(16).toString('base64');
+  const lines = [
+    `GET ${path} HTTP/1.1`,
+    `Host: 127.0.0.1:${port}`,
+    'Upgrade: websocket',
+    'Connection: Upgrade',
+    `Sec-WebSocket-Key: ${key}`,
+    'Sec-WebSocket-Version: 13',
+    ...Object.entries(headers).map(([name, value]) => `${name}: ${value}`),
+    '',
+    '',
+  ];
+  socket.write(lines.join('\r\n'));
+}
+
+/**
+ * Open a WebSocket connection to `port` and keep it open.
+ *
+ * The caller owns the socket and has to close it: an open socket keeps
+ * a handle in the event loop.
+ */
+export function openUpgrade(
+  port: number,
+  path: string,
+  headers: Record<string, string> = {},
+): Promise<WsConnection> {
+  return new Promise((resolve, reject) => {
+    const socket = net.connect({ port, host: '127.0.0.1' });
+    let buffer = Buffer.alloc(0);
+    let handshake: Record<string, string> = {};
+    const timer = setTimeout(() => {
+      socket.destroy();
+      reject(new Error('websocket handshake timed out'));
+    }, 5000);
+
+    socket.on('error', (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+
+    socket.on('connect', () => writeHandshake(socket, port, path, headers));
+
+    socket.on('data', (chunk) => {
+      buffer = Buffer.concat([buffer, chunk]);
+      const end = buffer.indexOf('\r\n\r\n');
+      if (end < 0) return;
+      const head = buffer.subarray(0, end).toString('utf8');
+      handshake = {};
+      for (const line of head.split('\r\n').slice(1)) {
+        const colon = line.indexOf(':');
+        if (colon > 0) handshake[line.slice(0, colon).trim().toLowerCase()] = line.slice(colon + 1).trim();
+      }
+      clearTimeout(timer);
+      if (!/^HTTP\/1\.1 101/.test(head)) {
+        socket.destroy();
+        reject(new Error(`handshake failed: ${head.split('\r\n')[0]}`));
+        return;
+      }
+      resolve({ handshake, socket, close: () => closeSocket(socket) });
+    });
+  });
+}
+
 /**
  * Open a WebSocket connection to `port`, send `message` and wait for the
  * echoed reply.
+ *
+ * The connection is closed by the caller through `close()`. The socket
+ * is half-closed as soon as the reply is in, so the peer sees a normal
+ * close, but the socket stays in the event loop until it is closed.
  */
 export function wsRoundTrip(
   port: number,
   path: string,
   message: string,
   headers: Record<string, string> = {},
-): Promise<{ reply: string; handshake: Record<string, string> }> {
+): Promise<WsRoundTrip> {
   return new Promise((resolve, reject) => {
     const socket = net.connect({ port, host: '127.0.0.1' });
     let buffer = Buffer.alloc(0);
@@ -166,19 +288,7 @@ export function wsRoundTrip(
     });
 
     socket.on('connect', () => {
-      const key = randomBytes(16).toString('base64');
-      const lines = [
-        `GET ${path} HTTP/1.1`,
-        `Host: 127.0.0.1:${port}`,
-        'Upgrade: websocket',
-        'Connection: Upgrade',
-        `Sec-WebSocket-Key: ${key}`,
-        'Sec-WebSocket-Version: 13',
-        ...Object.entries(headers).map(([name, value]) => `${name}: ${value}`),
-        '',
-        '',
-      ];
-      socket.write(lines.join('\r\n'));
+      writeHandshake(socket, port, path, headers);
     });
 
     socket.on('data', (chunk) => {
@@ -209,7 +319,11 @@ export function wsRoundTrip(
         if (frame.opcode === 0x1) {
           clearTimeout(timer);
           socket.end();
-          resolve({ reply: frame.payload.toString('utf8'), handshake });
+          resolve({
+            reply: frame.payload.toString('utf8'),
+            handshake,
+            close: () => closeSocket(socket),
+          });
           return;
         }
       }
