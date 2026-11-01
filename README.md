@@ -3,7 +3,10 @@
 [![npm version](https://img.shields.io/npm/v/@malarstrom/gatewarden)](https://www.npmjs.com/package/@malarstrom/gatewarden)
 [![license](https://img.shields.io/npm/l/@malarstrom/gatewarden)](https://www.npmjs.com/package/@malarstrom/gatewarden)
 [![node](https://img.shields.io/badge/node-%3E%3D20.11-5FA04E?logo=node&logoColor=white)](https://nodejs.org/)
-[![ci](https://gitea.home.malarstrom.com/malarstrom/traefik-api/actions/workflows/ci.yml/badge.svg)](https://gitea.home.malarstrom.com/malarstrom/traefik-api/actions)
+
+The two npm badges read `npm: invalid` and `license: package not found` until
+the package is on the registry. They show the version and the license of the
+published package from the moment it is published.
 
 Give a development server that runs on this machine an https address on your
 own domain: a URL you can open in a browser, on your own network.
@@ -106,10 +109,14 @@ npm install -g ./<the tarball>.tgz
 ```
 
 The install starts nothing: no daemon, no open port, no process in the
-background. It writes a configuration file with the default values and leaves
-the machine the way it found it. The daemon starts itself the first time a
-command needs it, and `gatewarden install-service` is the way to get it back
-after a reboot:
+background. The install script writes the configuration file with the default
+values — when there is no configuration file yet — and creates the three
+directories the gateway uses: the configuration directory, the state
+directory and the cache. It writes nothing when the install runs as root, in
+a CI, in a checkout of the repository, or when `GATEWARDEN_AUTOSTART=0` is
+set, and it never overwrites a configuration file that is already there. The
+daemon starts itself the first time a command needs it, and
+`gatewarden install-service` is the way to get it back after a reboot:
 
 ```bash
 gatewarden install-service
@@ -377,9 +384,9 @@ runtime dependency, it is only the oracle of the conformance test.
 }
 ```
 
-The `mcpServers` format is the one pi documents as matching the other MCP
-clients, so the same entry works in Claude Code, Cursor, VS Code, Windsurf,
-Zed, Continue, Goose and OpenCode.
+The `mcpServers` format is the one pi documents for the other MCP clients:
+Claude Desktop, Claude Code and Cursor copy the entry as it is, and VS Code,
+Codex and OpenCode convert their own format into it.
 
 | Tool | Input | Output |
 | --- | --- | --- |
@@ -603,15 +610,22 @@ Two layers start the daemon, and each one is enough on its own:
 | the lazy start | every command that needs the daemon starts it and waits for it | always |
 | `install-service` | the daemon is a service of the user | survives a reboot |
 
-The install starts nothing. `npm install` writes the configuration file and
-leaves the machine the way it found it: no daemon, no open port, no process
-in the background. The first command that needs the daemon starts it, and
-`gatewarden start` starts it without waiting for such a command.
+The commands that need the daemon start it: `register`, `unregister`,
+`setup` and `start`. The commands that only read the installation — `list`,
+`status`, `config`, `doctor` and `migrate` — do not, and `stop` does not
+either.
+
+The install starts nothing. `npm install` writes the configuration file when
+there is none yet and creates the directories of the installation: no daemon,
+no open port, no process in the background. The first command that needs the
+daemon starts it, and `gatewarden start` starts it without waiting for such a
+command.
 
 The install script never fails the install: it exits 0 whatever it does, and
-it does nothing as root, in CI, or when `GATEWARDEN_AUTOSTART=0` is set. npm
-11 blocks the install scripts of a dependency until you have looked at them —
-see [The warning of npm 11](#the-warning-of-npm-11).
+it does nothing as root, in CI, in a checkout of the repository, or when
+`GATEWARDEN_AUTOSTART=0` is set. npm 11 names the install scripts of a
+dependency in a warning and offers to let them run — see
+[The warning of npm 11](#the-warning-of-npm-11).
 
 `install-service` writes the unit of the platform and enables it:
 
@@ -627,11 +641,12 @@ without enabling it, which is what a machine without `systemctl --user` needs.
 ## The uninstall
 
 `npm uninstall @malarstrom/gatewarden` takes the daemon with it, and the
-files of the installation with the daemon. The daemon watches its own
-installation and stops itself when the package is gone: npm 7 and later do
-not run the uninstall scripts of a package — npm's own documentation says so
-— and a daemon that is left behind would keep listening on two ports for a
-package that is not there any more.
+files of the installation with the daemon — as long as the daemon is running
+when the package goes. The daemon watches its own installation and stops
+itself when the package is gone: npm does not run the uninstall scripts of a
+package (checked with npm 11.19.0: neither `preuninstall` nor
+`postuninstall` is run), and a daemon that is left behind would keep
+listening on two ports for a package that is not there any more.
 
 The configuration file, the route store, the log and the cache go with it.
 `GATEWARDEN_HOME` decides where they were, and the names the environment
@@ -643,36 +658,65 @@ files.
 
 ## The warning of npm 11
 
-npm 11 names every dependency that ships install scripts in a warning, and it
-blocks those scripts until you have looked at them:
+npm 11.16 and later name every dependency that ships install scripts in a
+warning, and they list the scripts of the package. npm 11.16 and 11.17 write
+`npm warn allow-scripts`; npm 11.18 and later write `npm warn
+install-scripts`. A global install of this package says, with npm 11.19.0:
 
 ```text
 npm warn install-scripts 1 package has install scripts not yet covered by allowScripts:
 npm warn install-scripts   @malarstrom/gatewarden@0.1.0 (postinstall: node scripts/postinstall.mjs; prepare: npm run build)
+npm warn install-scripts
 ```
+
+The last line of the warning names the two commands that let the scripts
+run — the two that a global install needs.
+
+(A registry install has one script to warn about: `prepare` runs only for the
+sources that are not the registry — a git repository or a tarball.)
 
 The warning is about the *scripts*, not about what they do — it names every
 package that has them, however harmless they are. This package has two:
 
 * the install script (`postinstall`) writes the configuration file with the
-  default values. It starts **no daemon**, opens no port and leaves no
-  process behind — the install leaves the machine the way it found it;
+  default values, when there is no configuration file yet, and creates the
+  directories of the installation. It starts **no daemon**, opens no port and
+  leaves no process behind;
 * `prepare` builds the package when it is installed from a git repository,
   because the compiled output is not in the repository.
 
-Look at them, and let them run, with:
+Look at them, and let them run. The command that reviews them arrived in npm
+11.18; npm 11.16 and 11.17 call the same command `npm approve-scripts`. npm
+11.15 and earlier warn about nothing at all:
 
 ```bash
 npm install-scripts ls
 npm install-scripts approve @malarstrom/gatewarden
 ```
 
-Nothing breaks if you do not: the setup wizard writes the same configuration
-file, and the commands work without one.
+Both commands need a project with a `package.json`: they write the approval
+into it. With `-g` they fail with `EGLOBAL`, because a global install has no
+project to write to. For the global install that this README describes, npm
+names the two ways to let the scripts run:
 
-The daemon is started by the commands that need it — every command starts it
-when it is down — and by `gatewarden install-service`, which is the way to
-have it back after a reboot:
+```bash
+npm install -g --allow-scripts=@malarstrom/gatewarden
+npm config set allow-scripts='@malarstrom/gatewarden' --location=user
+```
+
+The first lets them run for that one install, the second for every global
+install on the machine.
+
+The warning is a warning: with npm 11.19.0 the scripts of a dependency still
+run. A package is skipped only when it is denied
+(`npm install-scripts deny <pkg>`), and `strict-allow-scripts=true` turns the
+warning into a failed install. Nothing of this package breaks when the
+scripts are skipped: the setup wizard writes the same configuration file,
+and the commands work without one.
+
+The daemon is started by the commands that need it — `register`,
+`unregister`, `setup` and `start` — and by `gatewarden install-service`,
+which is the way to have it back after a reboot:
 
 ```bash
 gatewarden install-service
@@ -692,11 +736,17 @@ lists the failures that actually happen.
 
 ```bash
 npm ci
-npm run build      # tsc -p tsconfig.build.json
+npm run build      # clean, then tsc -p tsconfig.build.json
 npm test           # node --test --test-concurrency=1 test/*.test.ts
 npm run typecheck  # tsc --noEmit
 npm run publish:dry-run   # what the publish would upload, without uploading it
 ```
+
+The CI runs in Gitea Actions: on every push to `master` and `main`, and on
+every pull request. It runs the typecheck, the tests, the build, and the
+checks of the packed package. It has no badge in the header of this file: the
+repository is not public, so the badge URL answers `404` to everybody without
+an account on the Gitea, and a broken image says less than no image.
 
 `npm ci` installs exactly what the lock file says. Use it and not
 `npm install`: `npm install` may write to the lock file, and a lock file that
