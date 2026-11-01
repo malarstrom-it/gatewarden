@@ -102,6 +102,7 @@ jobs:
           - slug.test.ts
           - state.test.ts
           - testenv.test.ts
+          - trust.test.ts
           - uninstall.test.ts
           - websocket.test.ts
     steps:
@@ -114,28 +115,34 @@ jobs:
 
   # The version matrix. The package says in its `engines` field that it
   # runs on Node 20.11 and later, and a promise like that is only worth
-  # something if it is tested. The matrix runs the typecheck on all three
-  # versions and the test suite on the ones that can run it.
+  # something if it is tested. Every leg of the matrix runs the typecheck
+  # and the install proof, and the legs on Node 22 and 24 run the test
+  # suite as well.
   #
-  # Node 20 cannot run the test suite, and that is not a fault of the
-  # package: the test files are TypeScript, and Node runs them itself
-  # instead of compiling them. The type stripping arrived in Node 22.6 and
-  # was on by default in Node 22.18; Node 20 has never had it, and it
-  # answers a `.ts` file with `ERR_UNKNOWN_FILE_EXTENSION`. The Node 20 leg
-  # therefore checks the thing the `engines` field actually promises: the
-  # published package installs and runs on Node 20. The development tools
-  # need Node 22.18 or later, and the README and CONTRIBUTING say so.
+  # The test files are TypeScript, and Node runs them itself instead of
+  # compiling them. The type stripping arrived in Node 22.6 and was on by
+  # default in Node 22.18, so a Node 20 runtime answers a `.ts` file with
+  # `ERR_UNKNOWN_FILE_EXTENSION`. The Node 20 leg proves the two things it
+  # can prove on Node 20: the types check, and the published package
+  # installs and runs. The development tools need Node 22.18 or later, and
+  # the README and CONTRIBUTING say so.
+  #
+  # The name of each leg says what that leg does, so a red run says which
+  # check failed and on which Node version.
   node-matrix:
-    name: node ${{ matrix.node }} (typecheck and test)
+    name: node ${{ matrix.node }} (${{ matrix.label }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     fail-fast: false
     strategy:
       matrix:
-        node:
-          - '20'
-          - '22'
-          - '24'
+        include:
+          - node: '20'
+            label: typecheck and install
+          - node: '22'
+            label: typecheck, test and install
+          - node: '24'
+            label: typecheck, test and install
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -148,7 +155,6 @@ jobs:
         if: matrix.node != '20'
         run: npm test
       - name: the published package installs and runs
-        if: matrix.node == '20'
         run: |
           set -euo pipefail
           work="$(mktemp -d)"
