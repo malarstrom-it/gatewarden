@@ -112,10 +112,18 @@ The install starts nothing: no daemon, no open port, no process in the
 background. The install script writes the configuration file with the default
 values — when there is no configuration file yet — and creates the three
 directories the gateway uses: the configuration directory, the state
-directory and the cache. It writes nothing when the install runs as root, in
-a CI, in a checkout of the repository, or when `GATEWARDEN_AUTOSTART=0` is
-set, and it never overwrites a configuration file that is already there. The
-daemon starts itself the first time a command needs it, and
+directory and the cache. It writes nothing when npm is told not to run
+install scripts (`npm_config_ignore_scripts=true`), when the install runs as
+root, when `CI` is set, in a checkout of the repository, in an install in the
+package's own directory, or when `GATEWARDEN_AUTOSTART=0` is set (the old
+name `DEV_GATEWAY_AUTOSTART=0` works as well). It never overwrites a
+configuration file that is already there.
+
+npm 12 blocks the install script of a dependency until the dependency is
+approved, so under npm 12 the install writes nothing until the approval is
+there — see [The warning of npm 11 and npm 12](#the-warning-of-npm-11-and-npm-12).
+
+The daemon starts itself the first time a command needs it, and
 `gatewarden install-service` is the way to get it back after a reboot:
 
 ```bash
@@ -622,10 +630,14 @@ daemon starts it, and `gatewarden start` starts it without waiting for such a
 command.
 
 The install script never fails the install: it exits 0 whatever it does, and
-it does nothing as root, in CI, in a checkout of the repository, or when
-`GATEWARDEN_AUTOSTART=0` is set. npm 11 names the install scripts of a
-dependency in a warning and offers to let them run — see
-[The warning of npm 11](#the-warning-of-npm-11).
+it does nothing when npm is told not to run install scripts
+(`npm_config_ignore_scripts=true`), when the install runs as root, when `CI`
+is set, in a checkout of the repository, in an install in the package's own
+directory, or when `GATEWARDEN_AUTOSTART=0` is set (the old name
+`DEV_GATEWAY_AUTOSTART=0` works as well). npm 11 warns about the install
+scripts of a dependency that are not yet covered by `allowScripts` and lets
+them run; npm 12 blocks them until the dependency is approved — see
+[The warning of npm 11 and npm 12](#the-warning-of-npm-11-and-npm-12).
 
 `install-service` writes the unit of the platform and enables it:
 
@@ -656,24 +668,145 @@ The package ships the scripts that do the same work for the package managers
 that run them: `preuninstall` stops the daemon, `postuninstall` removes the
 files.
 
-## The warning of npm 11
+## The warning of npm 11 and npm 12
 
-npm 11.16 and later name every dependency that ships install scripts in a
-warning, and they list the scripts of the package. npm 11.16 and 11.17 write
-`npm warn allow-scripts`; npm 11.18 and later write `npm warn
-install-scripts`. A global install of this package says, with npm 11.19.0:
+npm 11.16 and later warn about every dependency that ships install scripts,
+and the warning names the scripts of the package. What npm does with those
+scripts changed in npm 12:
+
+* **npm 11 warns and lets the scripts run.** The warning says that the
+  scripts are "not yet covered" by `allowScripts`, and the scripts of the
+  dependency run anyway — the field is advisory in npm 11. npm 11.16, 11.17
+  and 11.18 write `npm warn allow-scripts`; npm 11.19 writes
+  `npm warn install-scripts`.
+* **npm 12 blocks the scripts.** The warning says that the scripts were
+  "blocked", and the install script of the dependency does not run until the
+  dependency is approved.
+
+A global install of this package says, with npm 11.19.0:
 
 ```text
 npm warn install-scripts 1 package has install scripts not yet covered by allowScripts:
 npm warn install-scripts   @malarstrom/gatewarden@0.1.0 (postinstall: node scripts/postinstall.mjs; prepare: npm run build)
 npm warn install-scripts
+npm warn install-scripts Run `npm install -g --allow-scripts=@malarstrom/gatewarden` to allow these scripts once, or `npm config set allow-scripts=@malarstrom/gatewarden
+--location=user` to allow them for all global installs.
 ```
 
-The last line of the warning names the two commands that let the scripts
-run — the two that a global install needs.
+and with npm 12.2.1:
 
-(A registry install has one script to warn about: `prepare` runs only for the
-sources that are not the registry — a git repository or a tarball.)
+```text
+npm warn install-scripts 1 package had install scripts blocked because they are not covered by allowScripts:
+npm warn install-scripts   @malarstrom/gatewarden@0.1.0 (postinstall: node scripts/postinstall.mjs; prepare: npm run build)
+npm warn install-scripts
+npm warn install-scripts Run `npm install -g --allow-scripts=@malarstrom/gatewarden` to allow these scripts once, or `npm config set allow-scripts=@malarstrom/gatewarden
+--location=user` to allow them for all global installs.
+```
+
+npm prints each of those last lines in one piece. They are broken here so
+that the lines fit the width of this file — the two commands they name are
+written out whole in [How to review the scripts](#how-to-review-the-scripts).
+
+An install in a project writes the same lines, and its last line names the
+commands that review the scripts. That last line is the same in npm 11 and
+in npm 12:
+
+```text
+npm warn install-scripts Run `npm install-scripts ls` to review, or `npm install-scripts approve <pkg>` to allow.
+```
+
+What the warning says is that the scripts of the dependency are not covered
+by `allowScripts` — a field in the `package.json` of the project. Under npm
+11 the warning is advisory: the install script of a dependency still runs,
+with the warning and without it (checked with npm 11.19.0: the install
+script of this package wrote the configuration file in both cases). Under
+npm 12 it is not: the install script does not run until the dependency is
+approved (checked with npm 12.2.1: no configuration file was written).
+
+### How to review the scripts
+
+The commands that review and approve them work in a project: they read and
+write the `allowScripts` field in the `package.json` of the project.
+
+```bash
+npm install-scripts ls                                  # list, read-only
+npm install-scripts approve @malarstrom/gatewarden      # write the approval
+npm install-scripts deny @malarstrom/gatewarden         # write the denial
+```
+
+What each one does, checked with npm 11.19.0 and npm 12.2.1:
+
+* `npm install-scripts ls` prints the same list as the warning, and changes
+  nothing.
+* `npm install-scripts approve @malarstrom/gatewarden` writes the approval
+  into the `package.json`. The next install of the package prints no warning,
+  and under npm 12 it runs the install script (checked: the configuration
+  file was written).
+* `npm install-scripts deny @malarstrom/gatewarden` writes the denial into
+  the `package.json`. The install script does not run: under npm 11 it is
+  skipped, under npm 12 it is blocked. Neither prints a warning.
+* The key in the `allowScripts` field follows the source of the dependency.
+  A dependency from the registry gets a pinned `@malarstrom/gatewarden@0.1.0`
+  (npm's own words); a dependency from a tarball gets the path of the
+  tarball — checked with a tarball install, the key was
+  `file:/tmp/…/malarstrom-gatewarden-0.1.0.tgz`.
+* `npm install-scripts` needs a project. With `-g` it stops with `EGLOBAL`:
+  "`npm install-scripts` does not work for global installs".
+
+The command arrived in npm 11.18. npm 11.16 and 11.17 have the same
+commands under their own names: `npm approve-scripts --allow-scripts-pending`
+reads the list, `npm approve-scripts <pkg>` writes the approval, and
+`npm deny-scripts <pkg>` writes the denial. `npm approve-scripts deny <pkg>`
+does not exist there: npm 11.17 answers `No installed packages match: deny`,
+and npm 11.16 approves the package instead of denying it. npm 11.15 and
+earlier say nothing at all.
+
+A global install has no project to write the field into, so npm names two
+other ways instead:
+
+```bash
+npm install -g --allow-scripts=@malarstrom/gatewarden
+npm config set allow-scripts='@malarstrom/gatewarden' --location=user
+```
+
+npm 11.19.0 and npm 12.2.1 accept both of them. Under npm 11 the scripts
+run with them and without them, since the field is advisory. Under npm 12
+they are what makes the scripts run again instead of staying blocked — when
+they name the package the way npm matches it (see the table below).
+
+What the two commands have to name depends on the source of the package:
+
+| Source of the package | What `--allow-scripts` has to name |
+| --- | --- |
+| the registry | `@malarstrom/gatewarden` — npm's own example is `npm install -g --allow-scripts=canvas,sharp` |
+| a tarball | the path of the tarball |
+
+npm matches a tarball by its path, not by its name, so the name alone does
+not unblock a tarball install (checked with npm 12.2.1: the name was
+refused and the script stayed blocked, the path
+`--allow-scripts=/tmp/…/malarstrom-gatewarden-0.1.0.tgz` let it run).
+
+In a project, `--allow-scripts` is refused: npm 11.19.0 and npm 12.2.1
+answer `--allow-scripts is not allowed in project-scoped installs` and ask
+for the `allowScripts` field in the `package.json` or in `.npmrc` instead.
+
+If you want no install script at all, ask npm not to run them:
+
+```bash
+npm install -g --ignore-scripts
+npm ci --ignore-scripts
+```
+
+With `--ignore-scripts` npm sets `npm_config_ignore_scripts=true` and does
+not run the script; nothing is written (checked with npm 11.19.0 and npm
+12.2.1). The other way is to read the script before it runs: it is in the
+package, in `scripts/postinstall.mjs`, and its source is in the repository.
+
+One setting turns the warning into a failed install:
+`strict-allow-scripts=true` makes npm stop with `ESTRICTALLOWSCRIPTS` and
+install nothing (checked with npm 11.19.0 and npm 12.2.1).
+
+### What the scripts do
 
 The warning is about the *scripts*, not about what they do — it names every
 package that has them, however harmless they are. This package has two:
@@ -685,34 +818,20 @@ package that has them, however harmless they are. This package has two:
 * `prepare` builds the package when it is installed from a git repository,
   because the compiled output is not in the repository.
 
-Look at them, and let them run. The command that reviews them arrived in npm
-11.18; npm 11.16 and 11.17 call the same command `npm approve-scripts`. npm
-11.15 and earlier warn about nothing at all:
+Which of them runs depends on the source. Checked with npm 11.19.0 and
+`npm install --foreground-scripts`:
 
-```bash
-npm install-scripts ls
-npm install-scripts approve @malarstrom/gatewarden
-```
+| Source | `prepare` | `postinstall` |
+| --- | --- | --- |
+| a tarball | named in the warning, not run | runs |
+| a git repository | runs — it builds the package | runs |
+| the registry | not an install script — npm counts `prepare` only for a source that is not the registry | runs |
 
-Both commands need a project with a `package.json`: they write the approval
-into it. With `-g` they fail with `EGLOBAL`, because a global install has no
-project to write to. For the global install that this README describes, npm
-names the two ways to let the scripts run:
+The `postinstall` runs under npm 11 whether the dependency is approved or
+not. Under npm 12 it runs only when the dependency is approved.
 
-```bash
-npm install -g --allow-scripts=@malarstrom/gatewarden
-npm config set allow-scripts='@malarstrom/gatewarden' --location=user
-```
-
-The first lets them run for that one install, the second for every global
-install on the machine.
-
-The warning is a warning: with npm 11.19.0 the scripts of a dependency still
-run. A package is skipped only when it is denied
-(`npm install-scripts deny <pkg>`), and `strict-allow-scripts=true` turns the
-warning into a failed install. Nothing of this package breaks when the
-scripts are skipped: the setup wizard writes the same configuration file,
-and the commands work without one.
+Nothing of this package breaks when the scripts do not run: the setup
+wizard writes the same configuration file, and the commands work without one.
 
 The daemon is started by the commands that need it — `register`,
 `unregister`, `setup` and `start` — and by `gatewarden install-service`,
@@ -743,8 +862,32 @@ npm run publish:dry-run   # what the publish would upload, without uploading it
 ```
 
 The CI runs in Gitea Actions: on every push to `master` and `main`, and on
-every pull request. It runs the typecheck, the tests, the build, and the
-checks of the packed package. It has no badge in the header of this file: the
+every pull request. It has eight job groups, and every group is a job of its
+own in the workflow. A run reports 42 job runs: the six single jobs, 33 test
+legs (one per test file) and 3 node legs. A red run says which check
+failed:
+
+| Job | What it does |
+| --- | --- |
+| `typecheck` | `npm run typecheck` |
+| `audit` | `npm audit --audit-level=high` — the run fails on a high or a critical advisory and lets the lower ones through |
+| `test` | one job per test file — 33 jobs, one for each file in `test/` |
+| `node-matrix` | Node 20, 22 and 24: the typecheck on all three, the test suite on 22 and 24, and on all three the packed package installs and runs |
+| `build` | `npm run build`, and then `npm pack --dry-run` — what the tarball holds |
+| `publint` | `publint` on the packed tarball — is the manifest well-formed for a consumer |
+| `types` | `@arethetypeswrong/cli` with the profile `esm-only` — do the types resolve through the `exports` map |
+| `package` | the packed package installs in a fresh project, and the binaries run |
+
+Every job runs on Node 22, except the `node-matrix`, which runs the
+typecheck, the tests and the install proof on Node 20, 22 and 24.
+
+A second workflow, `.gitea/workflows/publish.yml`, runs on a tag `v*`. It
+checks that the tag and the version in `package.json` agree, and stages the
+version with `npm stage publish`. The approval of a staged version is a human
+step with two-factor authentication, so the run ends with the version staged
+and not published.
+
+It has no badge in the header of this file: the
 repository is not public, so the badge URL answers `404` to everybody without
 an account on the Gitea, and a broken image says less than no image.
 
@@ -776,6 +919,14 @@ not for you.
 
 Ask in the issue tracker of the repository:
 [gitea.home.malarstrom.com/malarstrom/traefik-api/issues](https://gitea.home.malarstrom.com/malarstrom/traefik-api/issues).
+
+The repository and the issue tracker are on a private Gitea: both links point
+straight at their page, and both answer `404` to a reader without an account
+on it. The source of the package is at
+[gitea.home.malarstrom.com/malarstrom/traefik-api](https://gitea.home.malarstrom.com/malarstrom/traefik-api),
+and it answers `404` as well. The one page that is public is the page of the
+maintainer:
+[gitea.home.malarstrom.com/malarstrom](https://gitea.home.malarstrom.com/malarstrom).
 
 What to write there: what you ran, what you expected, what happened instead,
 and the output of `gatewarden doctor`. The last one names every check the
