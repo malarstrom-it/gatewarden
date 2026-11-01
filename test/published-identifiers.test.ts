@@ -34,14 +34,14 @@
  * is an example in the documentation, and the generic rules are what keep
  * the addresses of a private network out.
  *
- * The git server of the project is an exception of the same kind. The
- * manifest names it in `repository`, `homepage`, `bugs` and `funding`, and
- * the README names it as the place the source of the package lives. That is
- * where the source is, and a package without it is a package nobody can
- * look into. The host carries the DNS zone of the installation in its name,
- * and the guard would otherwise read every one of those lines as a leak.
- * The exception is the host of the git server, not the zone: the zone on its
- * own is still a leak.
+ * The git server of the project is in the list now (S31). It used to be an
+ * exception: the manifest named it in `repository`, `homepage`, `bugs` and
+ * `funding`, and the README named it as the place the source of the package
+ * lives. The published package names no repository at all now — a package
+ * that everybody can install from npmjs.org does not point a reader at a
+ * private host — and the guard keeps it that way. When the project gets a
+ * public mirror, its host goes into `PUBLIC_GIT_HOST` below, the fields of
+ * the manifest come back, and the guard stops protecting that one host.
  */
 
 import assert from 'node:assert/strict';
@@ -82,15 +82,30 @@ const INSTALLATION_IDENTIFIERS: Array<{ value: string; what: string }> = [
   { value: 'gitea-ssh', what: 'the name of an entry point of that installation' },
   { value: 'herdr-ssh', what: 'the name of an entry point of that installation' },
   { value: '/opt/devbox-traefik-api', what: 'the path of that installation on its machine' },
+  { value: 'gitea.home.malarstrom.com', what: 'the host of the git server of the project' },
 ];
 
 /**
- * The host of the git server of the project.
+ * The public host of the source of the package.
  *
- * The source of the package lives there, and the manifest names it. The
- * host is an exception to the zone it carries in its name.
+ * There is none: the project has no public mirror yet, and the published
+ * package names no repository. The constant is empty on purpose — an empty
+ * host means that no host is allowed to appear in the tarball. When a
+ * public mirror exists, its host goes here and the guard protects that one
+ * host instead of protecting the private one.
  */
-const PROJECT_HOST = 'gitea.home.malarstrom.com';
+const PUBLIC_GIT_HOST: string = '';
+
+/**
+ * The names of the git servers the package must not name.
+ *
+ * The internal installation runs its own git server, and the name of that
+ * server in the published package is a trace of it: a reader learns which
+ * service holds the source, and where to ask for it. The name is listed
+ * here so that the guard catches it wherever it hides — in the manifest, in
+ * the readme, in a link or in a path of a workflow file.
+ */
+const GIT_SERVER_NAMES = ['gitea'];
 
 /**
  * The addresses of a private network.
@@ -205,12 +220,9 @@ describe('the published package', () => {
       for (const { value, what } of INSTALLATION_IDENTIFIERS) {
         let index = text.indexOf(value);
         while (index !== -1) {
-          // The host of the git server of the project is named by the
-          // manifest and by the README; the zone it carries in its name
-          // is not a leak there.
-          const onProjectHost =
-            PROJECT_HOST.includes(value) && text.startsWith(PROJECT_HOST, index - (PROJECT_HOST.length - value.length));
-          if (!onProjectHost) hits.push(`${file}:${lineOf(text, index)}: "${value}" — ${what}`);
+          // A public mirror of the source, when there is one, is allowed.
+          const onPublicHost = PUBLIC_GIT_HOST !== '' && text.startsWith(PUBLIC_GIT_HOST, index - PUBLIC_GIT_HOST.length + value.length);
+          if (!onPublicHost) hits.push(`${file}:${lineOf(text, index)}: "${value}" — ${what}`);
           index = text.indexOf(value, index + value.length);
         }
       }
@@ -221,6 +233,35 @@ describe('the published package', () => {
       [],
       'the published package carries the data of the installation it was written for:\n' + hits.join('\n'),
     );
+  });
+
+  test('the tarball names no git server', () => {
+    const hits: string[] = [];
+
+    for (const file of files) {
+      const text = fs.readFileSync(path.join(packageDir, file), 'utf8');
+      for (const name of GIT_SERVER_NAMES) {
+        const pattern = new RegExp(name, 'gi');
+        for (const match of text.matchAll(pattern)) {
+          hits.push(`${file}:${lineOf(text, match.index ?? 0)}: "${match[0]}" — the name of a git server`);
+        }
+      }
+    }
+
+    assert.deepEqual(
+      hits,
+      [],
+      'the published package names a git server; the published package names no repository:\n' + hits.join('\n'),
+    );
+  });
+
+  test('the manifest of the package names no repository', () => {
+    // The fields of the manifest that point at a repository are gone
+    // (S31): `repository`, `homepage`, `bugs` and `funding`.
+    const manifest = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8')) as Record<string, unknown>;
+    for (const field of ['repository', 'homepage', 'bugs', 'funding']) {
+      assert.equal(manifest[field], undefined, `the manifest of the tarball still has "${field}"`);
+    }
   });
 
   test('the tarball holds no address of a private network', () => {

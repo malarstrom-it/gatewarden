@@ -10,7 +10,18 @@ The names under "Added", "Changed", "Fixed" and "Removed" are the ones
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/#types-of-changes)
 names. Every release gets a section, newest first.
 
-## [Unreleased]
+## Unreleased
+
+### Changed
+
+- **The published package names no repository.** The manifest fields
+  `repository`, `homepage`, `bugs` and `funding` are gone, and the README,
+  the changelog and the contributing guide no longer name the host of the
+  installation the package was written for. The package is installed from
+  npmjs.org, and a package that everybody can install does not point a
+  reader at a private host. The public name of the package is unchanged:
+  the name in the npm scope, the names of the three binaries, the names of
+  the MCP tools, the commands and the ports stay what they were.
 
 ### Fixed
 
@@ -25,7 +36,7 @@ names. Every release gets a section, newest first.
   that reset a refused upgrade gave an unhandled `ECONNRESET` that stopped the
   worker.
 
-## [0.1.0] - 2026-10-31
+## 0.1.0 - 2026-10-31
 
 The first publication. Everything below arrived in this version; there is no
 earlier version to compare it with.
@@ -96,6 +107,3 @@ earlier version to compare it with.
 - `docs/healthcheck.md` — what every line of `gatewarden doctor` means.
 - `docs/AGENTS.md` — the block an agent reads.
 - `CHANGELOG.md`, `CONTRIBUTING.md` and `SECURITY.md`.
-
-[Unreleased]: https://gitea.home.malarstrom.com/malarstrom/traefik-api/compare/v0.1.0...HEAD
-[0.1.0]: https://gitea.home.malarstrom.com/malarstrom/traefik-api/releases/tag/v0.1.0

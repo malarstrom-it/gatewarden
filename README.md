@@ -92,17 +92,9 @@ The same package is a pi package. pi installs it like any other:
 pi install npm:@malarstrom/gatewarden
 ```
 
-It installs from a git repository too. The compiled output is not in the
-repository, so the package builds itself when it is installed from one:
-
-```bash
-npm install git+https://gitea.home.malarstrom.com/malarstrom/traefik-api.git
-```
-
-The source of the package lives at
-[gitea.home.malarstrom.com/malarstrom/traefik-api](https://gitea.home.malarstrom.com/malarstrom/traefik-api).
-
-From a tarball — a checkout, or a build of your own — the same thing:
+The source of the package is not part of the tarball: the package ships the
+compiled JavaScript, not the TypeScript it was built from. A tarball you
+built yourself installs the same way as the published package:
 
 ```bash
 npm install -g ./<the tarball>.tgz
@@ -861,11 +853,10 @@ npm run typecheck  # tsc --noEmit
 npm run publish:dry-run   # what the publish would upload, without uploading it
 ```
 
-The CI runs in Gitea Actions: on every push to `master` and `main`, and on
-every pull request. It has eight job groups, and every group is a job of its
-own in the workflow. A run reports 42 job runs: the six single jobs, 33 test
-legs (one per test file) and 3 node legs. A red run says which check
-failed:
+The CI runs on every push to `master` and `main`, and on every pull request.
+It has eight job groups, and every group is a job of its own in the workflow.
+A run reports 42 job runs: the six single jobs, 33 test legs (one per test
+file) and 3 node legs. A red run says which check failed:
 
 | Job | What it does |
 | --- | --- |
@@ -881,15 +872,15 @@ failed:
 Every job runs on Node 22, except the `node-matrix`, which runs the
 typecheck, the tests and the install proof on Node 20, 22 and 24.
 
-A second workflow, `.gitea/workflows/publish.yml`, runs on a tag `v*`. It
-checks that the tag and the version in `package.json` agree, and stages the
+A second workflow, the publish workflow of the repository, runs on a tag `v*`.
+It checks that the tag and the version in `package.json` agree, and stages the
 version with `npm stage publish`. The approval of a staged version is a human
 step with two-factor authentication, so the run ends with the version staged
 and not published.
 
-It has no badge in the header of this file: the
-repository is not public, so the badge URL answers `404` to everybody without
-an account on the Gitea, and a broken image says less than no image.
+It has no badge in the header of this file: the repository of the project is
+not public, so a badge URL would answer `404` to every reader without an
+account on it, and a broken image says less than no image.
 
 `npm ci` installs exactly what the lock file says. Use it and not
 `npm install`: `npm install` may write to the lock file, and a lock file that
@@ -917,16 +908,10 @@ guaranteed response time: an issue is answered when the maintainer has time,
 usually within a few days. If you need a guaranteed answer, this package is
 not for you.
 
-Ask in the issue tracker of the repository:
-[gitea.home.malarstrom.com/malarstrom/traefik-api/issues](https://gitea.home.malarstrom.com/malarstrom/traefik-api/issues).
-
-The repository and the issue tracker are on a private Gitea: both links point
-straight at their page, and both answer `404` to a reader without an account
-on it. The source of the package is at
-[gitea.home.malarstrom.com/malarstrom/traefik-api](https://gitea.home.malarstrom.com/malarstrom/traefik-api),
-and it answers `404` as well. The one page that is public is the page of the
-maintainer:
-[gitea.home.malarstrom.com/malarstrom](https://gitea.home.malarstrom.com/malarstrom).
+Ask the maintainer of the package where to write. The repository of the
+project is private, and this file does not name it: a package that everybody
+can install from npmjs.org does not point a reader at a private host. The
+author in `package.json` is the person who answers.
 
 What to write there: what you ran, what you expected, what happened instead,
 and the output of `gatewarden doctor`. The last one names every check the

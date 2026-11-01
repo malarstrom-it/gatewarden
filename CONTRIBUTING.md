@@ -33,7 +33,7 @@ TypeScript. Node 22 and Node 24 are the versions the CI runs.
 
 ```bash
 git clone <the repository>
-cd traefik-api
+cd <the repository>
 npm ci
 ```
 
@@ -77,9 +77,9 @@ The tests are `node:test` files in `test/`, one file per area, named
 runner — there is no test framework in this package.
 
 **A new test file has to be added to the CI.** The CI runs one job per test
-file, and the list of the files is written out in
-`.gitea/workflows/ci.yml`. A test file that is not in that list never runs
-in CI, and a change that is never run is not a change.
+file, and the list of the files is written out in the CI workflow of the
+repository. A test file that is not in that list never runs in CI, and a
+change that is never run is not a change.
 
 A new test follows the shape of the tests around it:
 
@@ -184,7 +184,7 @@ two commits.
 - **New behaviour gets a test.** A bug fix gets a test that fails before the
   fix and passes after it.
 - **A change a consumer can see gets a changelog entry**, under
-  `[Unreleased]` in `CHANGELOG.md`.
+  `Unreleased` in `CHANGELOG.md`.
 - The specification is changed first, if the change needs it (see above).
 
 ## Security
@@ -207,7 +207,7 @@ The maintainer cuts the releases, not the contributors.
 3. The publish workflow stages the version on the npm registry. It does not
    publish it: a maintainer approves the staged version with two-factor
    authentication, in the CLI or on npmjs.com.
-4. The GitHub-style release notes are the section of the changelog.
+4. The release notes are the section of the changelog.
 
 Never publish, never tag a release, and never touch the registry from a
 pull request.

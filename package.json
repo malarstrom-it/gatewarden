@@ -4,20 +4,8 @@
   "license": "MIT",
   "type": "module",
   "description": "Give a local development server an https address on your own domain: an MCP server, a pi extension, a CLI and an Agent Skill over one proxy-agnostic core",
-  "repository": {
-    "type": "git",
-    "url": "git+https://gitea.home.malarstrom.com/malarstrom/traefik-api.git"
-  },
-  "homepage": "https://gitea.home.malarstrom.com/malarstrom/traefik-api",
-  "bugs": {
-    "url": "https://gitea.home.malarstrom.com/malarstrom/traefik-api/issues"
-  },
   "author": {
     "name": "malarstrom"
-  },
-  "funding": {
-    "type": "individual",
-    "url": "https://gitea.home.malarstrom.com/malarstrom"
   },
   "main": "./dist/core/index.js",
   "types": "./dist/core/index.d.ts",

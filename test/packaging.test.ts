@@ -47,11 +47,11 @@ const MANIFEST = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json')
   version: string;
   license: string;
   type: string;
-  repository: { type: string; url: string };
-  homepage: string;
-  bugs: { url: string };
+  repository?: { type: string; url: string };
+  homepage?: string;
+  bugs?: { url: string };
   author: { name: string };
-  funding: { type: string; url: string };
+  funding?: { type: string; url: string };
   bin: Record<string, string>;
   exports: Record<string, ExportEntry>;
   typesVersions: Record<string, Record<string, string[]>>;
@@ -354,16 +354,17 @@ describe('the published package', () => {
     // page searches for the word the package answers to.
     assert.ok(MANIFEST.keywords.includes('gatewarden'));
 
-    // The links of the npm page come from the manifest: the source code,
-    // the page of the package, and the place to report a bug. They name
-    // the gitea repository of the project, and not a github one.
-    assert.equal(MANIFEST.repository.type, 'git');
-    assert.equal(MANIFEST.repository.url, 'git+https://gitea.home.malarstrom.com/malarstrom/traefik-api.git');
-    assert.equal(MANIFEST.homepage, 'https://gitea.home.malarstrom.com/malarstrom/traefik-api');
-    assert.equal(MANIFEST.bugs.url, 'https://gitea.home.malarstrom.com/malarstrom/traefik-api/issues');
+    // The npm page of the package names no repository (S31). The source
+    // of the package is not published with it, and the manifest does not
+    // point a reader at the private host of the installation the package
+    // was written for: `repository`, `homepage`, `bugs` and `funding` are
+    // gone. The author stays — the name of the scope the package lives in
+    // is public, and it is the name the package is published under.
+    assert.equal(MANIFEST.repository, undefined);
+    assert.equal(MANIFEST.homepage, undefined);
+    assert.equal(MANIFEST.bugs, undefined);
+    assert.equal(MANIFEST.funding, undefined);
     assert.equal(MANIFEST.author.name, 'malarstrom');
-    assert.equal(MANIFEST.funding.type, 'individual');
-    assert.equal(MANIFEST.funding.url, 'https://gitea.home.malarstrom.com/malarstrom');
   });
 
   test('a copy of the repository builds itself and ships the compiled output', async (t) => {
@@ -473,7 +474,7 @@ describe('the published package', () => {
     // The security policy is the one document that is not in the tarball:
     // it names the address of the maintainer, and the published package
     // carries no data of the installation it was written for (S14). The
-    // readme points at the repository for it.
+    // readme says where to read it, but the file itself stays out.
     assert.ok(!actual.includes('SECURITY.md'), 'the security policy is in the tarball');
     assert.ok(actual.includes('dist/core/index.js'), 'the exported entry point is not in the tarball');
     assert.ok(actual.includes('skills/gatewarden/SKILL.md'), 'the skill is not in the tarball');

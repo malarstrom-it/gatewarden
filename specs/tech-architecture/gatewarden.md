@@ -417,6 +417,11 @@ Notes:
 - `files` is an allow-list, not an `.npmignore`.
 - The `pi` manifest points at compiled output, so pi does not need a
   TypeScript loader for the package.
+- The manifest names no repository: `repository`, `homepage`, `bugs` and
+  `funding` are not in it. The package is installed from npmjs.org, and it
+  does not point a reader at the host of the installation it was written
+  for (S31). The name of the package, the name of the scope it lives in and
+  the names of the binaries stay: they are the public name of the package.
 
 ### 2.2 The pi package
 
@@ -425,9 +430,12 @@ package therefore serves both audiences:
 
 ```bash
 pi install npm:@malarstrom/gatewarden
-pi install git:github.com/malarstrom/gatewarden@v1
+pi install git:<host>/<owner>/<repository>@v1
 pi install ./                                   # from a checkout
 ```
+
+The git form is a capability of pi, not a promise of a public repository:
+the published package names no repository of its own (S31).
 
 ### 2.3 Repository layout
 
