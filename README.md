@@ -78,8 +78,8 @@ in `allowedCidrs` and in `registryAllowedCidrs` widen the trust list.
 ### The one change on the proxy side
 
 Add the `http` provider to the `providers:` block of the static configuration of
-Traefik, and restart the proxy. The static configuration is only read at
-start-up.
+Traefik, and restart the proxy. Traefik v2 and v3 both read that block from the
+static configuration, and both use the new provider after the restart.
 
 ```yaml
 providers:
@@ -112,7 +112,11 @@ the rest, writes the configuration file and starts the daemon:
 gatewarden setup
 ```
 
-The wizard is optional: every value it writes can be written by hand.
+The wizard is optional: every value it writes can be written by hand. The file it
+writes is `~/.config/gatewarden/config.json` on Linux,
+`~/Library/Preferences/gatewarden/config.json` on macOS and
+`%APPDATA%\gatewarden\Config\config.json` on Windows. `gatewarden config` shows
+the file the installation reads.
 
 **3. Publish a dev server.** With the CLI:
 
@@ -312,6 +316,7 @@ returned URL, and remove the route after the server is gone.
 | The address answers `404` at the proxy | The proxy has not picked the route up yet, or the wiring is not in place | Wait one poll interval. Then check that the `http` provider is in the static configuration of the proxy, and that the proxy was restarted after it was added |
 | The relay answers `403` | The address of the proxy is not in `allowedCidrs` | Add the address of the proxy to `allowedCidrs` in the configuration file, and restart the daemon |
 | The registry answers `403` | The address that asks for the configuration document is not in the trust list | Add the address to `allowedCidrs` or to `registryAllowedCidrs`, and restart the daemon. The answer says which address was refused |
+| The registry answers `403`, the relay answers `200` | The two listeners are reached from different addresses, and the address that polls the registry is not in the trust list | The trust list is one list for both listeners: `allowedCidrs` covers the relay and the registry. Add the address that polls the registry to `allowedCidrs` in the configuration file, and restart the daemon |
 | The certificate of the address is not trusted | The resolver was not asked for a wildcard of the project, or the zone is another one | Look at the resolver in the log of the proxy. `"tlsMode": "fqdn"` asks for one certificate per address instead of one per project |
 | The host name does not resolve | The DNS zone has no wildcard record for the subdomains | Add a `*` record for the zone to your DNS |
 | `gatewarden doctor` says `not running` | The daemon is not up | Run `gatewarden start`, and read the log file the command names |
