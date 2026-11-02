@@ -11,16 +11,6 @@ The names under "Added", "Changed", "Deprecated", "Removed", "Fixed" and
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/#types-of-changes)
 names. Every release gets a section, newest first.
 
-## Unreleased
-
-### Fixed
-
-- **The published documentation points at no file the package does not
-  ship.** The architecture reference of the skill and the setup guide named
-  documents that are not in the package: a reader of the installed package
-  followed the pointer and found nothing. The documentation names the files
-  that are really there now, and the test suite keeps it that way.
-
 ## 0.1.1 - 2026-11-01
 
 The version before this one, `0.1.0`, was published on the registry and
@@ -123,6 +113,18 @@ stays on the registry, and the one to install.
   handler of its own, and the relay attached its handler only after the
   refusals: a peer that reset a refused upgrade gave an unhandled
   `ECONNRESET` that stopped the worker.
+- **The published documentation points at no file the package does not
+  ship.** The architecture reference of the skill and the setup guide named
+  documents that are not in the package: a reader of the installed package
+  followed the pointer and found nothing. The documentation names the files
+  that are really there now, and the test suite keeps it that way.
+- **The error the worker shows no longer names a file the package does not
+  ship.** Started without a role, the worker used to tell the reader to run
+  it from the sources of the repository, which the published package does
+  not carry. It says now that the role must be `registry` or `relay`, that
+  the daemon starts the worker and that `gatewarden start` starts the
+  daemon. The test suite keeps every message of the package free of paths
+  into the sources.
 
 ### Security
 
