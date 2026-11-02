@@ -1,12 +1,12 @@
 /**
- * The shapes the agent-facing surfaces show (§6.2).
+ * The shapes the agent-facing surfaces show.
  *
  * The CLI, the MCP server and the pi extension show the same thing in
  * three different ways: the same route, the same status. The shapes live
  * here, in the core, so that the three agree by construction instead of by
  * convention.
  *
- * The core knows no proxy (D3): the caller says what the proxy answered,
+ * The core knows no proxy: the caller says what the proxy answered,
  * and the core puts that answer in the report. The discovery itself lives
  * in the adapter catalog.
  */
@@ -16,7 +16,7 @@ import { daemonStatus } from './daemonControl.ts';
 import type { GatewayPaths } from './paths.ts';
 import type { Config, Registration } from './types.ts';
 
-/** One route, in the shape the tools return (§6.2). */
+/** One route, in the shape the tools return. */
 export interface RouteJson {
   project: string;
   branch: string;
@@ -48,7 +48,7 @@ export interface ProxyStatus {
   version?: string;
 }
 
-/** The daemon, in the shape the tools return (§6.2). */
+/** The daemon, in the shape the tools return. */
 export interface DaemonStatusJson {
   pid: number | null;
   healthy: boolean;
@@ -56,7 +56,7 @@ export interface DaemonStatusJson {
   pidFile: string;
 }
 
-/** The configuration, in the shape the tools return (§6.2). */
+/** The configuration, in the shape the tools return. */
 export interface ConfigStatusJson {
   path: string;
   exists: boolean;
@@ -85,7 +85,7 @@ export interface GatewayStatus {
  * The state of the gateway.
  *
  * The proxy is passed in: the core does not know how to ask a proxy
- * anything (D3), and the caller that does know is the one that answers.
+ * anything, and the caller that does know is the one that answers.
  */
 export async function gatewayStatus(
   config: Config,

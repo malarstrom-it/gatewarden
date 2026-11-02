@@ -1,5 +1,5 @@
 /**
- * The migration from the old layouts (§3.4).
+ * The migration from the old layouts.
  *
  * Two installations came before this one, and both are still read:
  *
@@ -10,8 +10,9 @@
  *    route store in `~/.local/state/dev-gateway/routes.json`.
  *
  * The migration moves the configuration and the route store to the layout of
- * §3.1. It never deletes anything: the old directories are left in place, so
- * a user can go back to the old installation with the files still there.
+ * the current installation. It never deletes anything: the old directories
+ * are left in place, so a user can go back to the old installation with the
+ * files still there.
  *
  * The migration runs in two ways:
  *

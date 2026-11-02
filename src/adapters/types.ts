@@ -1,5 +1,5 @@
 /**
- * The adapter types (D3, §4.2).
+ * The adapter types.
  *
  * The contract itself is defined in the core module `proxy`, because
  * the core consumes it and the core must never import an adapter. This

@@ -1,5 +1,5 @@
 /**
- * The catalog of proxy adapters (D3, §4.2).
+ * The catalog of proxy adapters.
  *
  * The core does not know which proxies exist: it asks for one by id and is
  * handed it. This module is where the ids and the adapters meet, and it is
@@ -36,7 +36,7 @@ export function adapterIds(): string[] {
 /**
  * Ask the proxy what it is, and report what it answered.
  *
- * The core does not know about proxies (D3), so the question is asked here,
+ * The core does not know about proxies, so the question is asked here,
  * in the catalog, and only the answer travels further. A proxy that does
  * not answer is not an error: the report says it is not reachable.
  */

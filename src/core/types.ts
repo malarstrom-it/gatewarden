@@ -36,13 +36,13 @@ export type DocumentFormat = 'yaml' | 'json';
 /**
  * A route is a registration: the core's word for a published dev server.
  *
- * The `ProxyAdapter` contract speaks of routes (§4.2); the store keeps
+ * The `ProxyAdapter` contract speaks of routes; the store keeps
  * registrations. They are the same thing.
  */
 export type Route = Registration;
 
 export interface Config {
-  /** Which proxy adapter writes the dynamic configuration (D3). */
+  /** Which proxy adapter writes the dynamic configuration. */
   proxy: string;
   /** Port the registry listener binds (0.0.0.0). */
   registryPort: number;
@@ -82,7 +82,7 @@ export interface Config {
    *
    * Empty means "the same addresses as the relay": the registry is
    * trusted by the list of the relay unless the installation says
-   * otherwise (D15).
+   * otherwise. The registry answers the trust list, not the network.
    */
   registryAllowedCidrs: string[];
   /** Optional shared secret (registry endpoint and relay dispatch). */
@@ -96,7 +96,7 @@ export interface Config {
   /** Number of rotated log files to keep. */
   logKeep: number;
   /**
-   * Whether the daemon may be started automatically (D7).
+   * Whether the daemon may be started automatically.
    *
    * Kept for compatibility: the install starts no daemon, and the lazy
    * start is always on. The value is read and ignored.

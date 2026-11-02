@@ -1,5 +1,5 @@
 /**
- * Where the gateway keeps its files (D6, §3.1).
+ * Where the gateway keeps its files.
  *
  * The layout follows the XDG Base Directory specification, resolved with
  * `env-paths`, the convention of the npm ecosystem:
@@ -17,7 +17,7 @@
  * Support" directory, and on Windows it is a `State` directory next to the
  * ones `env-paths` knows.
  *
- * The resolution order (§3.1):
+ * The resolution order:
  *
  * 1. `GATEWARDEN_HOME` — everything in one directory.
  * 2. `GATEWARDEN_CONFIG` — the configuration file only.
@@ -167,8 +167,8 @@ export function platformDirs(
 /**
  * The base directories of the platform the process runs on, from `env-paths`.
  *
- * This is the production path: `env-paths` is the source of the layout
- * (D6), and the state directory is the one directory it does not have.
+ * This is the production path: `env-paths` is the source of the layout,
+ * and the state directory is the one directory it does not have.
  */
 export function envPathsDirs(): PlatformDirs {
   return envPathsDirsFor(APP_NAME);

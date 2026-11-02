@@ -1,4 +1,4 @@
-/** Configuration loading for the registry, relay and CLI (D6, §3). */
+/** Configuration loading for the registry, relay and CLI. */
 
 import fs from 'node:fs';
 import os from 'node:os';
@@ -27,11 +27,11 @@ import {
 /**
  * The built-in defaults.
  *
- * They are neutral: not one value of one installation is in here (§3.2).
+ * They are neutral: not one value of one installation is in here.
  * The values that name somebody's own setup — the DNS zone, the
  * certificate resolver, the provider of the shared middlewares and the
  * host name the proxy reaches this machine under — are empty, and the
- * setup wizard derives them or asks for them (§9.2).
+ * setup wizard derives them or asks for them.
  *
  * What is left is what the package itself decides: the adapter, the
  * ports, the entry point name Traefik uses by convention, the log
@@ -87,7 +87,7 @@ export const CONFIG_KEYS: Record<string, string> = {
   logMaxBytes: 'Rotate the log file when it grows past this size.',
   logKeep: 'How many rotated log files to keep.',
   autostart:
-    'Kept for compatibility: the install starts no daemon (D7). The daemon starts itself when a command needs it.',
+    'Kept for compatibility: the install starts no daemon. The daemon starts itself when a command needs it.',
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -139,7 +139,7 @@ export interface ConfigPathOptions extends PathOptions {
 }
 
 /**
- * Resolve the configuration file (§3.1).
+ * Resolve the configuration file.
  *
  * The order: an explicit path, `GATEWARDEN_HOME` (everything in one
  * directory), `GATEWARDEN_CONFIG`, the old `TRAEFIK_DEV_CONFIG`, and
@@ -180,7 +180,7 @@ export interface StateDirOptions extends PathOptions {
 }
 
 /**
- * Resolve the state directory (§3.1).
+ * Resolve the state directory.
  *
  * The order: an explicit path, `GATEWARDEN_STATE_DIR`, the old
  * `TRAEFIK_DEV_STATE_DIR`, `GATEWARDEN_HOME` (everything in one directory),
@@ -238,7 +238,7 @@ export interface LoadedConfig {
  *
  * Precedence: built-in defaults < configuration file < explicit overrides.
  *
- * On the first run the old layout (`~/.traefik-dev/`) is picked up (§3.4):
+ * On the first run the old layout (`~/.traefik-dev/`) is picked up:
  * when the new configuration file does not exist and the old one does, the
  * old values become the new configuration and the old route store is
  * imported. The old directory is left in place.
@@ -324,7 +324,7 @@ export function loadConfigWithReport(opts: LoadConfigOptions = {}): LoadedConfig
     cacheDir: paths.cacheDir,
   };
 
-  // The first run: move the old layouts to the new one (§3.4). The
+  // The first run: move the old layouts to the new one. The
   // layout of the old name comes first: it is the newer of the two, and
   // the one that wins when both hold something.
   let oldNameMigration: LegacyAppMigrationReport | undefined;

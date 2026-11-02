@@ -17,7 +17,7 @@ const SCOPE = 'registry';
  * document it serves names the projects, the branches, the zone, the
  * address of the machine and the port of the relay. It therefore
  * answers the addresses in the trust list and nobody else — the same
- * rule the relay follows (§3.2, D15).
+ * rule the relay follows.
  *
  * The list is the list of the relay and the list of the registry on top
  * of it: an installation that says nothing about the registry trusts
@@ -35,14 +35,14 @@ function trust(config: Config): TrustOptions {
 /**
  * Create the registry HTTP server.
  *
- * The registry serves exactly two endpoints (D9, §10.1):
+ * The registry serves exactly two endpoints:
  *
  *   - `GET /<proxy>` — the dynamic configuration document, rendered by the
  *     adapter and served under the adapter's id (`/traefik` for Traefik);
  *   - `GET /healthz` — the health probe.
  *
- * Everything else is a 404. The web interface and its endpoints are gone
- * (D8): the index page, the assets, the JSON route list and the create and
+ * Everything else is a 404. The web interface and its endpoints are gone:
+ * the index page, the assets, the JSON route list and the create and
  * delete endpoints went with it. The extension, the CLI and the MCP server
  * write the route state file directly, so the registry has no write path
  * left to guard.

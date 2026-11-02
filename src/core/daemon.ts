@@ -9,7 +9,7 @@
  * A worker that dies is respawned; the other listener keeps serving.
  *
  * The supervisor itself knows nothing about proxies: the workers pick the
- * adapter they render with (D3).
+ * adapter they render with.
  */
 
 import fs from 'node:fs';
@@ -39,8 +39,7 @@ const WATCH_INTERVAL_MS = 500;
  * resolved against the module that asks for it, with the extension that
  * matches the world the daemon runs in (`.ts` in a checkout, `.js` in the
  * compiled package). The worker's entry point sits one level up, next to
- * the core, and not inside it: it is the process that wires the adapters
- * (D3).
+ * the core, and not inside it: it is the process that wires the adapters.
  */
 const WORKER_PATH = relativeModulePath(import.meta.url, '../worker');
 
@@ -170,7 +169,7 @@ export async function runDaemon(): Promise<void> {
   process.on('SIGTERM', shutdown);
   process.on('SIGINT', shutdown);
 
-  // The daemon watches its own installation (§5.4). An installation that
+  // The daemon watches its own installation. An installation that
   // is removed takes the daemon with it: the package is gone, and the
   // daemon has nothing left to serve.
   //

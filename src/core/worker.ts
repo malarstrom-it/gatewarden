@@ -5,7 +5,7 @@
  * in one listener cannot take the other down.
  *
  * The worker renders the dynamic configuration with the proxy adapter it is
- * handed: the core does not know which proxy it serves (D3).
+ * handed: the core does not know which proxy it serves.
  *
  * The worker is an internal process of the daemon: the daemon starts it
  * with the role `registry` or `relay`. A user starts the daemon with

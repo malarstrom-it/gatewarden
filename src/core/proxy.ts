@@ -1,5 +1,5 @@
 /**
- * The proxy adapter contract (D3, §4.2).
+ * The proxy adapter contract.
  *
  * The core knows about routes, ports, host names and reachability. It does
  * not know what a router, a service or a middleware is: those belong to a
@@ -29,11 +29,11 @@ export interface DiscoverOptions {
    * The endpoints the gateway serves on.
    *
    * When they are given, the adapter reports whether the proxy already
-   * points at one of them: that is the question the setup wizard asks in
-   * §9.3. The list holds every name the machine is known by — the
-   * advertised host name and the advertised IP — and every port the
-   * gateway serves on, because the proxy may reach the gateway by either
-   * of them.
+   * points at one of them: that is the question the setup wizard asks
+   * when it reads the environment. The list holds every name the machine
+   * is known by — the advertised host name and the advertised IP — and
+   * every port the gateway serves on, because the proxy may reach the
+   * gateway by either of them.
    */
   expectEndpoints?: string[];
 }
@@ -84,7 +84,7 @@ export interface ProxyAdapter {
   /**
    * Where the proxy's API usually answers.
    *
-   * The wizard asks the adapter where to look when nobody says (§9.2):
+   * The wizard asks the adapter where to look when nobody says:
    * the address belongs to the adapter, not to the wizard, so that a
    * second proxy does not have to be hard-coded in the wizard.
    */

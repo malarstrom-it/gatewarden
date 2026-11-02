@@ -5,7 +5,7 @@ import path from 'node:path';
 import { buildFqdn, slugify, zoneOfFqdn } from './util/slug.ts';
 import type { Registration } from './types.ts';
 
-/** The name of the route store in the state directory (§3.1). */
+/** The name of the route store in the state directory. */
 export const ROUTES_FILE = 'routes.json';
 
 /** The name the route store had before it was renamed. */
@@ -61,7 +61,7 @@ export class RegistrationStore {
   /**
    * The file the routes are read from.
    *
-   * The route store was renamed to `routes.json` (§3.1). A state directory
+   * The route store was renamed to `routes.json`. A state directory
    * that still holds the old name is read from it, so that the routes of an
    * installation that ran before the rename are not lost. The first write
    * creates the new file, and from then on the new file is the one that is

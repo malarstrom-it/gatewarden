@@ -5,7 +5,7 @@
  *
  *   - in a checkout, as TypeScript, stripped by Node;
  *   - installed, as compiled JavaScript, because Node cannot strip types
- *     under `node_modules` (D2).
+ *     under `node_modules`.
  *
  * A few places need the path of a *sibling* module at runtime, for example
  * the daemon, which forks the worker next to it. Those paths are plain

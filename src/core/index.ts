@@ -1,12 +1,12 @@
 /**
- * The public surface of the package (`exports` in the manifest, §2.1).
+ * The public surface of the package (`exports` in the manifest).
  *
  * The package ships the compiled core under `dist/`, and this module is
  * what an importer gets:
  *
  *   import { loadConfig, RegistrationStore } from '@malarstrom/gatewarden';
  *
- * Everything here is proxy-agnostic (D3): the core knows about routes,
+ * Everything here is proxy-agnostic: the core knows about routes,
  * ports, host names and reachability, and about the configuration and the
  * state that hold them. The Traefik adapter is one implementation of the
  * `ProxyAdapter` contract, and it lives outside the core — the core does

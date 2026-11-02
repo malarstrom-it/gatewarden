@@ -21,8 +21,7 @@ import { relativeModulePath } from './util/module.ts';
  * resolved against the module that asks for it, with the extension that
  * matches the world the code runs in (`.ts` in a checkout, `.js` in the
  * compiled package). The daemon's entry point sits one level up, next to
- * the core, and not inside it: it is the process that wires the adapters
- * (D3).
+ * the core, and not inside it: it is the process that wires the adapters.
  */
 const DAEMON_PATH = relativeModulePath(import.meta.url, '../daemon');
 

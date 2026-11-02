@@ -1,5 +1,5 @@
 /**
- * The lock around the route store (D10).
+ * The lock around the route store.
  *
  * The store is written atomically: a reader never sees half a document.
  * That is not the same as being safe against a lost update. Two agent

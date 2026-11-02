@@ -1,6 +1,6 @@
 /**
  * The Traefik adapter: renders the dynamic configuration document Traefik
- * polls (D3, §4.2).
+ * polls.
  *
  * One route produces exactly one router, one service and one middleware.
  * Adding or removing a route touches only its own three objects, so routes
@@ -210,7 +210,7 @@ export const DEFAULT_API_BASE_URL = 'http://127.0.0.1:8080';
  * The name of Traefik's HTTP provider.
  *
  * The routers the HTTP provider serves carry it: that is how the proxy
- * says "this router came from the provider the gateway serves" (§9.3).
+ * says "this router came from the provider the gateway serves".
  */
 export const HTTP_PROVIDER = 'http';
 
@@ -442,7 +442,7 @@ function hostPortOf(url: string): { host: string; port: string } | undefined {
  * A name and an address are the same machine when the name resolves to the
  * address. The proxy may reach the gateway by its IP while the
  * configuration advertises its host name, and the wizard must
- * not call that "not wired" (§9.3).
+ * not call that "not wired".
  */
 async function sameMachine(a: string, b: string): Promise<boolean> {
   if (a === b) return true;
@@ -462,9 +462,10 @@ async function sameMachine(a: string, b: string): Promise<boolean> {
 /**
  * Does the proxy already serve something from this machine?
  *
- * The question the setup wizard asks in §9.3: is there a router whose
- * provider is the HTTP provider and whose service points at this host and
- * port? The router list alone does not say; the service list does.
+ * The question the setup wizard asks when it reads the environment: is
+ * there a router whose provider is the HTTP provider and whose service
+ * points at this host and port? The router list alone does not say; the
+ * service list does.
  *
  * A router without a provider is taken for one of the HTTP provider's:
  * the API of an older Traefik does not report the field, and a router
@@ -535,7 +536,7 @@ async function fetchServices(base: string, timeoutMs: number): Promise<Map<strin
 /**
  * The static configuration the user has to add to Traefik.
  *
- * The wizard writes it to a file the user can copy (S8). The gateway cannot
+ * The wizard writes it to a file the user can copy. The gateway cannot
  * apply it itself: the proxy's configuration lives on another machine.
  */
 export function traefikWiringSnippet(config: Config): string {

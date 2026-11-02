@@ -3,9 +3,9 @@
  *
  * The daemon runs from an installation — a directory that holds the
  * `package.json` of the package — and the files of the gateway live in
- * the directories of the user (§3.1). This module knows the two, and it
- * knows when the first one is gone and the second one has to go with it
- * (§5.4).
+ * the directories of the user. This module knows the two, and it
+ * knows when the first one is gone and the second one has to go with it:
+ * the uninstall takes the files of the user with it.
  *
  * The rules:
  *
@@ -47,7 +47,7 @@ export function isOwnedStateFile(name: string): boolean {
  *
  * The daemon is part of a package, and the directory that holds the
  * `package.json` of that package is the installation. The daemon watches
- * it, and stops itself when the installation is gone (§5.4).
+ * it, and stops itself when the installation is gone.
  *
  * The directory is null when there is none: code that runs from a
  * directory without a manifest is not part of an installation, and
