@@ -61,8 +61,10 @@ the configuration file (if there is none) and leaves the machine the way it
 found it — no daemon, no open port, no process in the background. The daemon
 starts by itself the first time a command needs it (step four).
 
-npm 11 blocks the install scripts of a dependency until you have looked at
-them, and it names the package in a warning while it does:
+npm 12 blocks the install scripts of a dependency until the dependency is
+approved, and it names the package in a warning while it does. npm 11 warns
+and lets the scripts run. Both npm 11 (from 11.18 on) and npm 12 have the
+commands that review the scripts:
 
 ```bash
 npm install-scripts ls

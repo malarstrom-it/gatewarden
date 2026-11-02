@@ -1,11 +1,15 @@
 # The install scripts of the package
 
-The package ships two install scripts. Under npm 11 every dependency that ships
-install scripts gets a warning. Under npm 12 those scripts are blocked until
-the dependency is approved. This page says what the warning means, how to
-review the scripts, and how to approve them.
+The package ships four scripts: two install scripts (`postinstall` and
+`prepare`) and two uninstall scripts (`preuninstall` and `postuninstall`).
+Under npm 11 every dependency that ships install scripts gets a warning.
+Under npm 12 those scripts are blocked until the dependency is approved. This
+page says what the warning means, how to review the scripts, and how to
+approve them.
 
 ## What the scripts do
+
+The two install scripts:
 
 - `postinstall` writes the configuration file with the default values. A
   configuration file that is already there stays as it is. The script creates
@@ -15,11 +19,35 @@ review the scripts, and how to approve them.
 - `prepare` builds the package from the TypeScript it holds. The published package ships
   the compiled output, so the build does not run for it.
 
+The two uninstall scripts:
+
+- `preuninstall` stops the daemon of the installation before the package goes.
+  It reads the pid file of the installation, checks that the process in it is
+  the daemon of that installation, and stops it: `SIGTERM` first, and `SIGKILL`
+  when the daemon is still there after ten seconds. It never fails the
+  uninstall: it always exits 0.
+- `postuninstall` removes what the installation left behind: the configuration
+  file, the files of the gateway in the state directory (the route store, the
+  registrations, the pid file and the log) and the cache. It never fails the
+  uninstall: it always exits 0.
+
+What npm does with the two install scripts depends on where the package comes
+from:
+
 | Source of the package | `prepare` | `postinstall` |
 | --- | --- | --- |
 | a tarball | named in the warning, not run | runs |
 | the registry | not an install script | runs |
 | a package with sources | runs, it builds the package | runs |
+
+npm names the install scripts of the package in its warning: `postinstall`
+always, and `prepare` for the sources where npm counts it as one — a tarball
+or a package with sources, not the registry. The two uninstall scripts are
+never named in it: npm 7 and later do not run the uninstall scripts of a
+package, so under npm the files of an installation that is removed stay where
+they are until the consumer removes them. The daemon stops itself when the
+package is gone; the two uninstall scripts are what the package managers that
+do run them use.
 
 ## The warning of npm 11 and npm 12
 
@@ -29,9 +57,9 @@ changed in npm 12.
 
 - npm 11 warns and lets the scripts run. The warning says that the scripts are
   "not yet covered" by `allowScripts`, and the field is advisory in npm 11.
-- npm 12 blocks the scripts. The warning says that the scripts were "blocked",
-  and the install script of the dependency does not run until the dependency is
-  approved.
+- npm 12 blocks the scripts until the dependency is approved. The warning says
+  that the scripts were "blocked", and the install script of the dependency
+  does not run until the dependency is approved.
 
 A global install of this package says, with npm 11.19.0:
 

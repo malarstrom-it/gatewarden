@@ -30,10 +30,11 @@
  * during an install would write into the user's home without being
  * asked.
  *
- * npm 11 blocks the install scripts of a dependency until the consumer
- * has reviewed them (`npm install-scripts ls`), so the script runs only
- * for a consumer who approves it. The gateway does not need it: the
- * setup wizard writes the same file, and the commands work without one.
+ * npm 12 blocks the install scripts of a dependency until the consumer
+ * has approved them (`npm install-scripts ls` lists them), so the script
+ * runs only for a consumer who approves it. npm 11 warns and lets the
+ * scripts run. The gateway does not need it: the setup wizard writes the
+ * same file, and the commands work without one.
  */
 
 import fs from 'node:fs';
