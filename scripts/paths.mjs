@@ -2,7 +2,7 @@
 /**
  * Where the gateway keeps its files, for the scripts of the package.
  *
- * The rules are the ones of `src/core/paths.ts` (§3.1):
+ * The rules are the ones of the core of the package:
  *
  * 1. `GATEWARDEN_HOME` — everything in one directory;
  * 2. `GATEWARDEN_CONFIG` — the configuration file only;
@@ -18,7 +18,7 @@
  * of the rules, the one the rest of the package uses. The copy below is
  * the fallback for an installation whose compiled output is gone — an
  * uninstall must work even when the package is half removed — and
- * `test/uninstall.test.ts` holds the two against each other, so that the
+ * the tests of the repository hold the two against each other, so that the
  * copy cannot drift away from the core.
  */
 

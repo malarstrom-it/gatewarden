@@ -12,6 +12,14 @@ names. Every release gets a section, newest first.
 
 ## Unreleased
 
+### Fixed
+
+- **The published documentation points at no file the package does not
+  ship.** The architecture reference of the skill and the setup guide named
+  documents that are not in the package: a reader of the installed package
+  followed the pointer and found nothing. The documentation names the files
+  that are really there now, and the test suite keeps it that way.
+
 ## 0.1.1 - 2026-11-01
 
 The version before this one, `0.1.0`, was withdrawn from the registry on the
@@ -107,7 +115,7 @@ earlier version to compare it with.
   `migrate`.
 - **An MCP server** — `gatewarden-mcp`, with the tools `publish_dev_server`,
   `remove_dev_server` and `list_dev_servers`.
-- **A pi extension**, a **Agent Skill** and an `AGENTS.md` block, so an
+- **A pi extension**, a **Agent Skill** and a `docs/AGENTS.md` block, so an
   agent can publish a dev server without being told the host name twice.
 - **A setup wizard** (`gatewarden setup`): it reads the proxy, derives what
   it can, asks for the rest and writes the configuration file.
@@ -135,8 +143,8 @@ earlier version to compare it with.
   leaves no process behind.
 - The route state is written under a lock, so two registrations at the same
   time cannot lose one of them.
-- `SECURITY.md` says where a vulnerability report goes, and what is already
-  protected.
+- The security policy says where a vulnerability report goes, and what is
+  already protected.
 
 ### Documentation
 
@@ -146,4 +154,5 @@ earlier version to compare it with.
 - `docs/traefik.md` — the proxy side of the wiring.
 - `docs/healthcheck.md` — what every line of `gatewarden doctor` means.
 - `docs/AGENTS.md` — the block an agent reads.
-- `CHANGELOG.md`, `CONTRIBUTING.md` and `SECURITY.md`.
+- `CHANGELOG.md` and `CONTRIBUTING.md`, and the security policy of the
+  project.

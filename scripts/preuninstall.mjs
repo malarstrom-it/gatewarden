@@ -17,8 +17,8 @@
  *
  * npm 7 and later do not run the uninstall scripts of a package — npm's
  * own documentation says so — so the daemon watches its own installation
- * as well and stops itself when the package is gone (`src/core/daemon.ts`).
- * This script is what the package managers that do run the scripts use.
+ * as well and stops itself when the package is gone. This script is what
+ * the package managers that do run the scripts use.
  */
 
 import fs from 'node:fs';

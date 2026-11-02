@@ -1,7 +1,7 @@
 # Wiring the proxy: Traefik
 
 This guide is for the **Traefik adapter** of the gateway. The core of the
-package is proxy-agnostic (D3); everything below is what the Traefik adapter
+package is proxy-agnostic; everything below is what the Traefik adapter
 needs from the machine the proxy runs on.
 
 The gateway runs on the machine that hosts the development servers. The proxy

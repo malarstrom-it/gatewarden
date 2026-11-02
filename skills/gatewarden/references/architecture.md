@@ -16,8 +16,8 @@ dev server            relay                 proxy (Traefik)              the use
   document to the proxy's HTTP provider (`http://<host>:45002/traefik`, polled
   every few seconds — the wizard writes `pollInterval: 2s`) and answers a
   health probe (`/healthz`). Those are the only two paths it answers: there is
-  no page and no write endpoint (D8, D9) — the routes are written to the state
-  file by the CLI and by the agents, and the route list is read with
+  no page and no write endpoint — the routes are written to the state file
+  by the CLI and by the agents, and the route list is read with
   `gatewarden list`.
 * The **relay** (port `45001` by default) receives the request and forwards it
   to the dev server on `127.0.0.1:<port>`, WebSocket upgrades included (Vite
@@ -42,7 +42,7 @@ service, so they cannot dispatch concurrent branches to different backends.
 
 ## Where the state lives
 
-The files follow the XDG Base Directory specification (D6):
+The files follow the XDG Base Directory specification:
 
 | Purpose | Linux | macOS | Windows |
 | --- | --- | --- | --- |
@@ -76,8 +76,13 @@ and a throwaway installation use.
 
 ## The documentation of the package
 
-* `specs/tech-architecture/gatewarden.md` — the design and the
-  decisions behind it.
-* `docs/traefik.md` — the wiring of the Traefik adapter.
-* `docs/setup.md` — the setup wizard, step by step.
+The documentation ships with the package: every file below is in the
+installed package.
+
+* `docs/traefik.md` — the wiring of the Traefik adapter: the provider the
+  proxy polls, the router, the middleware and the certificate resolver.
+* `docs/setup.md` — the setup wizard, step by step, and the manual path
+  beside it.
 * `docs/AGENTS.md` — the short block every harness can read.
+* `docs/healthcheck.md` — what every line of `gatewarden doctor` means.
+* `README.md` — the package itself, for a reader who has never seen it.

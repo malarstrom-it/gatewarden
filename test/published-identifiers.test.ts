@@ -45,6 +45,42 @@
  * private host — and the guard keeps it that way. When the project gets a
  * public mirror, its host goes into `PUBLIC_GIT_HOST` below, the fields of
  * the manifest come back, and the guard stops protecting that one host.
+ *
+ * The guard grew a second half in S35. The first half keeps the data of
+ * the installation out of the package; the second half keeps the package
+ * from pointing at anything it does not carry. A published package that
+ * names a file it does not ship is a trap: the reader follows the pointer
+ * and finds nothing, or — worse — finds something of the machine the
+ * package was written for. The traps that were found in S35 were of that
+ * kind: the skill's architecture reference named the design document of
+ * the repository, and the setup guide named a paragraph of it. Neither
+ * file is in the tarball.
+ *
+ * The second half reads the documentation the package ships and asks two
+ * questions of every path it names:
+ *
+ *   1. **does the package ship it?** The directories the package ships
+ *      are listed in `SHIPPED_DIRECTORIES` below, one by one, so that the
+ *      rule can be read instead of guessed. A path into a directory the
+ *      package does not ship is a trap; a path into one it does ship has
+ *      to name a file that is really there. A path into a name that is
+ *      neither — a directory that exists nowhere, not even in the
+ *      repository — is a trap as well, when the name it ends in is a
+ *      file of the project. The paths of the reader's own machine
+ *      (`/etc/traefik/config.yml`), the paths inside a URL and the
+ *      paths of an API are not files of the package, and the guard does
+ *      not ask about them;
+ *   2. **is it the internal numbering of the project?** A number of a
+ *      paragraph, a story or a decision of the internal specification is
+ *      a pointer into a text that is not published. The published text
+ *      says the thing itself, not where it stands in a document the
+ *      reader does not have.
+ *
+ * What the second half does not read: the compiled output under `dist/`
+ * and the code under `scripts/` and `bin/`. That is code, not prose for
+ * the reader, and the code of a checkout refers to the sources on purpose
+ * — the launcher of the package runs the TypeScript source when it is in
+ * a checkout and the compiled output when it is installed.
  */
 
 import assert from 'node:assert/strict';
@@ -134,6 +170,95 @@ const GIT_SERVER_NAMES = ['gitea'];
 const PUBLIC_CONTACT_ADDRESSES: string[] = ['npm@malarstrom.se'];
 
 /**
+ * The directories the published package ships.
+ *
+ * The list is written out one by one, so that the rule the guard applies
+ * can be read instead of guessed: a path into a directory that is not on
+ * this list is a path into the repository of the project, and the reader
+ * of the installed package does not have that directory. A path into a
+ * directory that is on the list has to name a file that is really in the
+ * tarball.
+ *
+ * The list is the allow-list of the manifest (`files`): `dist`, `bin`,
+ * `scripts`, `skills` and `docs`.
+ */
+const SHIPPED_DIRECTORIES = ['bin/', 'dist/', 'docs/', 'scripts/', 'skills/'];
+
+/**
+ * The files the published package ships in its root.
+ *
+ * The same rule as above, for the files that are not in a directory: the
+ * manifest, the readme, the changelog, the contributing guide and the
+ * licence. Every other file of the root of the repository — the security
+ * policy, the product description, the lock file — is not in the package,
+ * and the documentation must not point at it.
+ */
+const SHIPPED_ROOT_FILES = ['CHANGELOG.md', 'CONTRIBUTING.md', 'LICENSE', 'README.md', 'package.json'];
+
+/**
+ * The numbers of the internal specification.
+ *
+ * The published text says the thing itself. It does not say in which
+ * paragraph of a document the reader does not have the thing stands.
+ *
+ *   - `§9.6` — a paragraph of the internal specification;
+ *   - `S8` — a story of the internal plan;
+ *   - `D3` — a decision of the internal specification;
+ *   - `avsnitt 4` — the same as the paragraph, in words.
+ */
+const INTERNAL_NUMBERING: Array<{ pattern: RegExp; what: string }> = [
+  { pattern: /§\s*\d/g, what: 'the number of a paragraph of the internal specification' },
+  { pattern: /\bS\d+\b/g, what: 'the number of a story of the internal plan' },
+  { pattern: /\bD\d+\b/g, what: 'the number of a decision of the internal specification' },
+  { pattern: /\bavsnitt\s+\d/gi, what: 'the number of a paragraph of the internal specification' },
+];
+
+/**
+ * A path in a text: segments separated by slashes.
+ *
+ * The pattern is deliberately greedy about the segments and lazy about
+ * everything around them: a word is not a path, and the guard only looks
+ * at the texts that hold a slash.
+ */
+const PATH_TOKEN = /[A-Za-z0-9_][\w.-]*(?:\/[A-Za-z0-9_*][\w.*-]*)*\/?/g;
+
+/**
+ * The kinds of file the project itself carries.
+ *
+ * A path that ends in one of these names a file of the project: a
+ * document, a source, a piece of code, a configuration. A path that ends
+ * in something else is something else than a pointer at a file — a host
+ * name, a port, a network, a path on the machine of the reader.
+ *
+ * The list is here so that the rule "a path into a name that exists
+ * nowhere is a trap" does not fire on the paths the documentation has a
+ * right to name: the configuration of the proxy on the reader's own
+ * machine, the address of an API, the number of a network.
+ */
+const POINTER_EXTENSIONS = ['.md', '.ts', '.js', '.mjs', '.json', '.yml', '.yaml', '.txt'];
+
+/**
+ * Is the path that starts at `index` a path of the reader's own machine?
+ *
+ * Three things are not pointers at a file of the package:
+ *
+ *   - a path inside a URL: the reader follows the link, not a file of
+ *     the installation;
+ *   - a path that begins at the root of a file system
+ *     (`/etc/traefik/config.yml`): a file of the machine of the reader;
+ *   - a path that begins at the home of the reader
+ *     (`~/.config/gatewarden/config.json`): the same.
+ *
+ * The placeholder of the documentation (`<state>/wiring/traefik.yml`) is
+ * a path of the reader too: the reader fills it in.
+ */
+function isPathOfTheReader(text: string, index: number): boolean {
+  const before = text.slice(0, index).replace(/\.+$/, '');
+  if (/(?:\/\/|:\/\/)$/.test(before)) return true;
+  return /[~$</]$/.test(before);
+}
+
+/**
  * Does the place at `index` lie inside one of the allowed contact
  * addresses?
  *
@@ -211,6 +336,67 @@ function filesUnder(root: string): string[] {
 /** The line a hit is on, counted from one. */
 function lineOf(text: string, index: number): number {
   return text.slice(0, index).split('\n').length;
+}
+
+/**
+ * The names of the top-level directories of the repository.
+ *
+ * The directories the project is made of: the ones the package ships and
+ * the ones it does not. The hidden directories and `node_modules` are not
+ * part of the project and are not counted.
+ */
+function repositoryDirectories(): string[] {
+  return fs
+    .readdirSync(REPO_ROOT, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules')
+    .map((entry) => entry.name)
+    .sort();
+}
+
+/**
+ * The names of the files in the root of the repository.
+ *
+ * The same rule for the files: the ones the package ships and the ones it
+ * does not.
+ */
+function repositoryFiles(): string[] {
+  return fs
+    .readdirSync(REPO_ROOT, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && !entry.name.startsWith('.'))
+    .map((entry) => entry.name)
+    .sort();
+}
+
+/**
+ * The paths a text names.
+ *
+ * Only the texts that hold a slash are paths; a word on its own is not.
+ * The punctuation of the sentence is not part of the path, so the trailing
+ * dots and commas are taken off before the path is looked up.
+ */
+function pathTokens(text: string): string[] {
+  const tokens: string[] = [];
+  for (const match of text.matchAll(PATH_TOKEN)) {
+    const token = match[0].replace(/[.,;:)]+$/, '');
+    if (!token.includes('/')) continue;
+    // A path of the reader's own machine is not a pointer at a file of
+    // the package. It is skipped here, so that it is never asked about.
+    if (isPathOfTheReader(text, match.index ?? 0)) continue;
+    tokens.push(token.replace(/\/$/, ''));
+  }
+  return tokens;
+}
+
+/**
+ * Does the package ship this path?
+ *
+ * A path is in the package when the tarball holds the file itself, or
+ * when it holds files under it — that is how a directory of the package
+ * is in the package.
+ */
+function resolvesInPackage(token: string, shipped: string[]): boolean {
+  const wanted = token.replace(/^\.\//, '');
+  return shipped.some((file) => file === wanted || file.startsWith(`${wanted}/`));
 }
 
 describe('the published package', () => {
@@ -360,5 +546,162 @@ describe('the published package', () => {
     // The allowance is not a hole that may go quiet: the package has to
     // name the support address, or a reader has nowhere to write.
     assert.ok(support > 0, 'the published package names no support address');
+  });
+
+  test('the published documentation points at no file the package does not ship', () => {
+    // A reader of the installed package follows the paths the
+    // documentation names. A path into a directory the package does not
+    // ship leads nowhere: the file is in the repository of the project,
+    // and the reader of the package does not have the repository. A path
+    // into a directory the package does ship has to name a file that is
+    // really in the tarball — otherwise it leads nowhere either.
+    const hits: string[] = [];
+    const directories = repositoryDirectories();
+    const unshippedFiles = repositoryFiles().filter((file) => !SHIPPED_ROOT_FILES.includes(file));
+    const shippedDirectories = new Set<string>();
+    for (const file of files) {
+      const parts = file.split('/');
+      for (let index = 1; index < parts.length; index += 1) {
+        shippedDirectories.add(parts.slice(0, index).join('/'));
+      }
+    }
+
+    for (const file of files.filter((name) => name.endsWith('.md'))) {
+      const text = fs.readFileSync(path.join(packageDir, file), 'utf8');
+      const lines = text.split('\n');
+      const directory = path.posix.dirname(file);
+
+      lines.forEach((line, index) => {
+        for (const token of pathTokens(line)) {
+          const first = token.split('/')[0];
+          if (SHIPPED_DIRECTORIES.includes(`${first}/`)) {
+            // A path into a directory of the package: the file it names
+            // has to be in the tarball.
+            if (!resolvesInPackage(token, files)) {
+              hits.push(`${file}:${index + 1}: "${token}" — the package does not ship that file`);
+            }
+            continue;
+          }
+          if (directories.includes(first)) {
+            hits.push(`${file}:${index + 1}: "${token}" — the package ships no "${first}/" directory`);
+            continue;
+          }
+          // A path that is relative to the file that names it: the skill
+          // points at the files next to it. It is a pointer into the
+          // package, and the file it names has to be there.
+          if (shippedDirectories.has(`${directory}/${first}`) && !resolvesInPackage(`${directory}/${token}`, files)) {
+            hits.push(`${file}:${index + 1}: "${token}" — the package does not ship that file`);
+            continue;
+          }
+          // A path into a name that is neither a directory of the package
+          // nor a directory of the repository: it exists nowhere. The
+          // rule of the guard says that a path into a directory the
+          // package does not ship is a trap, and this is one. It is only
+          // a pointer when the name it ends in is a file of the project;
+          // a host name, a port, a network and a path on the machine of
+          // the reader are something else, and those are not asked about
+          // here.
+          if (
+            POINTER_EXTENSIONS.some((extension) => token.endsWith(extension)) &&
+            !resolvesInPackage(token, files) &&
+            !resolvesInPackage(`${directory}/${token}`, files)
+          ) {
+            hits.push(`${file}:${index + 1}: "${token}" — the package does not ship that file`);
+          }
+        }
+
+        // A file of the root of the repository that the package does not
+        // ship: the security policy, the product description, the lock
+        // file. The name of such a file is a pointer to a file the
+        // reader does not have.
+        for (const name of unshippedFiles) {
+          const pattern = new RegExp(`(?<![\\w.-])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w.-])`);
+          if (pattern.test(line)) hits.push(`${file}:${index + 1}: "${name}" — the package does not ship that file`);
+        }
+      });
+    }
+
+    assert.deepEqual(
+      hits,
+      [],
+      'the published documentation points at files the package does not ship:\n' + hits.join('\n'),
+    );
+  });
+
+  test('the published documentation uses no number of the internal specification', () => {
+    // The published text says the thing itself. A number of a paragraph,
+    // a story or a decision of the internal specification points into a
+    // document the reader of the package does not have.
+    const hits: string[] = [];
+
+    for (const file of files.filter((name) => name.endsWith('.md'))) {
+      const text = fs.readFileSync(path.join(packageDir, file), 'utf8');
+      for (const { pattern, what } of INTERNAL_NUMBERING) {
+        for (const match of text.matchAll(pattern)) {
+          hits.push(`${file}:${lineOf(text, match.index ?? 0)}: "${match[0]}" — ${what}`);
+        }
+      }
+    }
+
+    assert.deepEqual(
+      hits,
+      [],
+      'the published documentation names the internal numbering of the project:\n' + hits.join('\n'),
+    );
+  });
+
+  test('the manifest points at the files the package ships', () => {
+    // The manifest is what npm reads to build the tarball and what a
+    // consumer reads to find the package. Every path in it has to be in
+    // the tarball: a path that is not there is a pointer into a file the
+    // reader of the package does not have.
+    //
+    // The `scripts` of the manifest are not read here, and that is on
+    // purpose: they are the commands of the checkout — `npm test` runs
+    // the test files of the repository, and `npm run test:e2e` runs the
+    // end-to-end tools of the repository. They are commands, not paths
+    // into the package, and npm does not run them when the package is
+    // installed.
+    const manifest = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8')) as {
+      main: string;
+      types: string;
+      files: string[];
+      bin: Record<string, string>;
+      exports: Record<string, Record<string, string>>;
+      pi: { extensions: string[]; skills: string[] };
+    };
+    const hits: string[] = [];
+
+    const check = (value: string, what: string): void => {
+      if (!resolvesInPackage(value, files)) hits.push(`${what}: "${value}" — the tarball does not hold it`);
+    };
+
+    for (const entry of manifest.files) check(entry, 'files');
+    for (const [name, entry] of Object.entries(manifest.bin)) check(entry, `bin.${name}`);
+    check(manifest.main, 'main');
+    check(manifest.types, 'types');
+    for (const [subpath, conditions] of Object.entries(manifest.exports)) {
+      for (const [condition, value] of Object.entries(conditions)) check(value, `exports.${subpath}.${condition}`);
+    }
+    for (const entry of manifest.pi.extensions) check(entry, 'pi.extensions');
+    for (const entry of manifest.pi.skills) check(entry, 'pi.skills');
+
+    assert.deepEqual(hits, [], 'the manifest points at files the package does not ship:\n' + hits.join('\n'));
+  });
+
+  test('the package ships the directories it says it ships', () => {
+    // The list of the shipped directories is the rule the check above
+    // uses. It has to be true: a directory that is not in the tarball
+    // cannot be pointed at.
+    for (const directory of SHIPPED_DIRECTORIES) {
+      const name = directory.replace(/\/$/, '');
+      assert.ok(
+        files.some((file) => file === name || file.startsWith(`${name}/`)),
+        `the tarball holds no "${directory}" directory`,
+      );
+    }
+    for (const file of SHIPPED_ROOT_FILES) {
+      assert.ok(files.includes(file), `the tarball holds no "${file}"`);
+    }
   });
 });

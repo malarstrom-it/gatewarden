@@ -5,7 +5,7 @@
  * The uninstall removes the files of the gateway: the configuration file,
  * the state directory (the route store, the pidfile) and the cache. The
  * directories are the ones of the installation, and they are found the
- * same way the rest of the package finds them (§3.1):
+ * same way the rest of the package finds them:
  * `GATEWARDEN_HOME` puts everything in one directory, `GATEWARDEN_CONFIG`
  * and `GATEWARDEN_STATE_DIR` name one each, and the names the variables
  * had before the rename still work.
@@ -15,9 +15,8 @@
  * npm 7 and later do not run the uninstall scripts of a package — npm's
  * own documentation says so — so under npm the files of an installation
  * that is removed stay where they are until the consumer removes them.
- * The daemon stops itself when the package is gone
- * (`src/core/daemon.ts`); this script is what the package managers that
- * do run the scripts use.
+ * The daemon stops itself when the package is gone; this script is what
+ * the package managers that do run the scripts use.
  */
 
 import fs from 'node:fs';

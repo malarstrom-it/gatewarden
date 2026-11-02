@@ -506,8 +506,8 @@ path, with the values filled in.
 
 When the proxy knows the URL but does not serve the route, the verification
 is **skipped**: the wiring has to be added to the proxy first, and the
-wizard cannot apply it (§9.6). That is not a failed setup, and the exit
-code says so.
+wizard cannot apply it — that is the proxy's own configuration, which you
+write by hand. That is not a failed setup, and the exit code says so.
 
 When the relay **refuses** the request (403), the verification **fails** and
 the reason names the trust list: the relay only serves the addresses in

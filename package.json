@@ -63,7 +63,7 @@
     "postinstall": "node scripts/postinstall.mjs",
     "preuninstall": "node scripts/preuninstall.mjs",
     "postuninstall": "node scripts/postuninstall.mjs",
-    "start": "node src/daemon.ts"
+    "start": "node ./bin/gatewarden-daemon.js"
   },
   "engines": {
     "node": ">=20.11"

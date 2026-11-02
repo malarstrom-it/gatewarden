@@ -6,8 +6,8 @@ The failures that actually happen, with symptom → cause → fix.
 
 The proxy decodes the document and rejects an empty map. A section with no
 entries must be **omitted**, never rendered as `{}`. If this message appears,
-the document the gateway serves is broken — look at the adapter
-(`src/adapters/traefik.ts`). It happened once and cost a proxy restart.
+the document the gateway serves is broken — look at the Traefik adapter,
+the module that renders it. It happened once and cost a proxy restart.
 
 ## The route does not appear on the dashboard
 
@@ -65,7 +65,7 @@ The route is gone on the proxy's next poll (≈5 s). It is a manual fallback —
 agent must still unregister with the CLI when it stops a dev server.
 
 There is no HTTP endpoint for the removal: the registry serves the
-configuration document and the health probe, and nothing else (D9).
+configuration document and the health probe, and nothing else.
 
 ## The relay answers 403
 

@@ -6,7 +6,7 @@
  * no daemon, opens no port and leaves no process behind: an install
  * that starts a daemon makes the machine do something nobody asked for,
  * and the consumer finds three processes and two open ports waiting for
- * it (§5.2).
+ * it.
  *
  * The daemon is started by the lazy start — every entry point starts it
  * when it is down — and by the explicit command `gatewarden start`.
@@ -65,7 +65,7 @@ if (initCwd && initCwd === PACKAGE_ROOT) stop();
 /**
  * Import a module of the package.
  *
- * The published package ships the compiled modules (D2); a checkout has
+ * The published package ships the compiled modules; a checkout has
  * the sources, which Node can run on its own. The compiled ones are
  * preferred: they are what the package ships.
  */

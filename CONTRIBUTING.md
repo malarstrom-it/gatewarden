@@ -6,7 +6,7 @@ follow.
 
 The short version:
 
-- every change follows the specification in `specs/tech-architecture/`;
+- every change follows the technical specification of the project;
 - every commit is a conventional commit;
 - every pull request keeps `npm test`, `npm run typecheck` and `npm run
   build` green;
@@ -46,8 +46,8 @@ that changes on its own is a lock file nobody reviews.
 ## The commands
 
 ```bash
-npm run build       # tsc -p tsconfig.build.json, into dist/
-npm test            # node --test --test-concurrency=1 test/*.test.ts
+npm run build       # the TypeScript build, into dist/
+npm test            # node --test, one file per area
 npm run typecheck   # tsc --noEmit
 npm pack            # the tarball that would be published
 npm run publish:dry-run   # what the publish would upload, without uploading it
@@ -72,7 +72,7 @@ npm pack --pack-destination /tmp
 
 ## The tests
 
-The tests are `node:test` files in `test/`, one file per area, named
+The tests are `node:test` files, one file per area, named
 `<area>.test.ts`. They are plain TypeScript and they use the node test
 runner — there is no test framework in this package.
 
@@ -116,9 +116,9 @@ runtime build, no runtime download.
 
 ## The specification
 
-**Every contribution follows the specification.** The specification is in
-`specs/tech-architecture/gatewarden.md`, with the product in `PRODUCT.md`
-and the decisions in the other files of `specs/tech-architecture/`.
+**Every contribution follows the specification.** The specification lives with
+the sources of the project: the technical specification, the product
+description and the decisions behind them.
 
 That means:
 
@@ -190,8 +190,8 @@ two commits.
 ## Security
 
 **A vulnerability is not a public issue.** Do not open one, do not open a
-pull request with it, and do not post it in a chat. Report it the way
-[`SECURITY.md`](SECURITY.md) says: privately, to the maintainer, and
+pull request with it, and do not post it in a chat. Report it the way the
+security policy of the project says: privately, to the maintainer, and
 quickly.
 
 A bug that is harmless to know about is a normal issue. If you are not sure

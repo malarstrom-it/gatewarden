@@ -1,7 +1,7 @@
 /**
  * Which build of the package a launcher should run.
  *
- * Node cannot strip TypeScript types under `node_modules` (D2), so an
+ * Node cannot strip TypeScript types under `node_modules`, so an
  * installed package always runs the compiled `dist/`. In a checkout the
  * TypeScript source is used, so a launcher always runs the code that is in
  * the working tree; the compiled build is the fallback for a checkout
