@@ -239,6 +239,31 @@ configuration file.
 
 No second adapter ships with the package. Writing the one you want is your own work.
 
+## If you use socat
+
+socat copies bytes from one port to another. The two ports are in the
+command line, so each app needs its own process and port. The gateway does
+the same forwarding, and it takes on the work around it:
+
+- One relay port serves every dev server. The proxy stamps `X-Dev-Target` on
+  the request, and the relay reads the dev server port from it.
+- The gateway serves the configuration document that the `http` provider of
+  the proxy polls. A registered route is in it, and a removed one is not.
+  With socat you write a router and a service by hand, for each app.
+- The address follows the project and the branch: `<branch>.<project>.<zone>`.
+  The wizard reads the zone, the entry points and the certificate resolver
+  from the proxy. Without an answer from the proxy, it asks you for them.
+- Both listeners check the caller's address against the trust list, and the
+  shared secret that the installation has. A socat listener has neither.
+- The daemon starts the listeners on demand, and it stops them with the
+  package. A socat process is one that you start and stop yourself.
+
+TLS is not one of the differences: the proxy terminates it in both cases.
+
+When you run one dev server and write the route of the proxy by hand, socat
+is enough. As long as you need no address that follows the project and the
+branch, no trust list, and no daemon, socat stays enough.
+
 ## The agent surfaces
 
 ### The MCP server
