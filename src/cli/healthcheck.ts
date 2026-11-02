@@ -103,8 +103,8 @@ const NOT_SET_UP = 'not set up here: there is no installation on this machine';
 
 /** The path of the launcher that runs the daemon. */
 export function daemonLauncherPath(): string {
-  // `src/cli/index.ts` (or `dist/cli/index.js`) sits two levels under the
-  // package root, next to `bin/`.
+  // The CLI entry point sits two levels under the package root, next to
+  // `bin/`.
   const root = path.resolve(moduleDirectory(import.meta.url), '..', '..');
   return path.join(root, 'bin', 'gatewarden-daemon.js');
 }

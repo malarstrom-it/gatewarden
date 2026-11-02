@@ -2,10 +2,10 @@
  * The daemon entry point (`gatewarden-daemon`).
  *
  * The process that supervises the workers. It is deliberately thin: the
- * supervisor lives in the core (`src/core/daemon.ts`), and the entry point
+ * supervisor lives in the core module `daemon`, and the entry point
  * is what wires the world together.
  *
- * Usage: node src/daemon.ts [--config <path>]
+ * Usage: gatewarden-daemon [--config <path>]
  */
 
 import { runDaemon } from './core/daemon.ts';

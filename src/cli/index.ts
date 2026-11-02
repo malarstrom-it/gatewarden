@@ -861,7 +861,7 @@ export async function run(): Promise<void> {
   process.exitCode = code;
 }
 
-// Allow `node src/cli/index.ts` as well as `import ... from './cli/index.ts'`.
+// Allow running this module directly as well as importing it.
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
   void run();
 }

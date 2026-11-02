@@ -5,7 +5,9 @@
  * picks the proxy adapter: the core hands the adapter to the worker, and
  * the worker never learns which proxy it renders for (D3).
  *
- * Usage: node src/worker.ts <registry|relay> [--config <path>]
+ * The worker is an internal process of the daemon: the daemon starts it
+ * with the role `registry` or `relay`. A user starts the daemon with
+ * `gatewarden start`.
  */
 
 import { loadConfig, configPathFromArgv } from './core/config.ts';import { requireAdapter } from './adapters/index.ts';
@@ -13,7 +15,9 @@ import { runWorker, type WorkerRole } from './core/worker.ts';
 
 const role = process.argv[2];
 if (role !== 'registry' && role !== 'relay') {
-  process.stderr.write('usage: node src/worker.ts <registry|relay>\n');
+  process.stderr.write(
+    'worker: the role must be "registry" or "relay". The daemon starts the worker; "gatewarden start" starts the daemon.\n',
+  );
   process.exit(2);
 }
 

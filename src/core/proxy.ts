@@ -5,10 +5,10 @@
  * not know what a router, a service or a middleware is: those belong to a
  * proxy, and a proxy is reached through this contract.
  *
- * The contract lives in the core, and not in `src/adapters/`, because the
+ * The contract lives in the core, and not in the adapters, because the
  * core is the side that consumes it. The dependency runs one way: an
  * adapter may import the core, the core never imports an adapter.
- * `src/adapters/types.ts` re-exports it under the name the specification
+ * The adapter types re-export it under the name the specification
  * gives it.
  */
 

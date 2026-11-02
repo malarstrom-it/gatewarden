@@ -114,7 +114,7 @@ class Supervisor {
  * Run the daemon.
  *
  * The daemon is the supervisor; the entry point that starts it is
- * `src/daemon.ts`, which is also the process the CLI starts.
+ * `gatewarden-daemon`, which is also the process the CLI starts.
  */
 export async function runDaemon(): Promise<void> {
   // The configuration file the daemon runs with is the one the command

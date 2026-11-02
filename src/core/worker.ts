@@ -7,7 +7,9 @@
  * The worker renders the dynamic configuration with the proxy adapter it is
  * handed: the core does not know which proxy it serves (D3).
  *
- * Usage: node src/worker.ts <registry|relay> [--config <path>]
+ * The worker is an internal process of the daemon: the daemon starts it
+ * with the role `registry` or `relay`. A user starts the daemon with
+ * `gatewarden start`.
  */
 
 import { loadConfig, configPathFromArgv, listenHost } from './config.ts';

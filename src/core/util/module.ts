@@ -3,9 +3,9 @@
  *
  * The package runs in two worlds:
  *
- *   - in a checkout, as TypeScript (`src/….ts`), stripped by Node;
- *   - installed, as compiled JavaScript (`dist/….js`), because Node cannot
- *     strip types under `node_modules` (D2).
+ *   - in a checkout, as TypeScript, stripped by Node;
+ *   - installed, as compiled JavaScript, because Node cannot strip types
+ *     under `node_modules` (D2).
  *
  * A few places need the path of a *sibling* module at runtime, for example
  * the daemon, which forks the worker next to it. Those paths are plain
@@ -63,9 +63,9 @@ export function moduleDirectory(moduleUrl: string): string {
 /**
  * The version of the package.
  *
- * The manifest sits three levels above this module in a checkout
- * (`src/core/util/`) and in the compiled package (`dist/core/util/`), so
- * the same relative path finds it in both worlds.
+ * The manifest sits three levels above this module in both worlds, so
+ * the same relative path finds it in a checkout and in the compiled
+ * package.
  */
 export function packageVersion(): string {
   try {
