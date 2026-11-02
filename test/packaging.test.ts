@@ -317,19 +317,24 @@ describe('the published package', () => {
 
     // The allow-list, not an ignore list (§2.1). The bin files are
     // named one by one, so that the tarball holds the three launchers
-    // of §2.1 and nothing else.
+    // of §2.1 and nothing else. The scripts are named one by one too
+    // (S43): the package ships the scripts it runs at install and at
+    // uninstall, and not the script that cleans the build output of a
+    // checkout.
     assert.deepEqual(MANIFEST.files, [
       'dist',
       'bin/gatewarden.js',
       'bin/gatewarden-mcp.js',
       'bin/gatewarden-daemon.js',
       'bin/entry.mjs',
-      'scripts',
+      'scripts/paths.mjs',
+      'scripts/postinstall.mjs',
+      'scripts/preuninstall.mjs',
+      'scripts/postuninstall.mjs',
       'skills',
       'docs',
       'README.md',
       'CHANGELOG.md',
-      'CONTRIBUTING.md',
       'LICENSE',
     ]);
 
@@ -466,11 +471,14 @@ describe('the published package', () => {
 
     assert.ok(actual.includes('LICENSE'), 'the licence is not in the tarball');
     assert.ok(actual.includes('README.md'), 'the readme is not in the tarball');
-    // The readme links to the changelog and to the contributing guide, and
-    // the links have to work for a consumer that reads the readme from
-    // `node_modules`.
+    // The changelog travels with the package: a reader of the installed
+    // package wants to know what changed in the versions before this
+    // one.
     assert.ok(actual.includes('CHANGELOG.md'), 'the changelog is not in the tarball');
-    assert.ok(actual.includes('CONTRIBUTING.md'), 'the contributing guide is not in the tarball');
+    // The contributing guide does not (S43): it describes the repository
+    // of the project and names the branch the pull requests go to. A
+    // reader of the installed package has no pull request to open.
+    assert.ok(!actual.includes('CONTRIBUTING.md'), 'the contributing guide is in the tarball');
     // The security policy is the one document that is not in the tarball:
     // it names the address of the maintainer, and the published package
     // carries no data of the installation it was written for (S14). The

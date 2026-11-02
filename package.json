@@ -39,12 +39,14 @@
     "bin/gatewarden-mcp.js",
     "bin/gatewarden-daemon.js",
     "bin/entry.mjs",
-    "scripts",
+    "scripts/paths.mjs",
+    "scripts/postinstall.mjs",
+    "scripts/preuninstall.mjs",
+    "scripts/postuninstall.mjs",
     "skills",
     "docs",
     "README.md",
     "CHANGELOG.md",
-    "CONTRIBUTING.md",
     "LICENSE"
   ],
   "publishConfig": {

@@ -188,12 +188,37 @@ const SHIPPED_DIRECTORIES = ['bin/', 'dist/', 'docs/', 'scripts/', 'skills/'];
  * The files the published package ships in its root.
  *
  * The same rule as above, for the files that are not in a directory: the
- * manifest, the readme, the changelog, the contributing guide and the
- * licence. Every other file of the root of the repository — the security
+ * manifest, the readme, the changelog and the licence. Every other file
+ * of the root of the repository — the contributing guide, the security
  * policy, the product description, the lock file — is not in the package,
  * and the documentation must not point at it.
+ *
+ * The contributing guide left the package in S43: it describes the
+ * repository of the project, not the package, and it names the branch the
+ * pull requests of the project go to. A reader of the installed package
+ * has no pull request to open.
  */
-const SHIPPED_ROOT_FILES = ['CHANGELOG.md', 'CONTRIBUTING.md', 'LICENSE', 'README.md', 'package.json'];
+const SHIPPED_ROOT_FILES = ['CHANGELOG.md', 'LICENSE', 'README.md', 'package.json'];
+
+/**
+ * The scripts the published package ships (S43).
+ *
+ * The package runs four scripts at the moments of the life of an
+ * installation: `postinstall` writes the configuration and starts
+ * nothing, `preuninstall` stops the daemon and `postuninstall` removes
+ * the state that belongs to the installation. All three read the paths of
+ * the installation out of `paths.mjs`, so that script travels with them.
+ *
+ * The fifth script of the repository — `clean-dist.mjs`, which removes
+ * the build output — stays out: it belongs to the build of a checkout,
+ * and the installed package has no build output of its own to remove.
+ */
+const SHIPPED_SCRIPTS = [
+  'scripts/paths.mjs',
+  'scripts/postinstall.mjs',
+  'scripts/postuninstall.mjs',
+  'scripts/preuninstall.mjs',
+];
 
 /**
  * The numbers of the internal specification.
@@ -441,6 +466,42 @@ describe('the published package', () => {
     for (const file of ['README.md', 'LICENSE', 'docs/traefik.md', 'docs/setup.md', 'skills/gatewarden/SKILL.md', 'dist/core/config.js']) {
       assert.ok(files.includes(file), `the tarball does not hold ${file}`);
     }
+  });
+
+  test('the tarball holds only the files the package needs', () => {
+    // The tarball is what every user of the package downloads, and the
+    // rule of the package is that it carries what the installation and
+    // the running of it need — and nothing else. The files below are the
+    // ones that do not belong there, and each of them has a reason:
+    //
+    //   - the contributing guide describes the repository of the project
+    //     and names the branch the pull requests go to. It is a document
+    //     for the people who work on the project, not for the people who
+    //     install the package;
+    //   - `clean-dist.mjs` removes the build output of a checkout. The
+    //     installed package has no build output of its own, and npm
+    //     never runs the build of an installed package;
+    //   - a source map carries the whole TypeScript source of the
+    //     package in `sourcesContent`. The package ships the compiled
+    //     output and its declarations; the source is the source of the
+    //     repository, and it is not needed to install the package or to
+    //     run it.
+    for (const file of ['CONTRIBUTING.md', 'scripts/clean-dist.mjs']) {
+      assert.ok(!files.includes(file), `the tarball holds ${file}, which the package does not need`);
+    }
+
+    const maps = files.filter((file) => file.endsWith('.map'));
+    assert.deepEqual(maps, [], `the tarball holds source maps: ${maps.join(', ')}`);
+
+    // The scripts of the package are named one by one, so that a script
+    // that comes along without being needed is caught here.
+    const scripts = files.filter((file) => file.startsWith('scripts/')).sort();
+    assert.deepEqual(scripts, [...SHIPPED_SCRIPTS].sort(), 'the tarball holds the wrong scripts');
+
+    // The root of the package holds the files the reader of the package
+    // needs, and no other file of the root of the repository.
+    const rootFiles = files.filter((file) => !file.includes('/')).sort();
+    assert.deepEqual(rootFiles, [...SHIPPED_ROOT_FILES].sort(), 'the tarball holds the wrong files in its root');
   });
 
   test('the tarball holds no identifier of this installation', () => {
