@@ -9,7 +9,9 @@
  *     `gatewarden` binary, a working MCP server and a pi extension pi
  *     can load;
  *   - a launcher that finds no build speaks about the installation and
- *     not about a checkout (S55).
+ *     not about a checkout (S55);
+ *   - the message about a missing build is one text that holds for
+ *     every installation, and it names the launcher that wrote it (S79).
  *
  * The install is hermetic, and it needs no network: the packaging layer
  * is layer L3 of §11.3, and L3 needs no network. The tarball is
@@ -32,12 +34,12 @@ import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import test, { after, before, describe } from 'node:test';
+import test, { after, before, describe, type TestContext } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { listenHost } from '../src/core/config.ts';
 
-import { resolveEntry } from '../bin/entry.mjs';
+import { NO_BUILD_TEXT, resolveEntry } from '../bin/entry.mjs';
 import { copyDependencyClosure, linkBinaries, unpackTarball } from './helpers/install.ts';
 
 const execFileAsync = promisify(execFile);
@@ -196,6 +198,31 @@ function runLauncher(launcher: string): Promise<{ code: number | null; stderr: s
     });
     child.on('close', (code) => resolve({ code, stderr }));
   });
+}
+
+/**
+ * An installation whose launchers have no build next to them.
+ *
+ * The path holds `node_modules`, so a launcher looks for the compiled
+ * output only, and finds none — the state an installation is in when
+ * its build is missing.
+ *
+ * @param packageDir the directory the tarball was unpacked into
+ * @param t the test context, which removes the installation afterwards
+ * @returns the directory of the installation
+ */
+function installationWithoutBuild(packageDir: string, t: TestContext): string {
+  const broken = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-nobuild-'));
+  t.after(() => fs.rmSync(broken, { recursive: true, force: true }));
+
+  const installed = path.join(broken, 'node_modules', '@malarstrom', 'gatewarden');
+  fs.mkdirSync(path.join(installed, 'bin'), { recursive: true });
+  for (const launcher of ['entry.mjs', 'gatewarden.js', 'gatewarden-mcp.js', 'gatewarden-daemon.js']) {
+    fs.copyFileSync(path.join(packageDir, 'bin', launcher), path.join(installed, 'bin', launcher));
+  }
+  assert.equal(fs.existsSync(path.join(installed, 'dist')), false, 'the installation has a build');
+
+  return installed;
 }
 
 describe('the published package', () => {
@@ -547,18 +574,7 @@ describe('the published package', () => {
     // S55: the reader of an installed package has no checkout and
     // nothing to build. The message the launcher writes has to speak
     // about the installation, not about a working tree.
-    const broken = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-nobuild-'));
-    t.after(() => fs.rmSync(broken, { recursive: true, force: true }));
-
-    // An installation whose launchers have no build next to them. The
-    // path holds `node_modules`, so a launcher looks for the compiled
-    // output only, and finds none.
-    const installed = path.join(broken, 'node_modules', '@malarstrom', 'gatewarden');
-    fs.mkdirSync(path.join(installed, 'bin'), { recursive: true });
-    for (const launcher of ['entry.mjs', 'gatewarden.js', 'gatewarden-mcp.js', 'gatewarden-daemon.js']) {
-      fs.copyFileSync(path.join(packageDir, 'bin', launcher), path.join(installed, 'bin', launcher));
-    }
-    assert.equal(fs.existsSync(path.join(installed, 'dist')), false, 'the installation has a build');
+    const installed = installationWithoutBuild(packageDir, t);
 
     for (const launcher of ['gatewarden.js', 'gatewarden-mcp.js', 'gatewarden-daemon.js']) {
       const run = await runLauncher(path.join(installed, 'bin', launcher));
@@ -568,6 +584,51 @@ describe('the published package', () => {
       assert.match(run.stderr, /reinstall/, `${launcher} does not offer a way out`);
       assert.doesNotMatch(run.stderr, /npm run build/, `${launcher} tells the reader to build a checkout`);
     }
+  });
+
+  test('the three launchers write the same text about a missing build, each with its own name', async (t) => {
+    // S79: the text is one text, and the name of the launcher is the
+    // only thing that differs between the three messages. A reader who
+    // ran `gatewarden-mcp` has to see which of the commands it was.
+    const installed = installationWithoutBuild(packageDir, t);
+    const texts: string[] = [];
+
+    for (const launcher of ['gatewarden.js', 'gatewarden-mcp.js', 'gatewarden-daemon.js']) {
+      const run = await runLauncher(path.join(installed, 'bin', launcher));
+      const name = launcher.replace(/\.js$/, '');
+
+      assert.ok(run.stderr.startsWith(`${name}: `), `${launcher} does not name itself in its message`);
+      texts.push(run.stderr.slice(`${name}: `.length));
+    }
+
+    assert.equal(new Set(texts).size, 1, 'the launchers write different texts about a missing build');
+    assert.equal(texts[0], `${NO_BUILD_TEXT}\n`, 'the launchers write another text than the shared one');
+  });
+
+  test('the message about a missing build holds for a project install and for a global one', async (t) => {
+    // S79: the advice cannot assume that the package was installed
+    // globally. A reader who installed the package in a project has to
+    // find the command of that installation in the message, and a reader
+    // who installed it globally has to find the command of that one.
+    const installed = installationWithoutBuild(packageDir, t);
+    const run = await runLauncher(path.join(installed, 'bin', 'gatewarden.js'));
+
+    assert.match(run.stderr, /"npm install @malarstrom\/gatewarden"/, 'the message does not name the command of a project install');
+    assert.match(run.stderr, /"npm install -g @malarstrom\/gatewarden"/, 'the message does not name the command of a global install');
+  });
+
+  test('the text about a missing build is written in one place', () => {
+    // S79: the text lives in the module the launchers share, and the
+    // launchers take it from there. A copy of it in a launcher is a text
+    // that can drift away from the other two.
+    const holders: string[] = [];
+
+    for (const file of fs.readdirSync(path.join(REPO_ROOT, 'bin'))) {
+      const text = fs.readFileSync(path.join(REPO_ROOT, 'bin', file), 'utf8');
+      if (text.includes(NO_BUILD_TEXT)) holders.push(file);
+    }
+
+    assert.deepEqual(holders, ['entry.mjs'], 'the text about a missing build is written in more than one place');
   });
 
   test('a launcher in a checkout runs the source', () => {

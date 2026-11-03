@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // gatewarden-mcp — the MCP server (stdio JSON-RPC).
-import { resolveEntry } from './entry.mjs';
+import { noBuildMessage, resolveEntry } from './entry.mjs';
 
 const entry = resolveEntry(
   import.meta.url,
@@ -8,9 +8,7 @@ const entry = resolveEntry(
   '../dist/integrations/mcp/server.js',
 );
 if (!entry) {
-  process.stderr.write(
-    'gatewarden-mcp: the installed package has no build — reinstall with "npm install -g @malarstrom/gatewarden"\n',
-  );
+  process.stderr.write(noBuildMessage('gatewarden-mcp'));
   process.exit(1);
 }
 
