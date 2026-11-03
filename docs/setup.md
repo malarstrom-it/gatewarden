@@ -15,7 +15,7 @@ on a machine where the proxy does not answer on its API, where the wizard
 cannot ask a question, or where you simply want to see what the file holds.
 Nothing in this guide needs the wizard to have succeeded.
 
-The short version is in the README: [Vad som krävs](../README.md#vad-som-krävs-what-you-need).
+The short version is in the README: [What you need](../README.md#what-you-need).
 
 ---
 
@@ -108,7 +108,8 @@ providers:
 * `pollInterval: 2s` is how often the proxy asks for the document. A route
   that was registered is therefore live on the proxy up to two seconds later.
 
-Then **restart the proxy**: the static configuration is only read at start-up.
+Then **restart the proxy**: Traefik v2 and v3 both read that block from the
+static configuration, and both use the new provider after the restart.
 
 ```bash
 docker restart <the traefik container>
@@ -400,7 +401,7 @@ no proxy API in reach).
 ## 8. When it does not work
 
 The README has a table of symptom → cause → fix for the common failures:
-[Vad som krävs](../README.md#vad-som-krävs-what-you-need). The skill's
+[When something does not work](../README.md#when-something-does-not-work). The skill's
 [troubleshooting reference](../skills/gatewarden/references/troubleshooting.md)
 has the rest, with the reason each failure happens.
 

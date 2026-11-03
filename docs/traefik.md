@@ -39,7 +39,8 @@ providers:
 
 The provider goes into the `providers:` block of the static configuration of
 Traefik, next to the providers you already have (`docker`, `file`, …). Then
-**restart the proxy**: the static configuration is only read at start-up.
+**restart the proxy**: Traefik v2 and v3 both read that block from the static
+configuration, and both use the new provider after the restart.
 
 ```bash
 docker restart <traefik-container>
