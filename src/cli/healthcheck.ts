@@ -26,12 +26,18 @@
  * `--strict` turns the warnings into errors as well, for the one who wants
  * the whole installation to be complete.
  *
- * The trust list (`allowedCidrs`) is in the report too. It holds the
- * addresses that may talk to the gateway — the address of the proxy and
- * the loopback of the machine — and a proxy that is not in it gets a
- * 403, which is the most common reason for one. An installation that
- * refuses its proxy is not broken, so that is a warning and never a
- * failure.
+ * The trust lists (`allowedCidrs` and `registryAllowedCidrs`) are in the
+ * report too. The first holds the addresses that may talk to the
+ * gateway — the address of the proxy and the loopback of the machine —
+ * and a proxy that is not in it gets a 403, which is the most common
+ * reason for one. An installation that refuses its proxy is not broken,
+ * so that is a warning and never a failure.
+ *
+ * The registry has a list of its own, on top of the relay's: an address
+ * that may only read the configuration document does not have to be
+ * allowed to dispatch. Both lists are printed, each on a row of its
+ * own, because a list that is written in the configuration file and
+ * never named in the report is a list nobody knows about.
  */
 
 import fs from 'node:fs';
@@ -371,6 +377,7 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
       'routes and zone',
       'proxy',
       'trust list',
+      'registry list',
       'proxy address',
       'service',
       'old service',
@@ -611,7 +618,7 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
   }
   checks.push(proxy);
 
-  // 10. The trust list.
+  // 10. The trust lists.
   //
   // The addresses that may talk to the gateway. Both listeners answer
   // the addresses in the list and nobody else, so the list is the
@@ -622,6 +629,8 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
   // The list that is printed is the list the listeners use: the list of
   // the configuration file plus the IPv6 prefixes of the networks of
   // this machine, which the loader adds.
+  //
+  // The list of the registry is printed on a row of its own, below.
   //
   // An empty list is not an error: it is an installation that trusts
   // nobody, and the doctor says so in plain words.
@@ -651,7 +660,41 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
     });
   }
 
-  // 11. The address of the proxy.
+  // 11. The trust list of the registry.
+  //
+  // The registry has a list of its own, on top of the relay's: the two
+  // listeners have different jobs — one hands out the configuration
+  // document, the other forwards the requests — and an address that may
+  // only read the document does not have to be allowed to dispatch. The
+  // doctor prints the list, because an installation that has filled it
+  // has to see those addresses somewhere.
+  //
+  // An empty list of the registry is not a warning: it means that the
+  // registry serves the configuration document to the same addresses as
+  // the relay. The doctor says that in plain words, so that the reader
+  // sees that the list is empty and knows what it means.
+  //
+  // The address of the proxy is not compared with this list: an address
+  // that is only in it reaches the registry and not the relay, and the
+  // relay is the one the proxy dispatches through.
+  if (!here) {
+    skipped('registry list', NOT_SET_UP);
+  } else if (config.registryAllowedCidrs.length === 0) {
+    checks.push({
+      name: 'registry list',
+      status: 'ok',
+      detail:
+        'the trust list of the registry (registryAllowedCidrs) is empty: the registry serves the configuration document to the same addresses as the relay',
+    });
+  } else {
+    checks.push({
+      name: 'registry list',
+      status: 'ok',
+      detail: `the trust list of the registry (registryAllowedCidrs): ${config.registryAllowedCidrs.join(', ')}`,
+    });
+  }
+
+  // 12. The address of the proxy.
   //
   // The trust list holds the addresses that may talk to the gateway:
   // the address of the proxy — the one that polls the configuration
@@ -664,6 +707,10 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
   // The doctor knows where the proxy is when it can resolve the host of
   // the proxy's API: those are the addresses the proxy connects from,
   // and the ones the setup wizard writes into the list.
+  //
+  // The list of the registry does not count here: an address that is
+  // only in it reaches the configuration document and not the relay, and
+  // the relay is the one the proxy dispatches through.
   //
   // When the doctor does not know, it says what it can say: a list
   // that holds nothing but the loopback is a list that no proxy on
@@ -712,7 +759,7 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
     }
   }
 
-  // 12. The service.
+  // 13. The service.
   const unit = serviceUnitFor({
     daemonPath: daemonLauncherPath(),
     configPath,
@@ -728,7 +775,7 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
     missing('service', 'not installed: run "gatewarden install-service" so the daemon survives a reboot');
   }
 
-  // 13. The unit of the old name.
+  // 14. The unit of the old name.
   //
   // A unit that was installed before the rename is still on the machine,
   // and it names a launcher that does not exist any more: the daemon it
@@ -746,7 +793,7 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
     skipped('old service', 'there is no unit of the old name');
   }
 
-  // 14. The old layout.
+  // 15. The old layout.
   if (exists(legacy)) {
     checks.push({
       name: 'legacy layout',
@@ -757,7 +804,7 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
     skipped('legacy layout', 'there is no old layout to migrate');
   }
 
-  // 15. The layout of the name the directories had before the rename.
+  // 16. The layout of the name the directories had before the rename.
   //
   // An installation that was made under the old name keeps its
   // configuration and its route store in the directories of that name.

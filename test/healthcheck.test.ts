@@ -325,6 +325,86 @@ test('the doctor says that an empty trust list trusts nobody', async (t) => {
   assert.equal(run.code, 0, `the exit code was ${run.code}: ${run.stdout}${run.stderr}`);
 });
 
+test('the doctor prints the trust list of the registry in the report', async (t) => {
+  // The registry has a list of its own, on top of the relay's: an
+  // address that may only read the configuration document does not have
+  // to be allowed to dispatch. The doctor prints both lists, so that an
+  // installation that has filled the list of the registry sees those
+  // addresses somewhere.
+  const dir = makeEmptyDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  await writeConfig(dir, {
+    zone: undefined,
+    allowedCidrs: ['127.0.0.1/32', '::1/128'],
+    registryAllowedCidrs: ['192.0.2.0/24'],
+  });
+
+  const { run, report } = await runJson(dir, ['doctor']);
+
+  const list = report.checks.find((check) => check.name === 'registry list');
+  assert.equal(list?.status, 'ok', `the doctor says: ${list?.detail}`);
+  assert.match(
+    list?.detail ?? '',
+    /registryAllowedCidrs/,
+    'the reason does not name the trust list of the registry',
+  );
+  assert.match(list?.detail ?? '', /192\.0\.2\.0\/24/, 'the list of the registry is not in the report');
+  assert.doesNotMatch(list?.detail ?? '', /is empty/, 'the doctor says the list is empty');
+  assert.equal(report.ok, true, JSON.stringify(report.checks));
+  assert.equal(run.code, 0, `the exit code was ${run.code}: ${run.stdout}${run.stderr}`);
+});
+
+test('the doctor says that an empty trust list of the registry serves the same addresses as the relay', async (t) => {
+  // An empty list of the registry is the default, and it means that the
+  // registry serves the configuration document to the same addresses as
+  // the relay. The doctor says that in plain words, so that the reader
+  // sees that the list is empty and knows what it means.
+  const dir = makeEmptyDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  await writeConfig(dir, { zone: undefined, registryAllowedCidrs: [] });
+
+  const { run, report } = await runJson(dir, ['doctor']);
+
+  const list = report.checks.find((check) => check.name === 'registry list');
+  assert.equal(list?.status, 'ok', `the doctor says: ${list?.detail}`);
+  assert.match(
+    list?.detail ?? '',
+    /registryAllowedCidrs/,
+    'the reason does not name the trust list of the registry',
+  );
+  assert.match(list?.detail ?? '', /empty/, 'the reason does not say that the list is empty');
+  assert.match(list?.detail ?? '', /the relay/, 'the reason does not say what an empty list means');
+  assert.equal(report.ok, true, JSON.stringify(report.checks));
+  assert.equal(run.code, 0, `the exit code was ${run.code}: ${run.stdout}${run.stderr}`);
+});
+
+test('the doctor warns about the address of the proxy even when the registry list holds it', async (t) => {
+  // The list of the registry is on top of the relay's: an address that
+  // is only in it reaches the configuration document and not the relay,
+  // and the relay is the one the proxy dispatches through. The warning
+  // is about the relay's list, so it stands.
+  const dir = makeEmptyDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  await writeConfig(dir, {
+    zone: undefined,
+    advertisedIp: '198.51.100.7',
+    advertisedHost: '198.51.100.7',
+    allowedCidrs: ['127.0.0.1/32', '::1/128'],
+    registryAllowedCidrs: ['192.0.2.10/32'],
+  });
+
+  const { run, report } = await runJson(dir, ['doctor'], {
+    env: { GATEWARDEN_PROXY_API_URL: 'http://192.0.2.10:8080' },
+  });
+
+  const address = report.checks.find((check) => check.name === 'proxy address');
+  assert.equal(address?.status, 'warn', `the doctor says: ${address?.detail}`);
+  assert.match(address?.detail ?? '', /192\.0\.2\.10/, 'the reason does not name the address of the proxy');
+  assert.match(address?.detail ?? '', /allowedCidrs/, 'the reason does not name the trust list');
+  assert.equal(report.ok, true, JSON.stringify(report.checks));
+  assert.equal(run.code, 0, `the exit code was ${run.code}: ${run.stdout}${run.stderr}`);
+});
+
 test('the doctor skips the address of the proxy when it does not know where the proxy is', async (t) => {
   // A thing that is not there is not an error. The doctor cannot name
   // the address of the proxy, and the trust list holds addresses besides
@@ -352,7 +432,7 @@ test('the doctor skips the trust list when there is no installation here', async
 
   const { run, report } = await runJson(dir, ['doctor']);
 
-  for (const name of ['trust list', 'proxy address']) {
+  for (const name of ['trust list', 'registry list', 'proxy address']) {
     const check = report.checks.find((entry) => entry.name === name);
     assert.equal(check?.status, 'skipped', `the doctor says: ${check?.detail}`);
   }
