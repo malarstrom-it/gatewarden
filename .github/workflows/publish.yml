@@ -1,10 +1,7 @@
 # Publish the gatewarden to npmjs.org, from GitHub.
 #
-# This file mirrors `.gitea/workflows/publish.yml` step for step: the same
-# trigger, the same checks, the same Node version and the same npm
-# commands. The one step that differs is the last one: on GitHub the
-# publish goes through npm's trusted publishing, and not through npm's
-# staged publishing.
+# The repository of the project lives on GitHub, and the package is
+# published from it with npm's trusted publishing.
 #
 # The trigger is a tag: `v1.2.3` publishes version 1.2.3. The tag and the
 # version in package.json must agree, or the run stops.
@@ -41,14 +38,12 @@
 #      owner, a wrong repository name or a missing permission shows up in
 #      the first publish, and not before.
 #
-#   2. **The old gitea path still applies where the repository stays.**
-#      The workflow in `.gitea/workflows/publish.yml` publishes the same
-#      version with npm's staged publishing and a token, and it is still
-#      the one that runs as long as the repository lives on the private
-#      gitea server: npm's trusted publishing works for GitHub Actions
-#      and GitLab CI, and not for Gitea Actions. The two workflows publish
-#      the same version the same way — they differ in who signs it and in
-#      who approves it afterwards.
+#   2. **The workflow has to be the one that is connected.** The
+#      workflow file is `publish.yml`, and it has to live in
+#      `.github/workflows/`. npm checks the path, and a workflow
+#      somewhere else is not the workflow that was connected. The
+#      workflows of the server the repository left are gone: the
+#      package is published from here, and from nowhere else.
 #
 # npm provenance is signed here, and it is signed by npm and by GitHub:
 # `npm publish --provenance` adds the provenance statement to the
@@ -58,9 +53,8 @@
 #
 # The registry is npmjs.org, and it is written down instead of being a
 # secret: npm's trusted publishing works against npmjs.org and against
-# nothing else. The gitea workflow keeps its optional `NPM_REGISTRY`
-# secret, because a rehearsal against another registry is possible with a
-# token and is not possible with a trusted publisher.
+# nothing else. A rehearsal against another registry is not possible with
+# a trusted publisher, because it needs a token.
 #
 # `npm publish` runs `prepublishOnly`, which is `npm run build && npm
 # test`. The build and the tests are therefore the gate of the publish.

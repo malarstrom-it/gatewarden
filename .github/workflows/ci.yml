@@ -1,10 +1,10 @@
 # CI for the gatewarden, on GitHub.
 #
-# This file mirrors `.gitea/workflows/ci.yml` step for step: the same
-# jobs, the same Node version, the same timeouts, the same npm commands
-# and the same review of the npm package. The repository is moving to
-# public GitHub, and the CI must not be two different things in two
-# places.
+# The repository of the project lives on GitHub, and this file is the CI
+# of it: the same jobs, the same Node version, the same timeouts, the
+# same npm commands and the same review of the npm package. The workflows
+# of the server the repository left are gone, and there is one CI and not
+# two.
 #
 # The steps are the ones the specification names: typecheck, tests, build,
 # and a package that a consumer can install and run.
