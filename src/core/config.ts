@@ -61,7 +61,7 @@ export const DEFAULT_CONFIG: Config = {
   autostart: true,
 };
 
-/** Every key a user may set, with a one line explanation (used by `traefik-dev config`). */
+/** Every key a user may set, with a one line explanation (used by `gatewarden config`). */
 export const CONFIG_KEYS: Record<string, string> = {
   proxy: 'Which proxy adapter writes the dynamic configuration ("traefik").',
   registryPort: 'Port the registry listener binds on 0.0.0.0 (the dynamic configuration document).',
@@ -547,7 +547,7 @@ export function configFileContent(config: Config): Record<string, unknown> {
 }
 
 /**
- * Write a config file with the current values (used by `traefik-dev config --write`).
+ * Write a config file with the current values (used by `gatewarden config --write`).
  *
  * The keys in `opts.omit` are left out: the setup wizard does not write
  * the values nobody confirmed when they are the built-in default, so that

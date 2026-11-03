@@ -79,8 +79,6 @@ export interface CliFixture {
 export interface FixtureOptions {
   /** Values that go into the configuration file. */
   config?: Record<string, unknown>;
-  /** The CLI to run. Defaults to the current one. */
-  cli?: string;
   /** Extra environment variables for the CLI process. */
   env?: Record<string, string>;
 }
@@ -140,9 +138,8 @@ export async function makeCliFixture(options: FixtureOptions = {}): Promise<CliF
     ...(options.env ?? {}),
   };
 
-  const cli = options.cli ?? CLI;
   const exec = (args: string[]) =>
-    execFileAsync(process.execPath, [cli, ...args, '--config', configPath, '--state-dir', dir], { env });
+    execFileAsync(process.execPath, [CLI, ...args, '--config', configPath, '--state-dir', dir], { env });
 
   const runFail = async (args: string[]): Promise<{ code: number; stdout: string; stderr: string }> => {
     try {

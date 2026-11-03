@@ -2,7 +2,7 @@
  * Client side of the daemon: health probe, pidfile and lazy start.
  *
  * `ensureDaemon()` is what makes the gateway survive a container restart:
- * the first `traefik-dev register` after a restart starts the daemon and waits
+ * the first `gatewarden register` after a restart starts the daemon and waits
  * until it answers.
  */
 
