@@ -78,8 +78,8 @@ jobs:
     name: test (${{ matrix.file }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    fail-fast: false
     strategy:
+      fail-fast: false
       matrix:
         file:
           - adapters.test.ts
@@ -144,8 +144,8 @@ jobs:
     name: node ${{ matrix.node }} (${{ matrix.label }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    fail-fast: false
     strategy:
+      fail-fast: false
       matrix:
         include:
           - node: '20'
