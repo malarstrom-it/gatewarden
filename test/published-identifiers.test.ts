@@ -28,9 +28,11 @@
  *      does not have;
  *   4. **no pointer at a file the package does not ship**, in the
  *      documentation and in the code;
- *   5. **no git server and no repository**: the published package names no
- *      repository until the project has a public mirror, and the host of
- *      that mirror goes into `PUBLIC_GIT_HOST` below.
+ *   5. **no git server but the public one**: the published package names
+ *      the host of the public repository and no other git server. The
+ *      host of the public repository goes into `PUBLIC_GIT_HOST` below,
+ *      and the hosts of the other git servers are caught by the patterns
+ *      of `GIT_SERVER_HOSTS` below.
  *
  * The rules are the guard, and they are the whole of it. The values of the
  * installation the package was written for are not written down in this
@@ -73,13 +75,21 @@
  * an example in the documentation, and the rules are what keep the
  * addresses of a private network out.
  *
- * The published package names no repository (S31). It used to name one: the
- * manifest named it in `repository`, `homepage`, `bugs` and `funding`, and the
- * README named it as the place the source of the package lives. A package
- * that everybody can install from npmjs.org does not point a reader at a
- * private host, and the guard keeps it that way. When the project gets a
- * public mirror, its host goes into `PUBLIC_GIT_HOST` below, the fields of
- * the manifest come back, and the guard stops protecting that one host.
+ * The published package names the public repository (S23). It used to name
+ * no repository at all: the manifest named no repository, the README named
+ * no place where the source of the package lives, and the guard kept the
+ * package from naming any. The repository of the project lives on GitHub
+ * now, and the package points at it: the manifest names it in
+ * `repository`, `homepage` and `bugs`, and the README names it as the
+ * place where the source of the package lives.
+ *
+ * The guard follows that move. The host of the public repository goes into
+ * `PUBLIC_GIT_HOST` below, and it is the one host the package may name.
+ * The host of the private server the repository left is caught by the
+ * patterns of `GIT_SERVER_HOSTS` below, and that rule is a rule about the
+ * host and not about the word: the prose of the repository may say in
+ * words that the repository left the private server, and that is not a
+ * leak.
  *
  * The guard grew a second half in S35. The first half keeps the data of
  * the installation out of the package; the second half keeps the package
@@ -194,30 +204,54 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 /**
  * The public host of the source of the package.
  *
- * There is none: the project has no public mirror yet, and the published
- * package names no repository. The constant is empty on purpose — an empty
- * host means that no host is allowed to appear in the tarball. When a
- * public mirror exists, its host goes here and the guard protects that one
- * host instead of protecting the private one.
+ * The repository of the project lives on GitHub, and the published package
+ * points at it: the manifest names it in `repository`, `homepage` and
+ * `bugs`, and the README names it as the place where the source of the
+ * package lives. The host of that repository is the one host the published
+ * package may name, and it is the constant here.
+ *
+ * The host is the whole of the allowance. The rule does not ask who wrote
+ * a text and it does not ask for a permission: it asks whether the name
+ * that stands in the text is the host of the public repository. A text
+ * that names another host is caught, whether it names it in a URL or in
+ * the prose of a sentence.
  */
-const PUBLIC_GIT_HOST: string = '';
+const PUBLIC_GIT_HOST: string = 'github.com';
 
 /**
  * The names of the git servers the package must not name.
  *
- * The internal installation runs its own git server, and the name of that
- * server in the published package is a trace of it: a reader learns which
- * service holds the source, and where to ask for it. The name is listed
- * here so that the guard catches it wherever it hides — in the manifest, in
- * the readme, in a link or in a path of a workflow file.
+ * The list is empty, and it is empty on purpose. The published package
+ * names a git server now: the source of the package lives on one, and the
+ * package says so. A list of the names of the software would keep the
+ * package from naming the server its own source lives on, and the name of
+ * the software is not a private address in the first place.
  *
- * The name is the name of the software, and not an address, an account or
- * a domain of the installation: it names nothing of the installation, and
- * everybody knows it. The rule it belongs to is a rule of the published
- * package — the package names no git server until the project has a public
- * mirror, and then only the host of that mirror (see `PUBLIC_GIT_HOST`).
+ * The rule that keeps the private server out is the rule of the hosts
+ * below: that rule is about the address, and not about the word.
  */
-const GIT_SERVER_NAMES = ['gitea'];
+const GIT_SERVER_NAMES: string[] = [];
+
+/**
+ * The hosts of the git servers the package must not name.
+ *
+ * The repository left a private server of its own, and the address of that
+ * server is a trace of it: a reader learns which service holds the source
+ * of the project, and where to ask for it. The address is not written down
+ * here, and it may not be: the repository is about to become public, and
+ * an address written down in a public repository is the very thing this
+ * rule keeps out of the tarball.
+ *
+ * The patterns catch the shape of such an address instead of the address
+ * itself: the name of the software, a dot, and a domain. Every host of
+ * that shape is caught, wherever it hides — in the manifest, in the
+ * readme, in a link or in a path of a workflow file. The host of the
+ * public repository is the one place a name may stand, and it is in
+ * `PUBLIC_GIT_HOST` above.
+ *
+ * The patterns need the `g` flag: the rule takes them with `matchAll`.
+ */
+const GIT_SERVER_HOSTS = [/\bgitea\.[a-z0-9-]+(?:\.[a-z0-9-]+)+/gi];
 
 /**
  * The contact addresses that the published package names on purpose.
@@ -573,14 +607,20 @@ function supportAddressCount(text: string): number {
 }
 
 /**
- * The names of a git server in a file.
+ * The names of the git servers in a file.
  *
- * The published package names no git server until the project has a public
- * mirror. The host of that mirror is the one place the name may stand: the
+ * The published package names the host of the public repository and no
+ * other git server. The names of the software are not caught any more —
+ * the package names a git server now, and the name of the software is not
+ * a private address — and the hosts of the other git servers are caught
+ * by the patterns of `GIT_SERVER_HOSTS`.
+ *
+ * The host of the public repository is the one place a name may stand: the
  * guard protects the private host and not the public one.
  */
 function gitServerTraps(file: string, text: string, publicHost: string = PUBLIC_GIT_HOST): string[] {
   const hits: string[] = [];
+
   for (const name of GIT_SERVER_NAMES) {
     const pattern = new RegExp(name, 'gi');
     for (const match of text.matchAll(pattern)) {
@@ -589,18 +629,63 @@ function gitServerTraps(file: string, text: string, publicHost: string = PUBLIC_
       hits.push(`${file}:${lineOf(text, index)}: "${match[0]}" — the name of a git server`);
     }
   }
+
+  for (const pattern of GIT_SERVER_HOSTS) {
+    for (const match of text.matchAll(pattern)) {
+      const index = match.index ?? 0;
+      if (inside(text, index, publicHost)) continue;
+      hits.push(`${file}:${lineOf(text, index)}: "${match[0]}" — the host of a git server`);
+    }
+  }
+
   return hits;
 }
 
 /**
  * The fields of the manifest that point at a repository.
  *
- * The published package names no repository: `repository`, `homepage`,
- * `bugs` and `funding` are gone (S31). A package that everybody can
- * install from npmjs.org does not point a reader at a private host.
+ * The manifest of the published package names the public repository: the
+ * `repository`, `homepage` and `bugs` fields point at it, and the rule
+ * checks that they name the host of `PUBLIC_GIT_HOST`.
+ *
+ * The `funding` field stays out. The package needs no money, and a field
+ * that points at a place to send money is a field the rule does not want.
  */
-function repositoryFields(manifest: Record<string, unknown>): string[] {
-  return ['repository', 'homepage', 'bugs', 'funding'].filter((field) => manifest[field] !== undefined);
+const REPOSITORY_FIELDS = ['repository', 'homepage', 'bugs'];
+
+/**
+ * The traps of the fields of the manifest.
+ *
+ * The manifest of the published package names the public repository, and
+ * it names it in every field that points at one: the three fields of
+ * `REPOSITORY_FIELDS` have to be there, and each of them has to name the
+ * host of `PUBLIC_GIT_HOST`. A field that names another host is a trap: a
+ * reader of the package follows it and lands on a server the package does
+ * not live on.
+ *
+ * The `funding` field is a trap of its own: the package needs no money,
+ * and the field has no business being in the manifest.
+ */
+function repositoryTraps(manifest: Record<string, unknown>): string[] {
+  const traps: string[] = [];
+
+  for (const field of REPOSITORY_FIELDS) {
+    const value = manifest[field];
+    if (value === undefined) {
+      traps.push(`${field}: the manifest has no such field`);
+      continue;
+    }
+    const text = typeof value === 'string' ? value : JSON.stringify(value);
+    if (!text.includes(PUBLIC_GIT_HOST)) {
+      traps.push(`${field}: "${text}" — the field does not name the public repository`);
+    }
+  }
+
+  if (manifest.funding !== undefined) {
+    traps.push('funding: the manifest has a "funding" field');
+  }
+
+  return traps;
 }
 
 /**
@@ -685,7 +770,7 @@ function documentationPathTraps(file: string, text: string, context: GuardContex
  * of the ranges of RFC 1918, an address of the IPv6 range that is their
  * equivalent, an address of an account outside the domains RFC 2606 and
  * RFC 6761 reserve, a number of the internal numbering, a path of a file
- * the package does not ship, the name of a git server. They name no
+ * the package does not ship, the host of a git server. They name no
  * installation and no host of this project, and they may be written here
  * in a public repository.
  *
@@ -747,8 +832,8 @@ const RULE_PROBES: Array<{
     find: (file, text) => internalNumberingTraps(file, text),
   },
   {
-    what: 'the name of a git server',
-    value: 'gitea',
+    what: 'the host of a git server',
+    value: 'gitea.example.com',
     file: 'README.md',
     find: (file, text) => gitServerTraps(file, text),
   },
@@ -1282,16 +1367,24 @@ describe('the published package', () => {
     assert.deepEqual(
       hits,
       [],
-      'the published package names a git server; the published package names no repository:\n' + hits.join('\n'),
+      'the published package names a git server; the published package names the public repository and no other:\n' +
+        hits.join('\n'),
     );
   });
 
-  test('the manifest of the package names no repository', () => {
-    // The fields of the manifest that point at a repository are gone
-    // (S31): `repository`, `homepage`, `bugs` and `funding`.
+  test('the manifest of the package names the public repository', () => {
+    // The manifest names the repository of the project: `repository`,
+    // `homepage` and `bugs` point at the public repository, and every one
+    // of them names the host of `PUBLIC_GIT_HOST`. A field that names
+    // another host is caught, and a field that is missing is caught too:
+    // the package points at its source, and the reader finds it.
+    //
+    // The `funding` field stays out: the package needs no money, and the
+    // field has no business being in the manifest.
     const manifest = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8')) as Record<string, unknown>;
-    const fields = repositoryFields(manifest);
-    assert.deepEqual(fields, [], `the manifest of the tarball still has "${fields.join('", "')}"`);
+    const traps = repositoryTraps(manifest);
+
+    assert.deepEqual(traps, [], `the manifest of the tarball does not name the public repository:\n${traps.join('\n')}`);
   });
 
   test('the tarball holds no address of a private network', () => {
@@ -1642,42 +1735,48 @@ describe('the published package', () => {
     }
   });
 
-  test('the guard catches a repository in the manifest', () => {
-    // The rule of the manifest is a rule of the published package: it
-    // names no repository until the project has a public mirror. A
-    // manifest that names one is caught, and the fields it may name are
-    // named one by one.
+  test('the guard catches a repository that names another host', () => {
+    // The rule of the manifest is a rule of the published package: the
+    // fields that point at a repository name the public repository, and
+    // nothing else. A field that names another host is caught, and the
+    // fields are named one by one, so that every one of them is checked.
     const manifest = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8')) as Record<string, unknown>;
-    assert.deepEqual(repositoryFields(manifest), [], 'the manifest of the tarball names a repository');
+    assert.deepEqual(repositoryTraps(manifest), [], 'the manifest of the tarball does not name the public repository');
 
-    for (const field of ['repository', 'homepage', 'bugs', 'funding']) {
-      const planted = { ...manifest, [field]: 'https://git.example.com/traefik-api/traefik-api.git' };
-      assert.deepEqual(repositoryFields(planted), [field], `the rule did not catch the planted "${field}"`);
+    for (const field of REPOSITORY_FIELDS) {
+      const planted = { ...manifest, [field]: 'https://gitea.example.org/malarstrom/traefik-api.git' };
+      assert.ok(repositoryTraps(planted).length > 0, `the rule did not catch the planted "${field}"`);
     }
+
+    const funded = { ...manifest, funding: 'https://example.com/donate' };
+    assert.ok(repositoryTraps(funded).length > 0, 'the rule did not catch the planted "funding"');
   });
 
   test('the guard protects the private host and not the public one', () => {
-    // The published package names no git server, and the project has no
-    // public mirror yet (`PUBLIC_GIT_HOST` is empty), so every name of a
-    // git server is caught. When the mirror exists, its host is the one
-    // place the name may stand: the guard protects the private host and
-    // not the public one.
-    const text = 'The source of the package lives at gitea.example.com.';
+    // The published package names the host of the public repository, and
+    // the host of every other git server is caught. The public host is
+    // the one place a name may stand — and it is the one place, even
+    // when another host stands next to it.
+    const privateText = 'The source of the package lives at gitea.example.com.';
+    const publicText = 'The source of the package lives at github.com/malarstrom-it/gatewarden.';
 
     assert.deepEqual(
-      gitServerTraps('README.md', text),
-      ['README.md:1: "gitea" — the name of a git server'],
-      'the guard did not catch the name of a git server',
+      gitServerTraps('README.md', privateText),
+      ['README.md:1: "gitea.example.com" — the host of a git server'],
+      'the guard did not catch the host of a git server',
     );
     assert.deepEqual(
-      gitServerTraps('README.md', text, 'gitea.example.com'),
+      gitServerTraps('README.md', publicText),
       [],
       'the guard caught the public host of the project',
     );
     assert.deepEqual(
-      gitServerTraps('README.md', 'The source of the package lives at gitea.internal.example.', 'gitea.example.com'),
-      ['README.md:1: "gitea" — the name of a git server'],
-      'the guard let a name of a git server through that is not the public host',
+      gitServerTraps(
+        'README.md',
+        'The source of the package lives at github.com/malarstrom-it/gatewarden, and the old mirror at gitea.internal.example.',
+      ),
+      ['README.md:1: "gitea.internal.example" — the host of a git server'],
+      'the guard let a host of a git server through that stands next to the public host',
     );
   });
 
