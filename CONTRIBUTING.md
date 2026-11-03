@@ -248,13 +248,12 @@ pull request.
 
 ## Moving the repository to GitHub
 
-The repository lives on a private gitea server today. It moves to GitHub,
-where it gets the name `gatewarden`, in an organisation of its own, and
-it stays private while it is there.
+The repository lives on GitHub: it is `github.com/malarstrom-it/gatewarden`,
+in an organisation of its own, and it stays private while the migration runs.
 
-The private server becomes an archive: no new work is developed on it,
-and no new repository is created on it. Everything that is gitea-specific
-is turned into GitHub in the end.
+The private server it left becomes an archive: no new work is developed on
+it, and no new repository is created on it. Everything that was specific
+to that server has been turned into GitHub.
 
 ### The three decisions
 
@@ -306,9 +305,9 @@ published from GitHub, and it is a decision of its own.
 ### What npm asks for by hand
 
 npm's trusted publishing publishes the package from GitHub without a
-token. It does not work with gitea actions — it works for GitHub
-Actions and for GitLab CI — and that is the reason why the publication
-goes through GitHub.
+token. It does not work with the actions of the server the repository
+left — it works for GitHub Actions and for GitLab CI — and that is the
+reason why the publication goes through GitHub.
 
 npmjs.com asks for three things that no command can do, and a person
 does them by hand:
@@ -356,69 +355,48 @@ tests have run.
   and `.github/workflows/publish.yml`. The publish workflow uses npm's
   trusted publishing, and it is the workflow that npm is to be connected
   to.
+- The repository exists on GitHub: `github.com/malarstrom-it/gatewarden`,
+  private, with the history pushed to it and `feat/npm-package` as its
+  default branch. The `master` of the private server is pushed as well,
+  so that the whole history is kept.
+- The manifest names the repository: `repository`, `homepage` and `bugs`
+  point at the public repository, and npm checks the `repository` field
+  against the repository the workflow runs in.
+- The guard knows the new host. `PUBLIC_GIT_HOST` holds the host of the
+  repository on GitHub, the names of the software left `GIT_SERVER_NAMES`,
+  and the rule that catches the hosts of the other git servers came in:
+
+  ```ts
+  const GIT_SERVER_HOSTS = [/\bgitea\.[a-z0-9-]+(?:\.[a-z0-9-]+)+/gi];
+  ```
+
+  The pattern needs the `g` flag, because the test takes it with
+  `matchAll`. The pattern matches the host of a git server and not the
+  word: the prose of the repository says in words that the repository
+  left the private server, and that is not a leak.
+- The README points at the source. The README is in the tarball, so it
+  names the host of the repository on GitHub and nothing else.
+- The workflows of the private server are gone: the directory with them
+  is removed, and there is one CI and one publish workflow.
 
 ### The steps that are left
 
-1. Create the repository `gatewarden` on GitHub, in the organisation
-   `malarstrom-it`, as a private repository and empty: no README, no
-   licence, no `.gitignore`, so that the push has nothing to merge with.
-   The address of the repository is `github.com/malarstrom-it/gatewarden`.
-2. Push the history to it:
-
-   ```bash
-   git remote add github git@github.com:malarstrom-it/gatewarden.git
-   git push github feat/npm-package:refs/heads/feat/npm-package
-   git push github origin/master:refs/heads/master
-   git push github --tags
-   ```
-
-   The `master` that is pushed is the one of the private server, and not
-   the `master` of this clone: the server is ahead of the clone, and it
-   holds the merge commits of the pull requests, which exist only there.
-   Pushing the local `master` would leave that history behind, and the
-   whole history is what the push is for. The branches are named one by
-   one on purpose — a mirror push takes every work branch with it, and
-   the names of those carry the internal numbering of the project.
-3. Set the default branch of the repository on GitHub to
-   `feat/npm-package`.
-4. Set the base branch of the worktrees explicitly to
+1. Create the scope `@malarstrom` and the package `@malarstrom/gatewarden`
+   on npmjs.com, and connect the package to the repository as the
+   trusted publisher for GitHub Actions. npm does not check the
+   connection when it is saved: a wrong owner, a wrong repository name or
+   a missing permission shows up in the first publish, and not before.
+2. Set the base branch of the worktrees explicitly to
    `feat/npm-package`. The setting `workspace.from` of the repository
    stands for `here` today, and `here` resolves the base from the
    checkout: it works as long as the checkout stays where it is, and it
    is not the same thing as naming the branch.
-5. Create the scope `@malarstrom` and the package `@malarstrom/gatewarden`
-   on npmjs.com, and connect the package to the repository as the
-   trusted publisher for GitHub Actions.
-6. Put `repository`, `homepage` and `bugs` into `package.json`, and let
-   them name the repository on GitHub.
-7. Tell the guard about the new host: `PUBLIC_GIT_HOST` gets the host of
-   the repository on GitHub, `'gitea'` leaves `GIT_SERVER_NAMES`, and the
-   rule that catches the host of a git server comes in, so that the
-   private server stays out of the tarball without being written down:
-
-   ```ts
-   const GIT_SERVER_HOSTS = [/\bgitea\.[a-z0-9-]+(?:\.[a-z0-9-]+)+/gi];
-   ```
-
-   The pattern needs the `g` flag, because the test takes it with
-   `matchAll`. The pattern matches the host of a git server and not the
-   word: the prose of the changelog says in words that the repository
-   left gitea, and that is not a leak.
-8. Point the README at the source. The README is in the tarball, so it
-   may name the host of the repository on GitHub and nothing else.
-9. Add `feat/npm-package` to the trigger of the CI, or let the runs come
+3. Add `feat/npm-package` to the trigger of the CI, or let the runs come
    from the pull requests: the CI runs on a push to `master` or `main`
    today, and the work of the project happens on `feat/npm-package`.
-10. Remove `.gitea/` when the work has moved to GitHub. While the
-    repository lives on both servers, both sets of workflows are in the
-    repository and both work: the gitea one publishes with a token and
-    npm's staged publishing, and the GitHub one publishes with the trusted
-    publisher and npm signs the version with its provenance. They publish
-    the same version; they differ in who signs it and in who approves it
-    afterwards.
-11. Publish the first version from GitHub: tag `vX.Y.Z`, and let the
-    workflow publish it.
-12. Check the tarball before the publish and after it:
+4. Publish the first version from GitHub: tag `vX.Y.Z`, and let the
+   workflow publish it.
+5. Check the tarball before the publish and after it:
 
     ```bash
     npm pack --dry-run

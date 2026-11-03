@@ -28,7 +28,7 @@ are already harmless to know about.
 Two private ways to report, and both are fine:
 
 1. **The security advisory form of the repository.** Open the repository on
-   Gitea, go to the "Security" tab, and use "Report a vulnerability". The
+   GitHub, go to the "Security" tab, and use "Report a vulnerability". The
    report stays in the repository's private advisory area until it is
    published.
 2. **Email to the maintainer**: `mikael@malarstrom.se`, with the subject
