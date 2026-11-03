@@ -212,6 +212,274 @@ The maintainer cuts the releases, not the contributors.
 Never publish, never tag a release, and never touch the registry from a
 pull request.
 
+## Moving the repository to public GitHub
+
+The repository lives on a private gitea server today. The package is
+published on npmjs.org, and the published package names no repository at
+all: the source is where the maintainer keeps it, and the guard in
+`test/published-identifiers.test.ts` keeps every git server out of the
+tarball.
+
+This section is the procedure that moves the repository to public GitHub.
+It is one step and not a project: `.github/workflows/ci.yml` and
+`.github/workflows/publish.yml` already mirror the workflows of the gitea
+server step for step, so nothing has to be written when the move happens.
+What is left is the move itself and the settings that go with it.
+
+`<owner>` and `<repo>` are the owner and the name of the public repository,
+and they are used in the commands and in the fields below. Write the real
+ones.
+
+### 1. Create the public repository and move the history to it
+
+Create an empty repository on GitHub — no README, no licence, no
+`.gitignore`, so that the push below has nothing to merge with. Then move
+the history:
+
+```bash
+git remote add github git@github.com:<owner>/<repo>.git
+git push github master:refs/heads/master feat/npm-package:refs/heads/feat/npm-package
+git push github --tags
+```
+
+The push names the branches one by one on purpose. `git push --mirror`
+pushes every local branch and every remote-tracking ref of the private
+server, and the names of the work branches carry the internal numbering
+of the project (`work/59-s54-...`), which the guard keeps out of the
+published package. The public repository gets the branches the project
+has — the base branch and `master` — and the tags, and nothing else.
+
+The private server can keep being the place where the work happens: `git
+remote remove github` takes the remote away again, and the two can live
+side by side.
+
+**Before the push, the history has to be free of the data of the
+installation.** The private repository is not a public one, and it holds
+the zone of the installation, the addresses of its machines and the names
+of its containers — in `memory/`, in `specs/`, in `tools/`, in `test/`,
+in `PRODUCT.md`, in `SECURITY.md`, in `.impeccable/`, and in the guard
+itself, whose list of the identifiers of the installation names them one
+by one so that they stay out of the tarball. The test files and the
+golden files use the zone and the host name of the installation as their
+examples; they have to get other example values. A public repository is
+read by everybody, and the rule that keeps that data out of the npm
+package is the same rule here.
+
+So before the push:
+
+- take the values out of the working tree, or keep the files that hold
+  them out of the public repository;
+- take them out of the history as well. A file that is deleted in the
+  working tree is still in the history, and the push above takes the
+  history with it. `git log --all -S'<the value>'` shows where a value
+  came in, and `git filter-repo` takes it out again;
+- if the scrubbing of the history is more than the maintainer wants, the
+  public repository can start from a fresh history with only the files
+  that may be public, and the private server keeps the full one. Both are
+  fine; what matters is the same in both: no data of the installation
+  reaches the public repository.
+
+The list of the values is in `test/published-identifiers.test.ts`, in
+`INSTALLATION_IDENTIFIERS`, and the guard holds every one of them. Search
+the working tree and the history for each of them:
+
+```bash
+git grep -Il -F '<the value>' -- ':!test/published-identifiers.test.ts'
+git log --all -S'<the value>' --oneline
+```
+
+The support address (`npm@malarstrom.se`) stays: it is public on
+purpose, and the guard names it in `PUBLIC_CONTACT_ADDRESSES`.
+
+### 2. Tell the guard about the public host
+
+In `test/published-identifiers.test.ts`:
+
+- set `PUBLIC_GIT_HOST` to `github.com`. It is the one host the published
+  package may name: the fields of the manifest name it, and the allowance
+  is what lets the name through;
+- remove `'gitea'` from `GIT_SERVER_NAMES`. The published package may name
+  a git server now — the public one — and the rule that forbade the word
+  'gitea' belonged to the time when the private server was the server of
+  the project. The rule that keeps the private git server out of the
+  tarball must therefore be the *host* and not the *word*;
+- the entry "the host of the git server of the project" in
+  `INSTALLATION_IDENTIFIERS` becomes the public host, `github.com` — step 1
+  takes the private host out of the list with the rest of the values.
+  `github.com` is the value `PUBLIC_GIT_HOST` allows, and it is what
+  makes the fields of the manifest legal;
+- add the rule that catches the host of a git server, so that the private
+  git server stays out of the tarball without being written down. The
+  list of the identifiers leaves the repository in step 1, and this rule
+  has to keep working after that:
+
+  ```ts
+  /**
+   * The hosts of the git servers the published package must not name.
+   *
+   * The public host of the source is allowed (see PUBLIC_GIT_HOST). Every
+   * other git server is not — the private server of the project among
+   * them. The pattern matches the host of a git server and not the word:
+   * the prose of the changelog says in words that the repository left
+   * Gitea, and that is not a leak.
+   */
+  const GIT_SERVER_HOSTS = [/\bgitea\.[a-z0-9-]+(?:\.[a-z0-9-]+)+/gi];
+  ```
+
+  The pattern needs the `g` flag: `matchAll` takes a global pattern, and
+  the test uses it. The test `the tarball names no git server` reads that
+  list next to `GIT_SERVER_NAMES`.
+
+The test `the manifest of the package names no repository` changes with
+this. The manifest names the public repository in `repository`, `homepage`
+and `bugs` from now on, so the test has to check that those fields name
+the public host, and not that they are absent. The comments that describe
+the old arrangement change with the constants.
+
+### 3. Put `repository`, `homepage` and `bugs` back into `package.json`
+
+```json
+"repository": {
+  "type": "git",
+  "url": "git+https://github.com/<owner>/<repo>.git"
+},
+"homepage": "https://github.com/<owner>/<repo>",
+"bugs": {
+  "url": "https://github.com/<owner>/<repo>/issues"
+}
+```
+
+`funding` stays out: the guard forbids it, and the package needs no
+money.
+
+The `repository` field is not only a convenience. npm's trusted publishing
+checks that it names the repository the workflow runs in, and refuses the
+publish when it does not: a credential for one repository must not
+publish another one. The three fields are also what the registry shows to
+a reader.
+
+### 4. Point the README at the public source
+
+The README names no repository today. It names the public one after the
+move: a "Source" section with the address, or a line in "Support" that
+says where the source lives.
+
+The README is in the tarball, so it may name the public host and nothing
+else: no other git server, no address of a private network, and no e-mail
+address but the support address.
+
+### 5. Connect the npm account to the repository
+
+On npmjs.com: the page of the package, its settings, the trusted publisher
+for GitHub Actions. The fields are:
+
+- **Organization or user** — the account or the organisation that owns the
+  repository;
+- **Repository** — the name of the repository;
+- **Workflow filename** — `publish.yml`. Only the name of the file, with
+  the `.yml`, and the file has to be at `.github/workflows/publish.yml`.
+  npm checks the path, and a workflow somewhere else is not the workflow
+  that was connected;
+- **Allowed actions** — the permission that lets the trusted publisher
+  publish directly with `npm publish`. npm's staged publishing (`npm stage
+  publish`) is always allowed, and the direct publish is a separate
+  permission that is off by default. **The workflow in
+  `.github/workflows/publish.yml` publishes directly with `npm publish
+  --provenance`, so this permission has to be on.** With it off, npm
+  refuses the publish and the run fails in its last step;
+- **Environment name** — leave it empty. The project uses no GitHub
+  environment, and the workflow names none.
+
+Only somebody with write access to the package can do this, and npm asks
+for the two-factor authentication of that account. The connection is what
+makes the run publish without a token: the run hands npm an OpenID
+Connect token, and npm exchanges it for a short-lived credential for the
+connected account.
+
+npm does not check the configuration when it is saved. A wrong owner, a
+wrong repository name or a missing permission shows up in the first
+publish, and not before.
+
+Do this before the first tag. A run without the connection fails, and it
+fails in the last step, after the build and the tests have run.
+
+### 6. Swap `.gitea/` for `.github/` and remove the old workflows
+
+The workflows of the public repository are already in the repository:
+
+- `.github/workflows/ci.yml` — the CI, the same jobs as the gitea one;
+- `.github/workflows/publish.yml` — the publish, with npm's trusted
+  publishing instead of npm's staged publishing.
+
+When the work has moved to GitHub, the old workflows go with it:
+
+```bash
+git rm -r .gitea
+```
+
+While the work still happens on the private server, both sets of
+workflows are in the repository and both work. The gitea one publishes
+with a token and npm's staged publishing, and a maintainer approves the
+staged version with two-factor authentication. The GitHub one publishes
+with the trusted publisher and npm signs the version with its
+provenance. They publish the same version; they differ in who signs it
+and in who approves it afterwards.
+
+Check the trigger of the CI while you are here: it runs on a push to
+`master` or `main` and on every pull request. The work of the project
+happens on `feat/npm-package` while the package is not merged, so add
+that branch to the trigger, or let the runs come from the pull requests.
+
+### 7. Check that nothing of the private host is left in the tarball
+
+```bash
+npm pack --dry-run
+node --test test/published-identifiers.test.ts
+```
+
+`npm pack --dry-run` lists what would be uploaded, and the guard reads
+every file of the tarball. After step 2 it fails when a file names a git
+server but the public one — by its host, and that is the rule that keeps
+the private git server out — or an address of a private network, or an
+e-mail address of an account, or a repository that is not the public one.
+
+Read the output of both, and do not stop at a green line: the list of the
+tarball must not hold a path into the private server, and the fields of
+the manifest must name the public host.
+
+## When the repository is public
+
+Two things change when the repository is public, and one thing stays.
+
+**The source can be fetched.** A reader who wants to read the code, see
+how it works or run it themselves does not have to write to the
+maintainer first:
+
+```bash
+git clone https://github.com/<owner>/<repo>.git
+```
+
+The README names the address, and the package on npmjs.org names it too,
+in `repository`, `homepage` and `bugs`. A reader who finds a hole can
+read the code before reporting it, and a contributor can open an issue or
+a pull request in a public place instead of sending a message.
+
+**No data of the installation may travel with it.** The rule of the
+package is the rule of the repository: the zone of the installation, the
+addresses of its machines, the names of its containers, the e-mail
+address of its certificate account and the private git server are data of
+one installation, and they are not public. The guard keeps them out of
+the tarball, and the same list is the checklist for the repository before
+it goes public. A public repository that carries the data of an
+installation has published it, and a published address cannot be taken
+back.
+
+**The published package stays what it is.** The package on npmjs.org is
+not the repository: it ships the compiled package, the scripts and the
+documentation, and it names the public repository and nothing else. It
+does not grow when the repository becomes public, and the install still
+starts no daemon and writes nothing but the configuration file.
+
 ## License
 
 By contributing you agree that your contribution is licensed under the MIT

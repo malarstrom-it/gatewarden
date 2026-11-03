@@ -1,0 +1,182 @@
+# Publish the gatewarden to npmjs.org, from GitHub.
+#
+# This file mirrors `.gitea/workflows/publish.yml` step for step: the same
+# trigger, the same checks, the same Node version and the same npm
+# commands. The one step that differs is the last one: on GitHub the
+# publish goes through npm's trusted publishing, and not through npm's
+# staged publishing.
+#
+# The trigger is a tag: `v1.2.3` publishes version 1.2.3. The tag and the
+# version in package.json must agree, or the run stops.
+#
+# The publish goes through npm's trusted publishing. The run hands npm an
+# OpenID Connect token — the `id-token: write` permission below is what
+# makes GitHub give one — and npm exchanges it for a short-lived
+# credential for the account that is connected to this repository. No
+# secret is stored in the repository, and no token is ever written down.
+#
+# Two things have to be in place before this workflow can publish, and
+# both of them are one-time settings that the maintainer makes by hand:
+#
+#   1. **The npm account has to be connected to this repository.** On
+#      npmjs.com: the package page, the settings of the package, the
+#      trusted publisher for GitHub Actions. There the owner, the name of
+#      the repository, the name of the workflow file and the allowed
+#      actions are filled in:
+#
+#      * the workflow file is `publish.yml`, and it has to live in
+#        `.github/workflows/`. npm checks the path, and a workflow
+#        somewhere else is not the workflow that was connected;
+#      * **the allowed actions have to allow `npm publish`.** npm's
+#        staged publishing (`npm stage publish`) is always allowed, and
+#        the direct publish is a separate permission that is off by
+#        default. This workflow publishes directly — `npm publish
+#        --provenance` — so that permission has to be on. With it off,
+#        npm refuses the publish and the run fails in its last step;
+#      * the `repository` field of `package.json` has to name the same
+#        repository — npm checks it, because a credential for one
+#        repository must not publish another one.
+#
+#      npm does not check the configuration when it is saved: a wrong
+#      owner, a wrong repository name or a missing permission shows up in
+#      the first publish, and not before.
+#
+#   2. **The old gitea path still applies where the repository stays.**
+#      The workflow in `.gitea/workflows/publish.yml` publishes the same
+#      version with npm's staged publishing and a token, and it is still
+#      the one that runs as long as the repository lives on the private
+#      gitea server: npm's trusted publishing works for GitHub Actions
+#      and GitLab CI, and not for Gitea Actions. The two workflows publish
+#      the same version the same way — they differ in who signs it and in
+#      who approves it afterwards.
+#
+# npm provenance is signed here, and it is signed by npm and by GitHub:
+# `npm publish --provenance` adds the provenance statement to the
+# published version, and the statement says which repository, which
+# workflow and which commit the version came from. A reader can verify it
+# with `npm audit signatures`.
+#
+# The registry is npmjs.org, and it is written down instead of being a
+# secret: npm's trusted publishing works against npmjs.org and against
+# nothing else. The gitea workflow keeps its optional `NPM_REGISTRY`
+# secret, because a rehearsal against another registry is possible with a
+# token and is not possible with a trusted publisher.
+#
+# `npm publish` runs `prepublishOnly`, which is `npm run build && npm
+# test`. The build and the tests are therefore the gate of the publish.
+#
+# Trusted publishing needs npm CLI 11.5.1 or later, and the npm of the
+# runner is older than that. The job upgrades npm before it publishes.
+
+name: publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      # The workflow reads the repository ...
+      contents: read
+      # ... and asks GitHub for an OpenID Connect token. The token is what
+      # npm's trusted publishing uses to identify the run; without this
+      # permission there is no token and the publish fails.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - run: npm ci
+
+      - name: the tag and the package version must agree
+        run: |
+          set -euo pipefail
+          tag_version="${GITHUB_REF#refs/tags/v}"
+          package_version="$(node -p "require('./package.json').version")"
+          if [ "$tag_version" != "$package_version" ]; then
+            echo "the tag says $tag_version, package.json says $package_version" >&2
+            exit 1
+          fi
+          echo "publishing $package_version"
+
+      - name: typecheck
+        run: npm run typecheck
+
+      # npm's trusted publishing needs npm CLI 11.5.1 or later, and the
+      # npm of the runner is older than that, so it is upgraded here,
+      # right before the publish.
+      #
+      # The npm that lands here is npm 12, and npm 12 wants Node
+      # ^22.22.2 || ^24.15.0 || >=26. The job therefore wants Node 22.22.2
+      # or later, and it asks the installed npm itself whether it runs on
+      # the node of the runner, so a future npm@latest that wants more
+      # fails here and not in the middle of the publish.
+      - name: npm must support trusted publishing
+        run: |
+          set -euo pipefail
+
+          # is a released version at least as new as the wanted one?
+          version_at_least() {
+            awk -v have="$1" -v want="$2" 'BEGIN {
+              n = split(have, h, ".")
+              m = split(want, w, ".")
+              for (i = 1; i <= 3; i++) {
+                hv = (i <= n ? h[i] + 0 : 0)
+                wv = (i <= m ? w[i] + 0 : 0)
+                if (hv > wv) { print "yes"; exit }
+                if (hv < wv) { print "no"; exit }
+              }
+              print "yes"
+            }'
+          }
+
+          npm install -g npm@latest
+
+          node_version="$(node --version)"
+          echo "node $node_version"
+          if [ "$(version_at_least "${node_version#v}" 22.22.2)" != "yes" ]; then
+            echo "node $node_version is older than 22.22.2, npm@latest wants node ^22.22.2 || ^24.15.0 || >=26" >&2
+            exit 1
+          fi
+
+          # npm says on stderr that it does not support this node, and goes
+          # on anyway. That is not good enough for a release.
+          warnings="$(mktemp)"
+          npm_version="$(npm --version 2>"$warnings")"
+          cat "$warnings"
+          if grep -q "does not support Node.js" "$warnings"; then
+            echo "npm $npm_version does not support node $node_version" >&2
+            exit 1
+          fi
+          echo "npm $npm_version"
+
+          case "$npm_version" in
+            *-*)
+              echo "npm $npm_version is a pre-release, trusted publishing needs a released npm" >&2
+              exit 1
+              ;;
+          esac
+          if [ "$(version_at_least "$npm_version" 11.5.1)" != "yes" ]; then
+            echo "npm $npm_version is older than 11.5.1, trusted publishing needs 11.5.1 or later" >&2
+            exit 1
+          fi
+
+      # The publish itself. The credential comes from the OpenID Connect
+      # token of the run, so there is no token in this step and no secret
+      # in the environment.
+      #
+      # `npm publish` runs `prepublishOnly`, which is `npm run build &&
+      # npm test`. The build and the tests are therefore the gate of the
+      # publish, and they have run in this job already.
+      #
+      # The provenance says which repository, which workflow and which
+      # commit the published version came from. A reader can check it with
+      # `npm audit signatures`.
+      - name: publish
+        run: npm publish --provenance --access public

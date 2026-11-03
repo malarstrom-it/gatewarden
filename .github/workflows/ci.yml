@@ -1,0 +1,279 @@
+# CI for the gatewarden, on GitHub.
+#
+# This file mirrors `.gitea/workflows/ci.yml` step for step: the same
+# jobs, the same Node version, the same timeouts, the same npm commands
+# and the same review of the npm package. The repository is moving to
+# public GitHub, and the CI must not be two different things in two
+# places.
+#
+# The steps are the ones the specification names: typecheck, tests, build,
+# and a package that a consumer can install and run.
+#
+# The steps are separate jobs on purpose. GitHub reports one check per job,
+# so a failing run says which step failed and not only that something did.
+#
+# The tests are one job per test file. Two of the test files need the
+# compiled output of the repository: one builds it and reads it, the other
+# packs the package, and the pack builds it again. The build deletes
+# `dist/` before it writes it, so the two must not run at the same time.
+# One job per file gives every job its own copy of the repository, and it
+# makes a failing run name the file that failed.
+#
+# The package's own install script writes the configuration file and starts
+# no daemon, so no daemon runs on the runner.
+
+name: ci
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+# The CI only reads the repository. It publishes nothing and writes
+# nothing, so it needs nothing else.
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm run typecheck
+
+  # The dependency tree is checked on its own, and not as a part of another
+  # step. `npm audit` answers a question that no other step answers: is
+  # there a known vulnerability in something we ship? A package that runs
+  # a script on the consumer's machine — and this one writes the
+  # consumer's configuration file from its `postinstall` — has to know the
+  # answer before a consumer finds out.
+  #
+  # The level is `high`: the run fails on a high or a critical advisory and
+  # lets the lower ones through. A low advisory in a build dependency of a
+  # development tool is not worth a red build; a high one in the runtime
+  # tree is. The step fails on its own, so a red run says "audit" and not
+  # "install".
+  audit:
+    name: audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - name: no high or critical advisory in the dependency tree
+        run: npm audit --audit-level=high
+
+  # The tests are one job per test file, as described at the top of this
+  # file. They run on Node 22, the version the package is developed on.
+  test:
+    name: test (${{ matrix.file }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    fail-fast: false
+    strategy:
+      matrix:
+        file:
+          - adapters.test.ts
+          - build.test.ts
+          - cli-lifecycle.test.ts
+          - cli-setup.test.ts
+          - cli.test.ts
+          - config.test.ts
+          - core-isolation.test.ts
+          - daemon-config.test.ts
+          - daemon-control.test.ts
+          - daemon.test.ts
+          - docs.test.ts
+          - document.test.ts
+          - golden.test.ts
+          - healthcheck.test.ts
+          - lock.test.ts
+          - mcp-conformance.test.ts
+          - mcp-server.test.ts
+          - migrate.test.ts
+          - net.test.ts
+          - packaging.test.ts
+          - paths.test.ts
+          - pi-extension.test.ts
+          - postinstall.test.ts
+          - published-identifiers.test.ts
+          - registry.test.ts
+          - relay.test.ts
+          - service.test.ts
+          - slug.test.ts
+          - state.test.ts
+          - testenv.test.ts
+          - trust.test.ts
+          - uninstall.test.ts
+          - websocket.test.ts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: node --test "test/${{ matrix.file }}"
+
+  # The version matrix. The package says in its `engines` field that it
+  # runs on Node 20.11 and later, and a promise like that is only worth
+  # something if it is tested. Every leg of the matrix runs the typecheck
+  # and the install proof, and the legs on Node 22 and 24 run the test
+  # suite as well.
+  #
+  # The test files are TypeScript, and Node runs them itself instead of
+  # compiling them. The type stripping arrived in Node 22.6 and was on by
+  # default in Node 22.18, so a Node 20 runtime answers a `.ts` file with
+  # `ERR_UNKNOWN_FILE_EXTENSION`. The Node 20 leg proves the two things it
+  # can prove on Node 20: the types check, and the published package
+  # installs and runs. The development tools need Node 22.18 or later, and
+  # the README and CONTRIBUTING say so.
+  #
+  # The name of each leg says what that leg does, so a red run says which
+  # check failed and on which Node version.
+  node-matrix:
+    name: node ${{ matrix.node }} (${{ matrix.label }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    fail-fast: false
+    strategy:
+      matrix:
+        include:
+          - node: '20'
+            label: typecheck and install
+          - node: '22'
+            label: typecheck, test and install
+          - node: '24'
+            label: typecheck, test and install
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci
+      - name: typecheck
+        run: npm run typecheck
+      - name: the test suite
+        if: matrix.node != '20'
+        run: npm test
+      - name: the published package installs and runs
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          tarball="$(npm pack --pack-destination "$work" | tail -1)"
+          mkdir -p "$work/consumer"
+          cd "$work/consumer"
+          npm init --yes > /dev/null
+          npm install "$work/$tarball"
+          ./node_modules/.bin/gatewarden --version
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - run: npm run build
+      - name: what the tarball holds
+        run: npm pack --dry-run
+
+  # The manifest of a published package is what the registry shows and what
+  # the consumer's tools read. A mistake in it — an `exports` that points
+  # at a file that is not in the tarball, a `types` that is not there, a
+  # `main` and an `exports` that disagree — is invisible in the tests and
+  # fatal for the consumer. `publint` reads the tarball the way a consumer
+  # reads it and says what is wrong with it.
+  #
+  # The version of the tool is pinned: a new release of `publint` must not
+  # be able to turn a green build red without a commit in this repository
+  # that says what it found.
+  publint:
+    name: publint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - name: the tarball is well-formed for a consumer
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          tarball="$(npm pack --pack-destination "$work" | tail -1)"
+          npx --yes publint@0.3.25 run "$work/$tarball"
+
+  # The types are the second half of the same question. `publint` says the
+  # manifest points at the right files; `@arethetypeswrong/cli` says a
+  # consumer's TypeScript finds the types through the `exports` map the way
+  # Node and TypeScript resolve them in practice. A package can pass the
+  # first check and fail the second one: an `exports` map without a
+  # `types` condition, or a `default` that leads a CommonJS consumer to an
+  # ESM file.
+  #
+  # The profile is `esm-only`, because the package is ESM only: `"type":
+  # "module"`, and the `exports` map has no CommonJS entry. The other
+  # profiles answer the question "what happens to a CommonJS consumer",
+  # and the answer is "it has to use a dynamic import" — true, and not a
+  # fault of this package. The `esm-only` profile ignores that question
+  # and asks the one that matters here: does a consumer's TypeScript find
+  # the declarations through the `exports` map, the way Node resolves the
+  # package? The tool fails the run on a missing declaration or on a
+  # resolution that finds the wrong file.
+  #
+  # The version of the tool is pinned, for the same reason as `publint`.
+  types:
+    name: types (attw)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - name: the types of the tarball resolve
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          tarball="$(npm pack --pack-destination "$work" | tail -1)"
+          npx --yes @arethetypeswrong/cli@0.18.5 --profile esm-only "$work/$tarball"
+
+  package:
+    name: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - name: the packed package installs and runs
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          tarball="$(npm pack --pack-destination "$work" | tail -1)"
+          mkdir -p "$work/consumer"
+          cd "$work/consumer"
+          npm init --yes > /dev/null
+          npm install "$work/$tarball"
+          # The binary is called by its path, never through npx: npx falls
+          # back to the registry when it does not find a name locally, and
+          # the name of this package is close to a name another author has
+          # on npm.
+          ./node_modules/.bin/gatewarden --version
+          ./node_modules/.bin/gatewarden --help
