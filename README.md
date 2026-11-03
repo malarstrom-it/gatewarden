@@ -346,6 +346,13 @@ The uninstall takes the daemon with it, and the files of the installation go wit
 daemon. The daemon watches its own installation and stops itself once the package is
 gone, so no listener is left behind on the two ports. The files go with it too.
 
+## Source
+
+The source of the package lives at https://github.com/malarstrom-it/gatewarden.
+
+The package is published from that repository, and the repository is the place to
+read the code, to read the changelog and to follow the work.
+
 ## Support
 
 This is a one-person project. There is no support team, no on-call and no guaranteed
