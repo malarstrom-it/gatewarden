@@ -126,11 +126,12 @@ starts a daemon makes the machine do something the consumer did not ask for.
 The lazy start does the job anyway, and `gatewarden start` starts the daemon
 without waiting for a command that needs it.
 
-**The warning of npm 11 is about the install scripts, not about what they
-do.** npm 11 names every dependency that ships install scripts (`postinstall`,
-`prepare`, …) in a warning, and it *blocks* those scripts until the consumer
-has reviewed them (`npm install-scripts ls`, `npm install-scripts approve
-<pkg>`). The warning does not change when the scripts stop doing anything:
+**The warning of npm is about the install scripts, not about what they
+do.** npm 11 names every dependency that ships install scripts in a warning
+and lets the scripts run. npm 12 names the same dependencies and *blocks*
+those scripts until the consumer has approved them (`npm install-scripts ls`,
+`npm install-scripts approve <pkg>`). The warning does not change when the
+scripts stop doing anything:
 it is the presence of the scripts that it reports, and this package ships
 `prepare` because a git installation has to build itself (§2.2). What the
 install script does is a separate question, and the answer is now: it writes
@@ -737,11 +738,12 @@ stderr); disabled by `GATEWARDEN_AUTOSTART=0`. It starts no daemon, opens no
 port and leaves no process behind — the daemon is started by the lazy start
 (§5.1) and by `gatewarden start` (§5.3).
 
-npm 11 blocks the install scripts of a dependency until the consumer has
-reviewed them (`npm install-scripts ls`, `npm install-scripts approve
+npm 12 blocks the install scripts of a dependency until the consumer has
+approved them (`npm install-scripts ls`, `npm install-scripts approve
 @malarstrom/gatewarden`), so the script runs only for a consumer who says so.
-The gateway does not need it: the setup wizard writes the same file, and the
-commands work without one.
+npm 11 warns about the same scripts and lets them run. The gateway does not
+need it: the setup wizard writes the same file, and the commands work without
+one.
 
 The `autostart` key of the configuration file is kept for compatibility and
 has no effect: the install starts nothing either way.

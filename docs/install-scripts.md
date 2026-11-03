@@ -56,16 +56,19 @@ The warning names the scripts of the package. What npm does with those scripts
 changed in npm 12.
 
 - npm 11 warns and lets the scripts run. The warning says that the scripts are
-  "not yet covered" by `allowScripts`, and the field is advisory in npm 11.
+  "not yet covered" by `allowScripts`. For a dependency that the field does not
+  mention the field is advisory: the scripts run anyway. An entry that denies
+  the dependency is not advisory: it skips the script in npm 11 too, and an
+  entry that approves the dependency silences the warning.
 - npm 12 blocks the scripts until the dependency is approved. The warning says
   that the scripts were "blocked", and the install script of the dependency
   does not run until the dependency is approved.
 
-A global install of this package says, with npm 11.19.0:
+A global install from the registry says, with npm 11.19.0:
 
 ```text
 npm warn install-scripts 1 package has install scripts not yet covered by allowScripts:
-npm warn install-scripts   @malarstrom/gatewarden@0.1.1 (postinstall: node scripts/postinstall.mjs; prepare: npm run build)
+npm warn install-scripts   @malarstrom/gatewarden@0.1.1 (postinstall: node scripts/postinstall.mjs)
 npm warn install-scripts Run `npm install -g --allow-scripts=@malarstrom/gatewarden` to allow these scripts once, or `npm config set allow-scripts=@malarstrom/gatewarden --location=user` to allow them for all global installs.
 ```
 
@@ -73,9 +76,22 @@ and with npm 12.2.1:
 
 ```text
 npm warn install-scripts 1 package had install scripts blocked because they are not covered by allowScripts:
+npm warn install-scripts   @malarstrom/gatewarden@0.1.1 (postinstall: node scripts/postinstall.mjs)
+npm warn install-scripts Run `npm install -g --allow-scripts=@malarstrom/gatewarden` to allow these scripts once, or `npm config set allow-scripts=@malarstrom/gatewarden --location=user` to allow them for all global installs.
+```
+
+A global install from a tarball names the same package and names `prepare`
+with it, because npm counts `prepare` as an install script for a tarball and
+not for the registry. With npm 11.19.0:
+
+```text
+npm warn install-scripts 1 package has install scripts not yet covered by allowScripts:
 npm warn install-scripts   @malarstrom/gatewarden@0.1.1 (postinstall: node scripts/postinstall.mjs; prepare: npm run build)
 npm warn install-scripts Run `npm install -g --allow-scripts=@malarstrom/gatewarden` to allow these scripts once, or `npm config set allow-scripts=@malarstrom/gatewarden --location=user` to allow them for all global installs.
 ```
+
+With npm 12.2.1 the same install says "blocked" instead of "not yet covered",
+and it names the same scripts.
 
 An install in a project writes the same lines, and its last line names the
 commands that review the scripts:
@@ -125,8 +141,8 @@ npm install -g --allow-scripts=@malarstrom/gatewarden
 npm config set allow-scripts='@malarstrom/gatewarden' --location=user
 ```
 
-Under npm 11 the scripts run with them and without them, since the field is
-advisory. Under npm 12 they are what makes the scripts run again instead of
+Under npm 11 the scripts run with them and without them, unless the field denies
+the package. Under npm 12 they are what makes the scripts run again instead of
 staying blocked.
 
 | Source of the package | What `--allow-scripts` has to name |
