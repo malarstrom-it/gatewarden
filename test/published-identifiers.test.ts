@@ -224,9 +224,10 @@ const SHIPPED_ROOT_FILES = ['CHANGELOG.md', 'LICENSE', 'README.md', 'package.jso
  * the state that belongs to the installation. All three read the paths of
  * the installation out of `paths.mjs`, so that script travels with them.
  *
- * The fifth script of the repository — `clean-dist.mjs`, which removes
- * the build output — stays out: it belongs to the build of a checkout,
- * and the installed package has no build output of its own to remove.
+ * The script that emptied the build output of a checkout is gone (S62):
+ * the manifest names no file for it, so the package ships no script of
+ * the build at all. The command that empties the build output removes it
+ * itself.
  */
 const SHIPPED_SCRIPTS = [
   'scripts/paths.mjs',
@@ -234,6 +235,43 @@ const SHIPPED_SCRIPTS = [
   'scripts/postuninstall.mjs',
   'scripts/preuninstall.mjs',
 ];
+
+/**
+ * The files of the checkout that the commands of the manifest name (S62).
+ *
+ * The manifest names the files of the package: a script of it that runs
+ * for the reader names a file of the tarball, and so does every other
+ * script that names a file at all.
+ *
+ * The commands of the checkout are the exception, and they are named one
+ * by one here: the build names the build configuration of the project,
+ * the test command the test files, the end-to-end commands the tools of
+ * the end-to-end environment, and the clean command the marker that says
+ * "this is a checkout". A script that is not on this list names only
+ * files that the package ships — or no file at all.
+ */
+const CHECKOUT_FILES: Record<string, string[]> = {
+  build: ['tsconfig.build.json'],
+  clean: ['tsconfig.build.json'],
+  test: ['test/*.test.ts'],
+  'test:e2e': ['tools/testenv/run.ts'],
+  'test:e2e:stop': ['tools/testenv/stop.ts'],
+};
+
+/**
+ * The scripts npm runs for the life of an installation (S62).
+ *
+ * `prepare` runs when the package is installed from a git repository and
+ * when it is packed, `postinstall` when the package is installed, and
+ * `preuninstall` and `postuninstall` when it is removed. The four have to
+ * be in the manifest.
+ *
+ * The files the install scripts name have to be in the tarball: a reader
+ * of an installed package has nothing else. `prepare` and
+ * `prepublishOnly` name no file at all: they run the build and the tests
+ * of the checkout, and the checkout is there when they run.
+ */
+const LIFECYCLE_SCRIPTS = ['prepare', 'postinstall', 'preuninstall', 'postuninstall'];
 
 /**
  * The code the published package ships (S56).
@@ -420,6 +458,54 @@ function filesUnder(root: string): string[] {
   };
   walk(root);
   return found.sort();
+}
+
+/**
+ * A name in a command of the manifest.
+ *
+ * The name is read out of the command as a whole and not word by word:
+ * the command of the clean script is a piece of code, and a name between
+ * two slashes is a part of a path as much as a name that stands alone.
+ */
+const SCRIPT_NAME = /[A-Za-z0-9_*][\w.*-]*(?:\/[A-Za-z0-9_*][\w.*-]*)*/g;
+
+/**
+ * The files a command of the manifest names.
+ *
+ * The command of a script is a line of a shell: `npm run clean && tsc -p
+ * tsconfig.build.json`. The words of the line are not files, and neither
+ * are the flags. What is left is a path: a file of the repository, or a
+ * pattern of files.
+ */
+function filesNamed(command: string): string[] {
+  const named: string[] = [];
+
+  for (const match of command.matchAll(SCRIPT_NAME)) {
+    const file = match[0].replace(/^\.\//, '');
+    if (!file.includes('/') && !/\.(?:js|mjs|cjs|ts|json)$/.test(file)) continue;
+
+    named.push(file);
+  }
+
+  return named;
+}
+
+/** Is there such a file in the checkout? */
+function existsInCheckout(file: string): boolean {
+  const star = file.indexOf('*');
+  if (star === -1) return fs.existsSync(path.join(REPO_ROOT, file));
+
+  // A pattern of files: the directory of the pattern and the pattern
+  // itself.
+  const directory = file.slice(0, star).replace(/\/?[^/]*$/, '');
+  const pattern = file
+    .slice(star)
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*/g, '.*');
+  const full = path.join(REPO_ROOT, directory);
+  if (!fs.existsSync(full) || !fs.statSync(full).isDirectory()) return false;
+
+  return fs.readdirSync(full).some((entry) => new RegExp(`^${pattern}$`).test(entry));
 }
 
 /** The line a hit is on, counted from one. */
@@ -699,17 +785,17 @@ describe('the published package', () => {
     //     and names the branch the pull requests go to. It is a document
     //     for the people who work on the project, not for the people who
     //     install the package;
-    //   - `clean-dist.mjs` removes the build output of a checkout. The
+    //   - a script that empties the build output of a checkout. The
     //     installed package has no build output of its own, and npm
-    //     never runs the build of an installed package;
+    //     never runs the build of an installed package; the manifest
+    //     names no file for it (S62), so the repository holds no such
+    //     script either;
     //   - a source map carries the whole TypeScript source of the
     //     package in `sourcesContent`. The package ships the compiled
     //     output and its declarations; the source is the source of the
     //     repository, and it is not needed to install the package or to
     //     run it.
-    for (const file of ['CONTRIBUTING.md', 'scripts/clean-dist.mjs']) {
-      assert.ok(!files.includes(file), `the tarball holds ${file}, which the package does not need`);
-    }
+    assert.ok(!files.includes('CONTRIBUTING.md'), 'the tarball holds CONTRIBUTING.md, which the package does not need');
 
     const maps = files.filter((file) => file.endsWith('.map'));
     assert.deepEqual(maps, [], `the tarball holds source maps: ${maps.join(', ')}`);
@@ -1052,6 +1138,59 @@ describe('the published package', () => {
     }
     for (const entry of manifest.pi.extensions) check(entry, 'pi.extensions');
     for (const entry of manifest.pi.skills) check(entry, 'pi.skills');
+
+    assert.deepEqual(hits, [], 'the manifest points at files the package does not ship:\n' + hits.join('\n'));
+  });
+
+  test('the scripts of the manifest point at files that are there', () => {
+    // S62: the manifest must not name a file the package does not ship.
+    //
+    // npm runs the scripts of the install on the machine of the reader,
+    // so the files they name have to be in the tarball: `postinstall`,
+    // `preuninstall` and `postuninstall` are the moments of the life of
+    // an installation, and the reader has nothing but the package.
+    //
+    // The commands of the checkout are the exception, and they are named
+    // one by one: `build` names the build configuration, `test` the test
+    // files, `test:e2e` the tools of the end-to-end environment, and
+    // `clean` the marker that says "this is a checkout". Every other
+    // script of the manifest names only files that the package ships —
+    // or no file at all, which is what the clean command does: the
+    // installed package has no build output of its own to empty, and the
+    // manifest must not point at a file the reader does not have.
+    const manifest = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    const hits: string[] = [];
+
+    for (const script of LIFECYCLE_SCRIPTS) {
+      if (manifest.scripts[script] === undefined) hits.push(`${script}: the manifest has no such script`);
+    }
+
+    for (const [name, command] of Object.entries(manifest.scripts)) {
+      for (const file of filesNamed(command)) {
+        if ((CHECKOUT_FILES[name] ?? []).includes(file)) {
+          // A file of the checkout, named on purpose: it has to be there.
+          if (!existsInCheckout(file)) hits.push(`${name}: "${file}" — the checkout has no such file`);
+          continue;
+        }
+        if (!files.includes(file)) hits.push(`${name}: "${file}" — the package does not ship that file`);
+      }
+    }
+
+    // The list of the files of the checkout is a list and not a rule: a
+    // file that is on it and that no command names any more is a rule
+    // that has gone quiet.
+    for (const [name, allowed] of Object.entries(CHECKOUT_FILES)) {
+      const command = manifest.scripts[name];
+      if (command === undefined) continue;
+
+      for (const file of allowed) {
+        if (!filesNamed(command).includes(file)) {
+          hits.push(`${name}: "${file}" — the list names a file the command does not name`);
+        }
+      }
+    }
 
     assert.deepEqual(hits, [], 'the manifest points at files the package does not ship:\n' + hits.join('\n'));
   });

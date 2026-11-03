@@ -53,7 +53,7 @@
     "access": "public"
   },
   "scripts": {
-    "clean": "node scripts/clean-dist.mjs",
+    "clean": "node -e \"const fs=require('node:fs');if(fs.existsSync('tsconfig.build.json')){fs.rmSync('dist',{recursive:true,force:true});console.error('removed dist')}\"",
     "build": "npm run clean && tsc -p tsconfig.build.json",
     "test": "node --test --test-concurrency=1 test/*.test.ts",
     "test:e2e": "node tools/testenv/run.ts",

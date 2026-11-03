@@ -15,6 +15,13 @@ names. Every release gets a section, newest first.
 
 ### Fixed
 
+- **The manifest names no file that the package does not ship.** The
+  command that empties the build output of a checkout pointed at a
+  script that the package does not carry: a reader who ran it in an
+  installed package got an error about a file that was not there. The
+  command removes the build output itself now, and it does nothing in an
+  installed package — there is no build output there to empty.
+
 - **An unknown proxy id is an error, and not a loop.** A `proxy` key that
   names an id the package does not know killed the worker at once, and the
   daemon started it again and again: the log filled with "respawning", and
