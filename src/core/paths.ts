@@ -44,8 +44,8 @@
  * platform the process actually runs on, and nobody injected an environment
  * or a home directory, the directories come from `env-paths` itself; the
  * other platforms use the same layout, written out here, so that the three
- * platforms can be tested. `test/paths.test.ts` holds the two sides against
- * each other, so the copy cannot drift away from `env-paths`.
+ * platforms can be tested. The tests of the repository hold the two sides
+ * against each other, so that the copy cannot drift away from `env-paths`.
  */
 
 import os from 'node:os';
