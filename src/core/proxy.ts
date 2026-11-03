@@ -30,10 +30,11 @@ export interface DiscoverOptions {
    *
    * When they are given, the adapter reports whether the proxy already
    * points at one of them: that is the question the setup wizard asks
-   * when it reads the environment. The list holds every name the machine
-   * is known by — the advertised host name and the advertised IP — and
-   * every port the gateway serves on, because the proxy may reach the
-   * gateway by either of them.
+   * in its third step, the wiring step, when it asks whether the proxy
+   * is already wired. The list holds every name the machine is known by
+   * — the advertised host name and the advertised IP — and every port
+   * the gateway serves on, because the proxy may reach the gateway by
+   * either of them.
    */
   expectEndpoints?: string[];
 }

@@ -462,10 +462,10 @@ async function sameMachine(a: string, b: string): Promise<boolean> {
 /**
  * Does the proxy already serve something from this machine?
  *
- * The question the setup wizard asks when it reads the environment: is
- * there a router whose provider is the HTTP provider and whose service
- * points at this host and port? The router list alone does not say; the
- * service list does.
+ * The question the setup wizard asks in its third step, the wiring
+ * step: is the proxy already wired? The answer is a router whose
+ * provider is the HTTP provider and whose service points at this host
+ * and port. The router list alone does not say; the service list does.
  *
  * A router without a provider is taken for one of the HTTP provider's:
  * the API of an older Traefik does not report the field, and a router
