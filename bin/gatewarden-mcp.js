@@ -8,7 +8,9 @@ const entry = resolveEntry(
   '../dist/integrations/mcp/server.js',
 );
 if (!entry) {
-  process.stderr.write('gatewarden-mcp: no build found — run "npm run build"\n');
+  process.stderr.write(
+    'gatewarden-mcp: the installed package has no build — reinstall with "npm install -g @malarstrom/gatewarden"\n',
+  );
   process.exit(1);
 }
 

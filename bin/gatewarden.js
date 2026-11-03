@@ -4,7 +4,9 @@ import { resolveEntry } from './entry.mjs';
 
 const entry = resolveEntry(import.meta.url, '../src/cli/index.ts', '../dist/cli/index.js');
 if (!entry) {
-  process.stderr.write('gatewarden: no build found — run "npm run build"\n');
+  process.stderr.write(
+    'gatewarden: the installed package has no build — reinstall with "npm install -g @malarstrom/gatewarden"\n',
+  );
   process.exit(1);
 }
 

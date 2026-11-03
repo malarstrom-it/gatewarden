@@ -4,7 +4,9 @@ import { resolveEntry } from './entry.mjs';
 
 const entry = resolveEntry(import.meta.url, '../src/daemon.ts', '../dist/daemon.js');
 if (!entry) {
-  process.stderr.write('gatewarden-daemon: no build found — run "npm run build"\n');
+  process.stderr.write(
+    'gatewarden-daemon: the installed package has no build — reinstall with "npm install -g @malarstrom/gatewarden"\n',
+  );
   process.exit(1);
 }
 

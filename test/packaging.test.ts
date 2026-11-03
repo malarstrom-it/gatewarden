@@ -7,7 +7,9 @@
  *     manifest: no more, and no less;
  *   - the tarball, installed into a temporary directory, gives a working
  *     `gatewarden` binary, a working MCP server and a pi extension pi
- *     can load.
+ *     can load;
+ *   - a launcher that finds no build speaks about the installation and
+ *     not about a checkout (S55).
  *
  * The install is hermetic, and it needs no network: the packaging layer
  * is layer L3 of §11.3, and L3 needs no network. The tarball is
@@ -35,6 +37,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { listenHost } from '../src/core/config.ts';
 
+import { resolveEntry } from '../bin/entry.mjs';
 import { copyDependencyClosure, linkBinaries, unpackTarball } from './helpers/install.ts';
 
 const execFileAsync = promisify(execFile);
@@ -174,6 +177,25 @@ function npmEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
     if (value !== undefined) env[key] = value;
   }
   return { ...env, ...extra };
+}
+
+/**
+ * Run a launcher and collect what it wrote and how it ended.
+ *
+ * A launcher that finds no entry says so on stderr and stops with the
+ * exit code 1, so the helper waits for the end of the process instead of
+ * throwing on it.
+ */
+function runLauncher(launcher: string): Promise<{ code: number | null; stderr: string }> {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [launcher], { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stderr = '';
+    child.stdout.on('data', () => undefined);
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString('utf8');
+    });
+    child.on('close', (code) => resolve({ code, stderr }));
+  });
 }
 
 describe('the published package', () => {
@@ -519,6 +541,44 @@ describe('the published package', () => {
     });
 
     assert.equal(stdout.trim(), MANIFEST.version);
+  });
+
+  test('a launcher without a build tells the reader to reinstall the package', async (t) => {
+    // S55: the reader of an installed package has no checkout and
+    // nothing to build. The message the launcher writes has to speak
+    // about the installation, not about a working tree.
+    const broken = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-nobuild-'));
+    t.after(() => fs.rmSync(broken, { recursive: true, force: true }));
+
+    // An installation whose launchers have no build next to them. The
+    // path holds `node_modules`, so a launcher looks for the compiled
+    // output only, and finds none.
+    const installed = path.join(broken, 'node_modules', '@malarstrom', 'gatewarden');
+    fs.mkdirSync(path.join(installed, 'bin'), { recursive: true });
+    for (const launcher of ['entry.mjs', 'gatewarden.js', 'gatewarden-mcp.js', 'gatewarden-daemon.js']) {
+      fs.copyFileSync(path.join(packageDir, 'bin', launcher), path.join(installed, 'bin', launcher));
+    }
+    assert.equal(fs.existsSync(path.join(installed, 'dist')), false, 'the installation has a build');
+
+    for (const launcher of ['gatewarden.js', 'gatewarden-mcp.js', 'gatewarden-daemon.js']) {
+      const run = await runLauncher(path.join(installed, 'bin', launcher));
+
+      assert.equal(run.code, 1, `${launcher} did not stop when it found no build`);
+      assert.match(run.stderr, /the installed package has no build/, `${launcher} does not name the missing build`);
+      assert.match(run.stderr, /reinstall/, `${launcher} does not offer a way out`);
+      assert.doesNotMatch(run.stderr, /npm run build/, `${launcher} tells the reader to build a checkout`);
+    }
+  });
+
+  test('a launcher in a checkout runs the source', () => {
+    // The repository runs the launchers from the working tree, so the
+    // source is the first candidate there and the compiled output the
+    // fallback (S55).
+    const launcher = pathToFileURL(path.join(REPO_ROOT, 'bin', 'gatewarden.js')).href;
+    const entry = resolveEntry(launcher, '../src/cli/index.ts', '../dist/cli/index.js');
+
+    assert.ok(entry, 'a launcher in a checkout finds no entry');
+    assert.match(decodeURIComponent(entry.pathname), /src\/cli\/index\.ts$/);
   });
 
   test('the installed binary registers a route', async () => {
