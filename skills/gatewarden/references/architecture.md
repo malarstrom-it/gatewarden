@@ -28,6 +28,12 @@ dev server            relay                 proxy (Traefik)              the use
 * The **CLI** (`gatewarden`) writes the registration and starts the daemon if
   it is not running.
 
+The core is proxy-agnostic: the relay, the registry, the CLI and the MCP server
+know nothing about the proxy in front of the machine and ask an adapter for
+everything else. The chain above draws the Traefik adapter because that is the
+one the package ships with. Another adapter (Caddy, say) is a change in the
+package, not a setting in the configuration file.
+
 ## The namespace rule
 
 ```text
@@ -81,7 +87,9 @@ The documentation ships with the package: every file below is in the
 installed package.
 
 * `docs/traefik.md` — the wiring of the Traefik adapter: the provider the
-  proxy polls, the router, the middleware and the certificate resolver.
+  proxy polls, the router, the middleware and the certificate resolver. The
+  adapter itself, and the small contract it implements, are described in
+  [The proxy adapter](../../../README.md#the-proxy-adapter) in the README.
 * `docs/setup.md` — the setup wizard, step by step, and the manual path
   beside it.
 * `docs/AGENTS.md` — the short block every harness can read.
