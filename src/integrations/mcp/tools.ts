@@ -13,9 +13,9 @@
  *   dev_gateway_status.
  */
 
-import { discoverProxyStatus } from '../../adapters/index.ts';
+import { discoverProxyStatus, unknownProxyReason } from '../../adapters/index.ts';
 import { loadConfigWithReport, requireZone } from '../../core/config.ts';
-import { gatewayStatus, routeJson } from '../../core/status.ts';
+import { gatewayStatus, routeJson, withProxyReason } from '../../core/status.ts';
 import { RegistrationStore } from '../../core/state.ts';
 import { withRouteLock } from '../../core/lock.ts';
 import { isPortListening } from '../../core/util/net.ts';
@@ -42,6 +42,14 @@ export interface ToolContext {
   paths: GatewayPaths;
   /** The working directory the project and the branch are inferred from. */
   cwd: string;
+  /**
+   * The reason the daemon could not start, when it could not.
+   *
+   * The server starts the daemon before it calls a tool. A tool that
+   * reports says where the installation stands, and the reason the
+   * daemon is not there is part of that.
+   */
+  daemonError?: string;
 }
 
 /** One tool: its contract and what it does. */
@@ -58,6 +66,16 @@ export interface ToolDefinition {
   outputSchema: JsonSchema;
   /** What the tool does. */
   handler: (args: Record<string, unknown>, context: ToolContext) => Promise<unknown>;
+  /**
+   * Does the tool need a daemon that runs?
+   *
+   * The server starts the daemon before it calls a tool, and a daemon
+   * that did not start is a failure of the call — for every tool that
+   * needs it. The status tool does not need it: it reports where the
+   * installation stands, and a daemon that could not start is part of
+   * what it reports.
+   */
+  needsDaemon?: boolean;
 }
 
 /**
@@ -132,6 +150,7 @@ const proxySchema: JsonSchema = {
     id: { type: 'string' },
     reachable: { type: 'boolean' },
     version: { type: 'string' },
+    reason: { type: 'string' },
   },
   required: ['id', 'reachable'],
   additionalProperties: false,
@@ -330,7 +349,8 @@ const gatewardenStatus: ToolDefinition = {
   name: 'dev_gateway_status',
   title: 'Report the state of the gateway',
   description:
-    'Report the state of the gateway: the daemon, the proxy, the configuration, and whether the gateway is reachable.',
+    'Report the state of the gateway: the daemon, the proxy, the configuration, and whether the gateway is reachable. ' +
+    'When the proxy does not answer, the reason says why: the configuration file names a proxy id the package does not know.',
   inputSchema: {
     type: 'object',
     properties: {},
@@ -343,18 +363,32 @@ const gatewardenStatus: ToolDefinition = {
       proxy: proxySchema,
       config: configSchema,
       reachable: { type: 'boolean' },
+      reason: { type: 'string' },
     },
     required: ['daemon', 'proxy', 'config', 'reachable'],
     additionalProperties: false,
   },
+  // The tool reports, so it does not need a daemon that runs: a daemon
+  // that could not start is part of what it reports.
+  needsDaemon: false,
   async handler(_args, context) {
-    const proxy = await discoverProxyStatus(context.config.proxy);
+    // The reason the proxy does not answer, when the cause is known:
+    // the configuration file names a proxy id the package does not
+    // know. The status says why, and it does not fail because of it.
+    const proxy = withProxyReason(
+      await discoverProxyStatus(context.config.proxy),
+      unknownProxyReason(context.config.proxy),
+    );
     const status = await gatewayStatus(context.config, context.configPath, context.paths, proxy);
     return {
-      daemon: status.daemon,
+      daemon: context.daemonError ? { ...status.daemon, error: context.daemonError } : status.daemon,
       proxy: status.proxy,
       config: status.config,
       reachable: status.reachable,
+      // The reason the proxy does not answer, in one sentence. It is
+      // the sentence the proxy carries, so that a reader sees why
+      // without looking into the proxy.
+      reason: status.proxy.reason,
     };
   },
 };

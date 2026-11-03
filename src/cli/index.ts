@@ -53,7 +53,7 @@ import { isPortListening } from '../core/util/net.ts';
 import { slugify } from '../core/util/slug.ts';
 import { packageVersion } from '../core/util/module.ts';
 import { discoverProxyStatus, requireAdapter, unknownProxyReason } from '../adapters/index.ts';
-import { gatewayStatus, routeJson } from '../core/status.ts';
+import { gatewayStatus, routeJson, unknownProxyReasonSentence, withProxyReason } from '../core/status.ts';
 import type { RouteJson } from '../core/status.ts';
 import type { Config } from '../core/types.ts';
 import { runSetup, type SetupReport } from './setup.ts';
@@ -357,7 +357,10 @@ export async function statusOf(
   configPath: string,
   paths: GatewayPaths,
 ): Promise<Record<string, unknown>> {
-  const proxy = await discoverProxyStatus(config.proxy);
+  const proxy = withProxyReason(
+    await discoverProxyStatus(config.proxy),
+    unknownProxyReason(config.proxy),
+  );
   const status = await gatewayStatus(config, configPath, paths, proxy);
   const store = new RegistrationStore(config.stateDir);
   const registrations = store.list();
@@ -446,6 +449,11 @@ async function commandStatus(flags: Record<string, string | boolean>): Promise<n
   const store = new RegistrationStore(config.stateDir);
   const registrations = store.list();
 
+  // The reason the proxy does not answer, when the cause is known: the
+  // configuration file names a proxy id the package does not know. The
+  // status says why, and it does not fail because of it.
+  const proxyReason = unknownProxyReason(config.proxy);
+
   if (wantsJson(flags)) {
     emitJson(await statusOf(config, configPath, paths));
     return 0;
@@ -456,6 +464,8 @@ async function commandStatus(flags: Record<string, string | boolean>): Promise<n
       `daemon:       ${status.running ? (status.healthy ? 'running' : 'running, but not serving yet') : 'not running'} (pid ${status.pid ?? '-'})`,
       `pidfile:      ${status.pidFile}`,
       `logfile:      ${paths.logFile}`,
+      `proxy:        ${config.proxy}`,
+      ...(proxyReason ? [`proxy reason: ${unknownProxyReasonSentence(proxyReason)}`] : []),
       `config file:  ${configPath}${fs.existsSync(configPath) ? '' : ' (missing, defaults are used)'}`,
       `state dir:    ${config.stateDir}`,
       `cache dir:    ${paths.cacheDir}`,

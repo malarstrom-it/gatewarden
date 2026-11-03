@@ -239,9 +239,15 @@ export class McpServer {
       // The server does not start it when it starts — the first tool
       // call does.
       const started = await ensureDaemon(context.config, { configPath: context.configPath });
-      if (started.error) throw new Error(started.error);
+      // A daemon that did not start is a failure of the call, for every
+      // tool that needs it. The status tool does not need it: it
+      // reports where the installation stands, and the reason the
+      // daemon is not there is part of what it reports.
+      if (started.error && tool.needsDaemon !== false) {
+        throw new Error(started.error);
+      }
 
-      const result = await tool.handler(args, context);
+      const result = await tool.handler(args, { ...context, daemonError: started.error });
       if (!isRecord(result)) {
         throw new Error(`the tool ${name} returned something that is not an object`);
       }

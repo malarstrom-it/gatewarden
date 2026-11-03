@@ -16,7 +16,9 @@
  *   - the command that waits for the daemon says the reason, and not a
  *     timeout;
  *   - the doctor reports the id that is unknown as an error, with the
- *     ids that exist.
+ *     ids that exist;
+ *   - the status says the reason too, in a sentence, and it does not
+ *     fail because of it.
  */
 
 import assert from 'node:assert/strict';
@@ -27,7 +29,8 @@ import test from 'node:test';
 import { fork, spawn } from 'node:child_process';
 import { isUnknownProxyError, requireAdapter, unknownProxyReason } from '../src/adapters/index.ts';
 import { fatalReason, stopWorker } from '../src/core/daemon.ts';
-import { makeCliFixture, REPO_ROOT, type CliFixture } from './helpers/cli.ts';
+import { McpServer } from '../src/integrations/mcp/server.ts';
+import { freePort, makeCliFixture, REPO_ROOT, type CliFixture } from './helpers/cli.ts';
 
 /** The daemon of the package. */
 const DAEMON = path.join(REPO_ROOT, 'bin', 'gatewarden-daemon.js');
@@ -229,4 +232,104 @@ test('the doctor reports an unknown proxy id as an error, with its reason', asyn
   assert.equal(proxy.status, 'fail');
   assert.match(proxy.detail, /unknown proxy "caddy" \(known: traefik\)/);
   assert.equal(report.ok, false);
+});
+
+/**
+ * The sentence the status carries about an unknown proxy id.
+ *
+ * It is the wording of the catalog, in a sentence: the id that is
+ * unknown, and the ids that exist.
+ */
+const UNKNOWN_PROXY_REASON =
+  'The configuration file names a proxy the package does not know: unknown proxy "caddy" (known: traefik).';
+
+test('the status says which proxy id is unknown, and does not fail', async (t) => {
+  const fixture = await makeCliFixture({ config: { proxy: 'caddy' } });
+  t.after(() => fixture.cleanup());
+
+  const result = await fixture.runFail(['status']);
+
+  // The status reports: it does not fail because the proxy id is wrong.
+  assert.equal(result.code, 0, `${result.stdout}${result.stderr}`);
+  // The reason is a sentence, and it names the id that is unknown.
+  assert.match(
+    result.stdout,
+    /proxy reason: The configuration file names a proxy the package does not know: unknown proxy "caddy" \(known: traefik\)\./,
+  );
+});
+
+test('the status --json says why the proxy does not answer', async (t) => {
+  const fixture = await makeCliFixture({ config: { proxy: 'caddy' } });
+  t.after(() => fixture.cleanup());
+
+  const payload = await fixture.runJson<{
+    proxy: { id: string; reachable: boolean; reason?: string };
+    reachable: boolean;
+  }>(['status', '--json']);
+
+  assert.equal(payload.proxy.id, 'caddy');
+  // The proxy does not answer, and the status says why.
+  assert.equal(payload.proxy.reachable, false);
+  assert.equal(payload.proxy.reason, UNKNOWN_PROXY_REASON);
+  assert.equal(payload.reachable, false);
+});
+
+test('the MCP status tool says why the proxy does not answer, and does not fail', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-unknown-proxy-mcp-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const configPath = path.join(dir, 'config.json');
+  const registryPort = await freePort();
+  const relayPort = await freePort();
+  fs.writeFileSync(
+    configPath,
+    JSON.stringify(
+      {
+        proxy: 'caddy',
+        registryPort,
+        relayPort,
+        advertisedIp: '127.0.0.1',
+        advertisedHost: '127.0.0.1',
+        zone: 'gwtest.local',
+        entryPoints: ['websecure'],
+        certResolver: 'testca',
+        secret: '',
+        stateDir: dir,
+        allowedCidrs: ['127.0.0.1/32', '::1/128'],
+      },
+      null,
+      2,
+    ),
+  );
+
+  const server = new McpServer({ configPath, stateDir: dir });
+  const response = await server.handleMessage({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/call',
+    params: { name: 'dev_gateway_status', arguments: {} },
+  });
+
+  assert.ok(response && 'result' in response);
+  const result = response.result as {
+    isError: boolean;
+    structuredContent?: {
+      proxy: { id: string; reachable: boolean; reason?: string };
+      reachable: boolean;
+      reason?: string;
+    };
+  };
+
+  // The tool reports: it does not fail because the proxy id is wrong.
+  assert.equal(result.isError, false);
+
+  const status = result.structuredContent;
+  assert.ok(status, 'the tool answered with a status');
+  assert.equal(status.proxy.id, 'caddy');
+  assert.equal(status.proxy.reachable, false);
+  // The reason is in the proxy, and at the top of the answer, so that an
+  // agent reads why without looking into the proxy.
+  assert.equal(status.proxy.reason, UNKNOWN_PROXY_REASON);
+  assert.equal(status.reason, UNKNOWN_PROXY_REASON);
+  assert.equal(status.reachable, false);
 });
