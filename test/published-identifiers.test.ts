@@ -96,6 +96,27 @@
  * says that the package sits in a checkout). They are listed in
  * `PROTOCOL_METHOD_NAMES` and `CHECKOUT_NAMES` below, and the reason is
  * written there.
+ *
+ * The rule that reads the code was sharpened in S83. It had four gaps,
+ * and they are closed:
+ *
+ *   1. **a name without a directory part is a pointer too.** The code
+ *      that says "run `worker.ts`" points at a file of the repository
+ *      that the reader of the package does not have, and the rule
+ *      reads such names now;
+ *   2. **an exception is read the way it is written.** A method of the
+ *      protocol is a name the code uses when the whole path is that
+ *      name; a file of a checkout is a file the code names when the
+ *      path it points at is that file. An exception is never a word
+ *      that happens to be in a path, and it never silences a path that
+ *      points into a directory the package does not ship;
+ *   3. **a path into a directory the package ships is a trap when the
+ *      file is not there.** The reader of the package follows the path,
+ *      and the file has to be there to be found;
+ *   4. **the internal numbering is read in the code as well.** The
+ *      code of the package is published too, and a number of a
+ *      paragraph, a story or a decision of the internal specification
+ *      points into a text that is not published.
  */
 
 import assert from 'node:assert/strict';
@@ -514,6 +535,26 @@ function lineOf(text: string, index: number): number {
 }
 
 /**
+ * The numbers of the internal specification that a text names.
+ *
+ * The published text says the thing itself, and so does the published
+ * code: a number of a paragraph, a story or a decision of the internal
+ * specification points into a document the reader of the package does
+ * not have.
+ */
+function internalNumberingTraps(file: string, text: string): string[] {
+  const hits: string[] = [];
+
+  for (const { pattern, what } of INTERNAL_NUMBERING) {
+    for (const match of text.matchAll(pattern)) {
+      hits.push(`${file}:${lineOf(text, match.index ?? 0)}: "${match[0]}" — ${what}`);
+    }
+  }
+
+  return hits;
+}
+
+/**
  * The names of the top-level directories of the repository.
  *
  * The directories the project is made of: the ones the package ships and
@@ -591,10 +632,12 @@ const CODE_PATH_TOKEN = /(?:\.\.\/|\.\/)*[A-Za-z0-9_][\w.-]*(?:\/[A-Za-z0-9_*][\
  *
  * A path that begins at `./` or at `../` is relative to the file that
  * names it. Every other path is read against the root of the package.
+ *
+ * The beginning of the path is the beginning of the path itself: the
+ * path says whether it is relative, not the word in front of it.
  */
 function isRelativePath(text: string, index: number): boolean {
-  const before = text.slice(0, index).replace(/\.+$/, '');
-  return /\.\.\/$/.test(before) || /\.\/$/.test(before);
+  return text.startsWith('../', index) || text.startsWith('./', index);
 }
 
 /**
@@ -616,6 +659,25 @@ function codePathTokens(text: string): string[] {
     tokens.push(token.replace(/\/$/, ''));
   }
   return tokens;
+}
+
+/**
+ * The names the code uses without a directory part.
+ *
+ * A name on its own is a pointer as well: the code that says "run
+ * `worker.ts`" points at a file of the repository that the reader of the
+ * package does not have. The names that are a part of a path are left
+ * out here — the path rule reads those, and it reads the whole path.
+ */
+function codeNameTokens(text: string): string[] {
+  const names: string[] = [];
+  for (const match of text.matchAll(CODE_PATH_TOKEN)) {
+    const token = match[0].replace(/[.,;:)]+$/, '');
+    if (token.includes('/')) continue;
+    if (isPathOfTheReader(text, match.index ?? 0)) continue;
+    names.push(token);
+  }
+  return names;
 }
 
 /**
@@ -644,27 +706,66 @@ function shipsUnderShippedDirectory(token: string, shipped: string[]): boolean {
 }
 
 /**
- * Is the name one the code uses on purpose, and not a pointer?
+ * Every file of the repository, relative to its root.
  *
- * The names of the methods of the protocol and the files of a checkout
- * are listed in `PROTOCOL_METHOD_NAMES` and `CHECKOUT_NAMES`. A name of
- * one of the two lists is a name the code uses, and the guard does not
- * ask about it.
+ * The build output and the hidden directories are not part of the
+ * repository: `dist/` is written by the build, and the hidden
+ * directories belong to the tools of the project. `node_modules` is
+ * installed, not written.
  */
-function isNameTheCodeUses(name: string): boolean {
-  return PROTOCOL_METHOD_NAMES.includes(name) || CHECKOUT_NAMES.includes(name);
+function allRepositoryFiles(): string[] {
+  const found: string[] = [];
+  const walk = (directory: string): void => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+      const full = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'dist') continue;
+        walk(full);
+      } else {
+        found.push(path.relative(REPO_ROOT, full).split(path.sep).join('/'));
+      }
+    }
+  };
+  walk(REPO_ROOT);
+  return found.sort();
+}
+
+/**
+ * The names of the files of the repository that the package does not
+ * ship (S83).
+ *
+ * A name on its own is a pointer at a file of the repository, and the
+ * reader of the package does not have the repository. The names of the
+ * files of a checkout that the code names on purpose are left out: the
+ * code may name such a file by its name alone (`daemon.ts` in a comment
+ * about the launcher of the daemon).
+ */
+function unshippedRepositoryNames(shipped: string[]): Set<string> {
+  const allowed = new Set(CHECKOUT_NAMES.map((name) => path.posix.basename(name)));
+  const names = new Set<string>();
+
+  for (const file of allRepositoryFiles()) {
+    if (shipped.includes(file)) continue;
+    const name = path.posix.basename(file);
+    if (allowed.has(name)) continue;
+    if (!POINTER_EXTENSIONS.some((extension) => name.endsWith(extension))) continue;
+    names.add(name);
+  }
+
+  return names;
 }
 
 /**
  * The paths of one code file of the package that the package does not
- * ship (S56).
+ * ship (S56, S83).
  *
  * The rule is the rule of the documentation, with the paths of the code
  * resolved the way the code resolves them:
  *
- *   1. a path into a directory the package ships has to name a file that
- *      is really in the tarball — the code of the package may not
- *      import a file the reader of the package does not have;
+ *   1. a path into a directory the package ships is a trap when the
+ *      file is not there: the reader of the package follows the path,
+ *      and the file has to be there to be found;
  *   2. a path into a directory of the repository is a trap: the package
  *      ships no such directory;
  *   3. a path that names a file of the project has to be a file the
@@ -675,11 +776,23 @@ function isNameTheCodeUses(name: string): boolean {
  * (`dist/core/config.js`) and against the file that names it
  * (`../worker` in `dist/core/daemon.js`). Both have to name a file that
  * the tarball holds.
+ *
+ * A name without a directory part is read as well: it is a pointer at a
+ * file of the repository just as much as a path is.
+ *
+ * The two lists of exceptions are read the way they are written. A
+ * method of the protocol is a name the code uses when the whole of the
+ * path is that name (`tools/list`); a file of a checkout is a file the
+ * code names when the path it points at is that file
+ * (`../src/cli/index.ts` in `bin/` points at `src/cli/index.ts`). An
+ * exception is never a word that happens to be in a path, and it never
+ * silences a path that points into a directory the package does not
+ * ship.
  */
 function codePathTraps(
   file: string,
   text: string,
-  context: { files: string[]; directories: string[]; unshippedFiles: string[] },
+  context: { files: string[]; directories: string[]; unshippedNames: Set<string> },
 ): string[] {
   const traps: string[] = [];
   const directory = path.posix.dirname(file);
@@ -687,13 +800,20 @@ function codePathTraps(
 
   lines.forEach((line, index) => {
     for (const token of codePathTokens(line)) {
+      // A method of the protocol is a name the code uses, and not a
+      // path: the name has to be the whole of the path it is written
+      // as. A path that only carries the name is a path, and it is
+      // read as one.
+      if (PROTOCOL_METHOD_NAMES.includes(token)) continue;
+
       const relative = token.startsWith('./') || token.startsWith('../');
       const rooted = token.replace(/^\.\/+/, '');
       const candidate = path.posix.normalize(path.posix.join(directory === '.' ? '' : directory, rooted));
       const first = (relative ? candidate : rooted).split('/')[0];
 
-      // A name the code uses on purpose is not a pointer.
-      if (isNameTheCodeUses(rooted) || isNameTheCodeUses(candidate)) continue;
+      // A file of a checkout that the code names on purpose: the
+      // exception holds the path the code points at.
+      if (CHECKOUT_NAMES.includes(candidate)) continue;
 
       const shipped =
         resolvesInPackage(rooted, context.files) ||
@@ -717,14 +837,14 @@ function codePathTraps(
       }
     }
 
-    // A file of the root of the repository that the package does not
-    // ship: the lock file, the build configuration, the security policy.
-    // The name of such a file is a pointer to a file the reader of the
+    // A name of a file of the repository that the package does not
+    // ship: the lock file, the build configuration, a script of the
+    // project. The name alone is a pointer to a file the reader of the
     // package does not have.
-    for (const name of context.unshippedFiles) {
-      if (isNameTheCodeUses(name)) continue;
-      const pattern = new RegExp(`(?<![\\w.-])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w.-])`);
-      if (pattern.test(line)) traps.push(`${file}:${index + 1}: "${name}" — the package does not ship that file`);
+    for (const name of codeNameTokens(line)) {
+      if (context.unshippedNames.has(name)) {
+        traps.push(`${file}:${index + 1}: "${name}" — the package does not ship that file`);
+      }
     }
   });
 
@@ -764,6 +884,34 @@ describe('the published package', () => {
     if (workdir === '') return;
     fs.rmSync(workdir, { recursive: true, force: true });
   });
+
+  /**
+   * The context the rule reads the code with.
+   */
+  const codeContext = (): { files: string[]; directories: string[]; unshippedNames: Set<string> } => ({
+    files,
+    directories: repositoryDirectories(),
+    unshippedNames: unshippedRepositoryNames(files),
+  });
+
+  /**
+   * The text of a copy of the tarball in which a line is planted in one
+   * of its code files.
+   *
+   * A rule that cannot fail guards nothing, so the rule is run against
+   * a tarball that has been broken on purpose.
+   */
+  const plant = (file: string, line: string): string => {
+    const copy = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-code-probe-'));
+    try {
+      fs.cpSync(packageDir, copy, { recursive: true });
+      fs.appendFileSync(path.join(copy, file), `\n${line}\n`);
+
+      return fs.readFileSync(path.join(copy, file), 'utf8');
+    } finally {
+      fs.rmSync(copy, { recursive: true, force: true });
+    }
+  };
 
   test('the tarball holds the files of the package', () => {
     // A guard that reads nothing guards nothing: the files below are the
@@ -1020,11 +1168,7 @@ describe('the published package', () => {
     // a path in a message of the code is a pointer to a file the reader
     // of the package does not have.
     const hits: string[] = [];
-    const context = {
-      files,
-      directories: repositoryDirectories(),
-      unshippedFiles: repositoryFiles().filter((file) => !SHIPPED_ROOT_FILES.includes(file)),
-    };
+    const context = codeContext();
 
     for (const file of files.filter((name) => SHIPPED_CODE_EXTENSIONS.some((extension) => name.endsWith(extension)))) {
       const text = fs.readFileSync(path.join(packageDir, file), 'utf8');
@@ -1042,15 +1186,37 @@ describe('the published package', () => {
     // An allowance that nothing uses is a hole that may go quiet: the
     // name sits in the list and hides a path that is a trap. Every name
     // in the two lists has to be a name the shipped code really uses,
-    // and when the code stops using a name, the name has to leave the
-    // list.
-    const code = files
-      .filter((name) => SHIPPED_CODE_EXTENSIONS.some((extension) => name.endsWith(extension)))
-      .map((name) => fs.readFileSync(path.join(packageDir, name), 'utf8'))
-      .join('\n');
+    // in the form the list holds it, and when the code stops using a
+    // name, the name has to leave the list.
+    //
+    //   - a method of the protocol is used as the whole of a path;
+    //   - a file of a checkout is used as the path the code points at,
+    //     or as the name of the file when the file lies in the root of
+    //     the repository (`tsconfig.build.json`).
+    const codeFiles = files.filter((name) => SHIPPED_CODE_EXTENSIONS.some((extension) => name.endsWith(extension)));
+    const paths = new Set<string>();
+    const names = new Set<string>();
+    const pointed = new Set<string>();
 
-    for (const name of [...PROTOCOL_METHOD_NAMES, ...CHECKOUT_NAMES]) {
-      assert.ok(code.includes(name), `the shipped code does not use "${name}" — the name has to leave the list`);
+    for (const file of codeFiles) {
+      const directory = path.posix.dirname(file);
+      for (const line of fs.readFileSync(path.join(packageDir, file), 'utf8').split('\n')) {
+        for (const token of codePathTokens(line)) {
+          paths.add(token);
+          const rooted = token.replace(/^\.\/+/, '');
+          pointed.add(path.posix.normalize(path.posix.join(directory === '.' ? '' : directory, rooted)));
+        }
+        for (const name of codeNameTokens(line)) names.add(name);
+      }
+    }
+
+    for (const name of PROTOCOL_METHOD_NAMES) {
+      assert.ok(paths.has(name), `the shipped code does not use the method "${name}" — the name has to leave the list`);
+    }
+
+    for (const name of CHECKOUT_NAMES) {
+      const used = pointed.has(name) || names.has(path.posix.basename(name));
+      assert.ok(used, `the shipped code does not name the file "${name}" — the name has to leave the list`);
     }
   });
 
@@ -1059,47 +1225,75 @@ describe('the published package', () => {
     // copy of the tarball in which a code file names a file that the
     // package does not ship; the rule has to catch it and say where it
     // is.
-    const copy = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-code-probe-'));
-    try {
-      fs.cpSync(packageDir, copy, { recursive: true });
+    const file = 'bin/gatewarden.js';
+    const planted = 'docs/not-shipped.md';
+    const hits = codePathTraps(file, plant(file, `const missing = '${planted}';`), codeContext());
 
-      const file = 'bin/gatewarden.js';
-      const planted = 'docs/not-shipped.md';
-      fs.appendFileSync(path.join(copy, file), `\nconst missing = '${planted}';\n`);
-
-      const context = {
-        files,
-        directories: repositoryDirectories(),
-        unshippedFiles: repositoryFiles().filter((name) => !SHIPPED_ROOT_FILES.includes(name)),
-      };
-      const hits = codePathTraps(file, fs.readFileSync(path.join(copy, file), 'utf8'), context);
-
-      assert.equal(hits.length, 1, `the rule did not catch the planted path: ${JSON.stringify(hits)}`);
-      assert.match(hits[0], new RegExp(`^${file}:\\d+: "${planted}"`));
-    } finally {
-      fs.rmSync(copy, { recursive: true, force: true });
-    }
+    assert.equal(hits.length, 1, `the rule did not catch the planted path: ${JSON.stringify(hits)}`);
+    assert.match(hits[0], new RegExp(`^${file}:\\d+: "${planted}" — the package does not ship that file$`));
   });
 
-  test('the published documentation uses no number of the internal specification', () => {
+  test('the rule catches a name without a directory part in a code file', () => {
+    // A name on its own is a pointer at a file of the repository: the
+    // reader of the package does not have the repository, and the file
+    // is not there to be found.
+    const file = 'bin/gatewarden.js';
+    const planted = 'worker.ts';
+    const hits = codePathTraps(file, plant(file, `const missing = '${planted}';`), codeContext());
+
+    assert.equal(hits.length, 1, `the rule did not catch the planted name: ${JSON.stringify(hits)}`);
+    assert.match(hits[0], new RegExp(`^${file}:\\d+: "${planted}" — the package does not ship that file$`));
+  });
+
+  test('the rule catches a path that carries the name of an allowance in it', () => {
+    // The name of a method of the protocol is a name the code uses when
+    // the whole of the path is that name. A path that carries the name
+    // in it is a path, and it points into the `tools/` directory of the
+    // repository, which the package does not ship.
+    const file = 'dist/worker.js';
+    const planted = '../tools/list';
+    const hits = codePathTraps(file, plant(file, `const missing = '${planted}';`), codeContext());
+
+    assert.equal(hits.length, 1, `the rule did not catch the planted path: ${JSON.stringify(hits)}`);
+    assert.match(hits[0], new RegExp(`^${file}:\\d+: "${planted}" — the package ships no "tools/" directory$`));
+  });
+
+  test('the rule catches a number of the internal numbering in a code file', () => {
+    // The code of the package is published too, so it says the thing
+    // itself and not in which paragraph of the internal specification
+    // the thing stands.
+    const file = 'bin/gatewarden.js';
+    const text = plant(file, 'const story = "S8";\nconst decision = "D3";\nconst paragraph = "§9";');
+    const hits = internalNumberingTraps(file, text);
+
+    assert.equal(hits.length, 3, `the rule did not catch the planted numbers: ${JSON.stringify(hits)}`);
+    assert.match(hits[0], new RegExp(`^${file}:\\d+: "§9" — the number of a paragraph of the internal specification$`));
+    assert.match(hits[1], new RegExp(`^${file}:\\d+: "S8" — the number of a story of the internal plan$`));
+    assert.match(hits[2], new RegExp(`^${file}:\\d+: "D3" — the number of a decision of the internal specification$`));
+  });
+
+  test('the published package uses no number of the internal specification', () => {
     // The published text says the thing itself. A number of a paragraph,
     // a story or a decision of the internal specification points into a
     // document the reader of the package does not have.
+    //
+    // The code of the package is read as well (S83): it is published
+    // too, and a number in it points into the same document that the
+    // reader does not have.
     const hits: string[] = [];
+    const read = files.filter(
+      (name) => name.endsWith('.md') || SHIPPED_CODE_EXTENSIONS.some((extension) => name.endsWith(extension)),
+    );
 
-    for (const file of files.filter((name) => name.endsWith('.md'))) {
+    for (const file of read) {
       const text = fs.readFileSync(path.join(packageDir, file), 'utf8');
-      for (const { pattern, what } of INTERNAL_NUMBERING) {
-        for (const match of text.matchAll(pattern)) {
-          hits.push(`${file}:${lineOf(text, match.index ?? 0)}: "${match[0]}" — ${what}`);
-        }
-      }
+      hits.push(...internalNumberingTraps(file, text));
     }
 
     assert.deepEqual(
       hits,
       [],
-      'the published documentation names the internal numbering of the project:\n' + hits.join('\n'),
+      'the published package names the internal numbering of the project:\n' + hits.join('\n'),
     );
   });
 
