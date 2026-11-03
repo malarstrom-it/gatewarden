@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { loadConfig, listenHost } from '../src/core/config.ts';
-import { ensureDaemon, isHealthy, daemonStatus } from '../src/core/daemonControl.ts';
+import { ensureDaemon, isHealthy, daemonStatus, isProcessAlive } from '../src/core/daemonControl.ts';
 import { RegistrationStore } from '../src/core/state.ts';
 import type { Config } from '../src/core/types.ts';
 
@@ -54,6 +54,12 @@ function cmdlineOf(pid: number): string {
   }
 }
 
+/**
+ * Wait until a condition holds.
+ *
+ * The timeout is a backstop that keeps a test from running for ever, not
+ * the thing the test waits for: the condition is what the test asserts.
+ */
 async function waitFor(predicate: () => Promise<boolean>, timeoutMs = 15000): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -61,6 +67,46 @@ async function waitFor(predicate: () => Promise<boolean>, timeoutMs = 15000): Pr
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   return false;
+}
+
+/**
+ * The processes of an installation: the daemon and the workers it
+ * supervises.
+ *
+ * Every one of them names the configuration file of the installation on
+ * their command line, and the configuration file of a throwaway
+ * installation is its own. The list is found that way and not through
+ * the pidfile alone: a worker that outlives the daemon that supervised
+ * it is not a child of anything any more, and it still holds the port of
+ * the gateway.
+ */
+function processesOf(configPath: string): number[] {
+  const pids: number[] = [];
+  let entries: string[] = [];
+  try {
+    entries = fs.readdirSync('/proc');
+  } catch {
+    // A machine without /proc has no processes to find.
+    return pids;
+  }
+  for (const entry of entries) {
+    if (!/^\d+$/.test(entry)) continue;
+    const pid = Number(entry);
+    if (pid === process.pid) continue;
+    if (cmdlineOf(pid).includes(configPath)) pids.push(pid);
+  }
+  return pids;
+}
+
+/**
+ * Wait until the processes are gone.
+ *
+ * A process that has terminated but has not been collected yet is gone
+ * as well: it runs nothing and holds nothing but its place in the
+ * process table.
+ */
+async function waitUntilGone(pids: number[], timeoutMs = 15000): Promise<boolean> {
+  return waitFor(async () => pids.every((pid) => !isProcessAlive(pid)), timeoutMs);
 }
 
 async function setup(): Promise<{ dir: string; configPath: string; config: Config }> {
@@ -94,22 +140,29 @@ async function setup(): Promise<{ dir: string; configPath: string; config: Confi
   return { dir, configPath, config: loadConfig({ configPath, stateDir: dir }) };
 }
 
-async function stopDaemon(config: Config): Promise<void> {
-  const status = await daemonStatus(config);
-  if (status.pid) {
+/**
+ * Stop the daemon of an installation and wait until it is gone.
+ *
+ * The wait is on the processes, not on the health probe: the probe
+ * answers for whoever holds the port, and the daemon that comes after
+ * this one cannot bind a port that is still held.
+ */
+async function stopDaemon(configPath: string): Promise<void> {
+  const pids = processesOf(configPath);
+  for (const pid of pids) {
     try {
-      process.kill(status.pid, 'SIGTERM');
+      process.kill(pid, 'SIGTERM');
     } catch {
       // already gone
     }
   }
-  await waitFor(async () => !(await isHealthy(config)), 8000);
+  await waitUntilGone(pids);
 }
 
 test('ensureDaemon starts the daemon and waits until it is healthy', async (t) => {
   const { dir, configPath, config } = await setup();
   t.after(async () => {
-    await stopDaemon(config);
+    await stopDaemon(configPath);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
@@ -127,7 +180,7 @@ test('ensureDaemon starts the daemon and waits until it is healthy', async (t) =
 test('ensureDaemon is a no-op when the daemon is already running', async (t) => {
   const { dir, configPath, config } = await setup();
   t.after(async () => {
-    await stopDaemon(config);
+    await stopDaemon(configPath);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
@@ -140,7 +193,7 @@ test('ensureDaemon is a no-op when the daemon is already running', async (t) => 
 test('the daemon serves the registrations written by the CLI', async (t) => {
   const { dir, configPath, config } = await setup();
   t.after(async () => {
-    await stopDaemon(config);
+    await stopDaemon(configPath);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
@@ -155,27 +208,50 @@ test('the daemon serves the registrations written by the CLI', async (t) => {
 test('the daemon restarts after it was killed', async (t) => {
   const { dir, configPath, config } = await setup();
   t.after(async () => {
-    await stopDaemon(config);
+    await stopDaemon(configPath);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
   await ensureDaemon(config, { configPath });
   const first = await daemonStatus(config);
   assert.ok(first.pid);
-  process.kill(first.pid as number, 'SIGTERM');
-  assert.equal(await waitFor(async () => !(await isHealthy(config)), 8000), true);
+  const daemonPid = first.pid as number;
+
+  // The daemon and the workers it supervises are the processes of the
+  // installation. They are collected before the daemon is killed: a
+  // worker that outlives its supervisor is not a child of anything any
+  // more, and it still holds the port of the gateway.
+  const processes = processesOf(configPath);
+  assert.ok(processes.includes(daemonPid), 'the daemon should be a process of the installation');
+  const workers = processes.filter((pid) => pid !== daemonPid);
+
+  process.kill(daemonPid, 'SIGTERM');
+
+  // The daemon is gone when its process is gone. The health probe is
+  // not the signal: it answers for whoever holds the port, and the
+  // daemon that comes after this one cannot bind a port that is still
+  // held. Waiting for the probe to fall silent says something about
+  // the port, not about the daemon.
+  const daemonGone = await waitUntilGone([daemonPid]);
+  assert.equal(daemonGone, true, 'the daemon did not stop after SIGTERM');
+
+  // The workers go with it. A worker that stays behind holds the port
+  // of the gateway, and the daemon that comes after this one would not
+  // be able to bind it.
+  const workersGone = await waitUntilGone(workers);
+  assert.equal(workersGone, true, 'a worker of the daemon outlived it and still holds the port');
 
   const restarted = await ensureDaemon(config, { configPath });
   assert.equal(restarted.started, true);
+  assert.ok(restarted.pid, 'the daemon that came back should have a pid');
+  assert.notEqual(restarted.pid, daemonPid, 'the daemon that came back should be a new process');
   assert.equal(await isHealthy(config), true);
-  const status = await daemonStatus(config);
-  assert.notEqual(status.pid, first.pid);
 });
 
 test('the daemon respawns a worker that dies, the other listener keeps serving', async (t) => {
   const { dir, configPath, config } = await setup();
   t.after(async () => {
-    await stopDaemon(config);
+    await stopDaemon(configPath);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
