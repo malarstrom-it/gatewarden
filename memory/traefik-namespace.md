@@ -105,12 +105,15 @@ node bin/gatewarden.js register --project <p> --branch <b> --port <port>   # sta
 node bin/gatewarden.js list | status | unregister --project <p> --branch <b>
 ```
 
-State: `~/.local/state/gatewarden/` (`routes.json`, `routes.json.lock`, `daemon.pid`, `daemon.log`,
-`daemon.error`); the configuration lives in `~/.config/gatewarden/config.json`. These are the paths
-`src/core/paths.ts` resolves (`GATEWARDEN_HOME`, `GATEWARDEN_CONFIG` and `GATEWARDEN_STATE_DIR`
-override them; the log is next to the state on Linux and in its own log directory on macOS and
-Windows). The old `/home/node/.traefik-dev/` is only read now: `gatewarden migrate` moves it over and
-leaves the directory behind.
+State: `~/.local/state/gatewarden/`. A fresh installation holds `routes.json`, `routes.json.lock`,
+`daemon.pid`, `daemon.log` and `daemon.error`. Two more can lie there: `registrations.json`, the old
+name of the route store, left behind by an installation that was migrated; and `daemon.log.1`,
+`daemon.log.2` and so on, the rotated logs of the daemon. The configuration lives in
+`~/.config/gatewarden/config.json`. These are the paths `src/core/paths.ts` resolves
+(`GATEWARDEN_HOME`, `GATEWARDEN_CONFIG` and `GATEWARDEN_STATE_DIR` override them; the log is next to
+the state on Linux and in its own log directory on macOS and Windows). The old
+`/home/node/.traefik-dev/` is only read now: `gatewarden migrate` moves it over and leaves the
+directory behind.
 Daemon: `node bin/gatewarden-daemon.js`; a code change needs a restart of that pid.
 
 ## The pi skill (installed 2026-10-22)
