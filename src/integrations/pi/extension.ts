@@ -1,5 +1,5 @@
 /**
- * The pi extension (§7).
+ * The pi extension.
  *
  * One adapter over the core. The extension gives the pi user the three
  * things the MCP server alone does not give: a native tool contract, a
@@ -11,8 +11,9 @@
  *
  *     pi -e ./dist/integrations/pi/extension.js
  *
- * It is a client of the core like every other surface (D12): it never
- * hosts the daemon, it makes sure the daemon runs.
+ * It is a client of the core like every other surface: it never hosts
+ * the daemon — the daemon is never hosted inside an agent session — it
+ * makes sure the daemon runs.
  */
 
 import { ensureDaemon } from '../../core/daemonControl.ts';
@@ -63,7 +64,7 @@ async function refreshStatus(ctx: PiExtensionContext): Promise<void> {
 }
 
 /**
- * Make sure the daemon runs (§5.1, §7).
+ * Make sure the daemon runs.
  *
  * A failure is told to the user, not thrown: a gateway that does not
  * start must not keep the session from opening.

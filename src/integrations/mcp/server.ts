@@ -1,14 +1,14 @@
 /**
- * The MCP server: the primary agent surface (D4), speaking the stdio
- * JSON-RPC protocol directly (D5).
+ * The MCP server: the primary agent surface, speaking the stdio
+ * JSON-RPC protocol directly.
  *
- * The official SDK is a dev dependency: the conformance test drives this
- * server with the SDK's own client, and nothing else needs it (§11.4). The
+ * The official SDK is a dev dependency: the MCP conformance test drives
+ * this server with the SDK's own client, and nothing else needs it. The
  * transport is newline-delimited JSON-RPC — one JSON object per line, in
  * both directions — and the standard output carries nothing else.
  *
  * The server never starts the daemon when it starts. The daemon is started
- * by the first tool call (§5.1, §6.1), so that running the server is
+ * by the first tool call — the lazy start — so that running the server is
  * safe: it does not change anything until an agent asks it to.
  */
 
@@ -98,7 +98,7 @@ function failure(id: JsonRpcId | null, code: number, message: string): JsonRpcFa
 }
 
 export interface McpServerOptions {
-  /** The tools the server offers. Defaults to the four of §6.2. */
+  /** The tools the server offers. Defaults to the four of the MCP server. */
   tools?: ToolDefinition[];
   /** The name and the version of the server. */
   serverInfo?: { name: string; version: string };
@@ -231,9 +231,9 @@ export class McpServer {
         stateDir: this.options.stateDir,
       });
 
-      // The lazy start (§5.1): the daemon serves the document the proxy
-      // polls. The server does not start it when it starts (§6.1) — the
-      // first tool call does.
+      // The lazy start: the daemon serves the document the proxy polls.
+      // The server does not start it when it starts — the first tool
+      // call does.
       const started = await ensureDaemon(context.config, { configPath: context.configPath });
       if (started.error) throw new Error(started.error);
 

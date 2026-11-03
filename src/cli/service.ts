@@ -1,7 +1,7 @@
 /**
- * The service unit the gateway can be installed as (§5.3).
+ * The service unit the gateway can be installed as.
  *
- * Two layers start the daemon (§5):
+ * Two layers start the daemon:
  *
  * 1. the lazy start, which every entry point uses;
  * 2. `install-service`, the only layer that survives a reboot.

@@ -1,5 +1,5 @@
 /**
- * The healthcheck of the package: `gatewarden doctor` (§9.9).
+ * The healthcheck of the package: `gatewarden doctor`.
  *
  * The doctor is the one command that has to work everywhere. It runs in a
  * container that has no proxy, no zone, no daemon and no public URL, and
@@ -205,7 +205,7 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
   // The fields the configuration file declares.
   //
   // The zone is the field the host names of the routes are built from,
-  // and the one field the installation cannot do without (§9.1). A
+  // and the one field the installation cannot do without. A
   // configuration file that declares it has declared an installation: it
   // is checked as one, and a part of it that is missing is an error. A
   // configuration file that says nothing about the zone belongs to an
@@ -326,10 +326,10 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
 
   // 3. The daemon.
   //
-  // The daemon starts by itself with the first route (D7), so a daemon
-  // that does not run is the normal state of a fresh installation: it is
-  // a warning, not an error. A daemon that runs and does not answer is
-  // broken.
+  // The daemon starts by itself with the first route (the lazy start),
+  // so a daemon that does not run is the normal state of a fresh
+  // installation: it is a warning, not an error. A daemon that runs
+  // and does not answer is broken.
   const status = await daemonStatus(config);
   if (!here) {
     skipped(
@@ -373,7 +373,7 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
   //
   // The host names of the routes are built from the zone. A zone that is
   // not set is a part of the installation that is not there yet — the
-  // setup wizard writes it, or the user writes it by hand (§9.1). It is
+  // setup wizard writes it, or the user writes it by hand. It is
   // a warning with the reason and the way to get one, never a failure:
   // an installation without a zone is not a broken installation, it is an
   // unfinished one.

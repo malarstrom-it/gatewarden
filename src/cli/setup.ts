@@ -1,22 +1,23 @@
 /**
- * The setup wizard (§9).
+ * The setup wizard.
  *
  * `gatewarden setup` walks a new installation through six steps, five of
  * them automatic:
  *
- * 1. read the environment (§9.1);
- * 2. discover the proxy (§9.2);
- * 3. is the proxy already wired? (§9.3);
- * 4. emit the wiring (§9.4);
- * 5. verify end to end (§9.5);
- * 6. write the configuration and start (§9.6).
+ * 1. read the environment;
+ * 2. discover the proxy;
+ * 3. is the proxy already wired?
+ * 4. emit the wiring;
+ * 5. verify end to end;
+ * 6. write the configuration and start.
  *
  * The wizard never pretends: when it cannot verify something, it says so.
  * A setup that half worked and says so is worth more than a setup that
  * claims everything is fine.
  *
  * The wizard is a client of the core: it asks the proxy adapter to
- * discover the proxy and to render the wiring (D3), and it writes the route
+ * discover the proxy and to render the wiring — the core is
+ * proxy-agnostic and Traefik is one adapter — and it writes the route
  * store through the same store the CLI uses.
  */
 
@@ -59,7 +60,7 @@ export const NO_ZONE_REASON = 'no DNS zone is configured, so there is no public 
  * resolve, or nothing listens on the port. That is the shape of a
  * machine without a public URL — a CI runner, a laptop with no DNS for
  * the zone — and not a broken installation. A chain that answered with an
- * error is a different thing, and it is a `failed` (§9.7).
+ * error is a different thing, and it is a `failed`.
  */
 export const NOT_FETCHABLE_REASON =
   'the public URL could not be fetched: nothing answered there (the zone does not resolve, or nothing listens on the port)';
@@ -87,12 +88,12 @@ export const FORBIDDEN_REASON =
 /**
  * Why the verification failed when the registry refused the document.
  *
- * The registry answers the trust list and nobody else (D15). When the
- * poll of the proxy is refused, the proxy has no configuration, the
- * route never reaches it, and the public URL answers 404 — a wizard
- * that stopped there would blame the wiring, and the cause is the
- * trust list. The refusal says who it is: the address of the proxy is
- * not in the list, or the secret is wrong.
+ * The registry answers the trust list and nobody else. When the poll of
+ * the proxy is refused, the proxy has no configuration, the route never
+ * reaches it, and the public URL answers 404 — a wizard that stopped
+ * there would blame the wiring, and the cause is the trust list. The
+ * refusal says who it is: the address of the proxy is not in the list,
+ * or the secret is wrong.
  */
 export const REGISTRY_REFUSED_REASON =
   'the registry refused the document: the address of the proxy is not in the trust list (allowedCidrs), or the secret is wrong';
@@ -113,8 +114,8 @@ export const PROXY_REFUSED_REASON =
  * route.
  *
  * The wiring may not be in the proxy's configuration yet: the wizard
- * cannot apply it (§9.4), and the user has to. The chain cannot be
- * verified before that, and that is not a failure of the setup.
+ * cannot apply it, and the user has to. The chain cannot be verified
+ * before that, and that is not a failure of the setup.
  */
 export const NOT_SERVED_REASON = 'the proxy does not serve the route: the wiring may not be in place yet';
 
@@ -127,7 +128,7 @@ export const NOT_SERVED_REASON = 'the proxy does not serve the route: the wiring
  */
 export const THROWAWAY_MARKER = 'gatewarden setup check';
 
-/** One step of the end-to-end verification (§9.5). */
+/** One step of the end-to-end verification. */
 export interface VerificationStep {
   name: string;
   ok: boolean;
@@ -157,23 +158,23 @@ export interface SetupReport {
     certResolver?: string;
     middlewareProvider?: string;
   };
-  /** Is the proxy already wired to this machine? (§9.3) */
+  /** Is the proxy already wired to this machine? */
   wired: boolean;
-  /** The wiring the user has to add to the proxy (§9.4). */
+  /** The wiring the user has to add to the proxy. */
   wiring: { path: string; content: string } | null;
-  /** What the end-to-end verification found (§9.5). */
+  /** What the end-to-end verification found. */
   verification: {
     status: VerificationStatus;
     reason?: string;
     steps: VerificationStep[];
   };
-  /** What was written to the configuration file (§9.6). */
+  /** What was written to the configuration file. */
   config: {
     path: string;
     written: boolean;
     /**
      * The values that were not written: they are the built-in defaults,
-     * and the defaults belong to the package (§3.2).
+     * and the defaults belong to the package.
      */
     omitted: string[];
     zone: string;
@@ -188,16 +189,16 @@ export interface SetupReport {
     allowedCidrs: string[];
     /**
      * Where every value came from: `the proxy`, `the user`,
-     * `the configuration` or `the default` (§9.2).
+     * `the configuration` or `the default`.
      */
     sources: Record<string, string>;
     /**
      * The values nobody confirmed: the proxy did not answer and there was
-     * nobody to ask (§9.2).
+     * nobody to ask.
      */
     unconfirmed: string[];
   };
-  /** The daemon after the wizard (§9.6). */
+  /** The daemon after the wizard. */
   daemon: { running: boolean; pid: number | null; restarted?: boolean; error?: string };
   /** What the user should do next. */
   nextSteps: string[];
@@ -284,7 +285,7 @@ export function expectedEndpoints(config: Config): string[] {
   return [...new Set(hosts.flatMap((host) => ports.map((port) => `http://${host}:${port}`)))];
 }
 
-/** The directory the wiring is written to (§9.4). */
+/** The directory the wiring is written to. */
 export function wiringDir(stateDir: string): string {
   return path.join(stateDir, 'wiring');
 }
@@ -457,7 +458,7 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
   const adapter = requireAdapter(proxyId);
   const config: Config = { ...opts.config };
 
-  // Step one: read the environment (§9.1).
+  // Step one: read the environment.
   const status = await daemonStatus(config);
   const environment: SetupReport['environment'] = {
     container: isContainer(env),
@@ -477,7 +478,7 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
   log(`   state dir:      ${environment.stateDir}`);
   log(`   daemon:         ${environment.daemonRunning ? `running (pid ${environment.daemonPid})` : 'not running'}`);
 
-  // Step two: discover the proxy (§9.2).
+  // Step two: discover the proxy.
   const apiBaseUrl = opts.apiBaseUrl ?? adapter.defaultApiBaseUrl;
   const discovered = await adapter.discover({
     apiBaseUrl,
@@ -504,7 +505,7 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
     log(`   no ${proxyId} API answered at ${proxy.apiBaseUrl}`);
   }
 
-  // The values the configuration needs (§9.2). What the proxy knows wins.
+  // The values the configuration needs. What the proxy knows wins.
   // What the proxy does not know, the user is asked for: when no proxy
   // API answers, the wizard asks for the zone, the entry points, the
   // certificate resolver and the middleware provider. Nothing is
@@ -529,7 +530,7 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
    * is derived from the network interfaces of this machine, and it goes
    * stale when the machine gets another address. It is therefore not
    * written to the configuration file: the file holds an empty value,
-   * which means "derived" (§3.2).
+   * which means "derived".
    */
   const advertisedOrigin = (value: string): string => {
     if (!value) return 'the default';
@@ -570,7 +571,7 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
       const answer = await prompter.ask(question, current || fallback, promptTimeoutMs);
       if (answer.timedOut) {
         // Nobody answered: the value that is kept is a value nobody
-        // confirmed, exactly like in a run without anybody to ask (§9.2).
+        // confirmed, exactly like in a run without anybody to ask.
         sources[name] = origin(current, fallback);
         unconfirmed.push(name);
         return current;
@@ -599,7 +600,7 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
     const answer = await prompter.ask('   the entry points the routers attach to (comma separated)', current, promptTimeoutMs);
     if (answer.timedOut) {
       // Nobody answered: the value that is kept is a value nobody
-      // confirmed (§9.2).
+      // confirmed.
       sources['entryPoints'] = origin(texts(config.entryPoints), DEFAULT_CONFIG.entryPoints);
       unconfirmed.push('entryPoints');
     } else {
@@ -631,7 +632,7 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
     proxy.middlewareProvider !== undefined,
   );
 
-  // The trust list: the sources that may talk to the gateway (§9.2).
+  // The trust list: the sources that may talk to the gateway.
   // The proxy is the one that polls the document and sends the dispatch
   // header, and the wizard knows where the proxy is: its API answered
   // there. The addresses of the proxy are therefore part of the list;
@@ -674,7 +675,7 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
     );
     if (answer.timedOut) {
       // Nobody answered: the value that is kept is a value nobody
-      // confirmed (§9.2).
+      // confirmed.
       sources['allowedCidrs'] = origin(currentCidrs, DEFAULT_CONFIG.allowedCidrs);
       unconfirmed.push('allowedCidrs');
     } else {
@@ -703,13 +704,13 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
   // The host name the proxy reaches this machine under is not something the
   // proxy's API says: it is this machine's own name. It is asked for when
   // there is somebody to ask, because the wiring is written with it, and
-  // it is reported as unconfirmed when there is not (§9.2).
+  // it is reported as unconfirmed when there is not.
   if (interactive && prompter) {
     const current = config.advertisedHost || config.advertisedIp;
     const answer = await prompter.ask('   the host name the proxy reaches this machine under', current, promptTimeoutMs);
     if (answer.timedOut) {
       // Nobody answered: the value that is kept is a value nobody
-      // confirmed (§9.2).
+      // confirmed.
       sources['advertisedHost'] = advertisedOrigin(current);
       unconfirmed.push('advertisedHost');
     } else {
@@ -732,7 +733,7 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
   log(`   allowed cidrs:  ${texts(config.allowedCidrs).join(', ') || '(none)'}`);
   log(`   advertised host:${text(config.advertisedHost) || '(none)'}`);
 
-  // Step three: is the proxy already wired? (§9.3).
+  // Step three: is the proxy already wired?
   const wired = discovered?.wired === true;
   log('3. wiring');
   log(
@@ -741,7 +742,7 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
       : '   the proxy has no route of this machine yet (the wiring may be in place already)',
   );
 
-  // Step four: emit the wiring (§9.4).
+  // Step four: emit the wiring.
   let wiring: SetupReport['wiring'] = null;
   if (!wired) {
     const content = adapter.wiringSnippet(config);
@@ -757,13 +758,13 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
 
   // The configuration the daemon serves is the one the wizard just
   // wrote: a daemon that runs with the old configuration serves the old
-  // document, and the verification of §9.5 would check the old
+  // document, and the end-to-end verification would check the old
   // configuration. The daemon is therefore restarted. The routes live in
   // the route store, not in the daemon, so a restart does not lose them.
   //
   // The values that are the built-in default are not written: the file
   // holds what belongs to this installation, and the default belongs to
-  // the package (§3.2). A new installation would otherwise get the zone
+  // the package. A new installation would otherwise get the zone
   // of another project in its configuration file.
   const omitted = Object.keys(sources).filter((name) => sources[name] === 'the default');
   writeConfigFile(opts.configPath, config, { omit: omitted });
@@ -772,7 +773,7 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
     log(`   the daemon was not restarted: ${daemon.error}`);
   }
 
-  // Step five: verify end to end (§9.5).
+  // Step five: verify end to end.
   log('5. end-to-end verification');
   const verification = await verifyEndToEnd({
     config,
@@ -794,7 +795,7 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
   });
   log(`   ${verification.status}${verification.reason ? `: ${verification.reason}` : ''}`);
 
-  // Step six: the configuration and the daemon (§9.6). Both are in place:
+  // Step six: the configuration and the daemon. Both are in place:
   // they were needed for the verification.
   log('6. configuration and daemon');
   log(`   configuration:  ${opts.configPath}`);
@@ -890,7 +891,7 @@ export async function runSetup(opts: SetupOptions): Promise<SetupReport> {
  * A daemon that is already running serves the configuration it was
  * started with. The wizard has written a new one, so a running daemon is
  * stopped first: otherwise the document the proxy polls is the old one,
- * and the verification of §9.5 would check the old configuration.
+ * and the end-to-end verification would check the old configuration.
  */
 async function startDaemonWith(
   config: Config,
@@ -934,12 +935,12 @@ interface VerifyOptions {
    * that knows it serves it in some other way (over TLS, say).
    */
   knowsRoute?: () => Promise<boolean>;
-  /** Called for every step, as it happens (§9.5). */
+  /** Called for every step, as it happens. */
   onStep?: (step: VerificationStep) => void;
 }
 
 /**
- * Verify the whole chain end to end (§9.5).
+ * Verify the whole chain end to end.
  *
  * A throwaway server is started, registered, given a poll interval to be
  * picked up, and fetched through the public URL. The route and the server
@@ -1047,8 +1048,8 @@ async function verifyEndToEnd(opts: VerifyOptions): Promise<SetupReport['verific
     if (fetched.notFound) {
       // The proxy knows the URL and does not serve it. Does it know the
       // route? A proxy that does not know it has not picked up the
-      // wiring yet — the wizard cannot apply the wiring (§9.4), and the
-      // user has to. That is not a failed setup. A proxy that knows the
+      // wiring yet — the wizard cannot apply the wiring, and the user
+      // has to. That is not a failed setup. A proxy that knows the
       // route and does not serve it over plain HTTP serves it in some
       // other way, and that is a failure.
       const knows = opts.knowsRoute ? await opts.knowsRoute() : false;
@@ -1132,7 +1133,7 @@ function publicUrlPorts(opts: VerifyOptions): number[] {
 }
 
 /**
- * Fetch the public URL of a route (§9.5).
+ * Fetch the public URL of a route.
  *
  * The URL is the host name the route is served under. HTTPS is tried
  * first; a proxy that serves the zone over plain HTTP answers the second
@@ -1302,11 +1303,11 @@ function logLinesOfTheCurrentRun(logFile: string): string[] {
 /**
  * Did the registry refuse the document?
  *
- * The registry answers the trust list and nobody else (D15). When the
- * poll of the proxy is refused, the proxy has no configuration, the
- * route never reaches it, and the public URL answers 404. The daemon
- * writes every refusal down, with the address it refused, so the log
- * is where the answer is.
+ * The registry answers the trust list and nobody else. When the poll of
+ * the proxy is refused, the proxy has no configuration, the route never
+ * reaches it, and the public URL answers 404. The daemon writes every
+ * refusal down, with the address it refused, so the log is where the
+ * answer is.
  *
  * The probe is not the document: a refusal of the probe says that the
  * caller is not trusted either, but it is not the reason the proxy has

@@ -1,5 +1,5 @@
 /**
- * The project and the branch, when the agent does not say (§6.3).
+ * The project and the branch, when the agent does not say.
  *
  * The agent does not have to reason about names: it publishes a port, and
  * the gateway works out which project and which branch it belongs to. The

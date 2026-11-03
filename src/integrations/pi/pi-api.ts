@@ -3,7 +3,7 @@
  *
  * pi is the host, not a dependency. The package carries the gateway, not
  * the harness, and the only runtime dependencies it may have are
- * `env-paths` and `proper-lockfile` (§2.1). So the shapes pi hands the
+ * `env-paths` and `proper-lockfile`. So the shapes pi hands the
  * extension are declared here — only the ones the extension touches — and
  * the extension imports nothing from pi at all.
  *
@@ -14,8 +14,8 @@
  *
  * The declarations follow pi's own `ExtensionAPI`, `ExtensionContext` and
  * `ToolDefinition`. They are checked against the real ones by loading the
- * extension in pi itself (the acceptance criterion of S6), not by a
- * dependency on the harness.
+ * extension in pi itself (the acceptance criterion of the pi extension),
+ * not by a dependency on the harness.
  */
 
 /** How pi tells the user something. */

@@ -1,11 +1,11 @@
 /**
- * The route table the `/routes` command renders (§7).
+ * The route table the `/routes` command renders.
  *
  * The table shows both halves of a route: the local one — the port the
  * development server listens on, and whether it answers — and the public
  * one, the address the user opens in a browser.
  *
- * The rows are the routes in the shape the tools return (§6.2), so the
+ * The rows are the routes in the shape the tools return, so the
  * table and the tool output never disagree.
  */
 

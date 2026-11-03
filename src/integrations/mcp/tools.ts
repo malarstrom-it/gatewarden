@@ -1,12 +1,13 @@
 /**
- * The four tools of the MCP server (§6.2).
+ * The four tools of the MCP server.
  *
- * The tools are the agent surface (D4): four calls, a typed contract each,
- * and a result the agent can hand to the user verbatim. They are thin:
- * everything they do, the core does — the route store writes the state,
- * the daemon serves the document, the proxy asks for it.
+ * The tools are the agent surface — MCP is the primary agent surface —
+ * four calls, a typed contract each, and a result the agent can hand to
+ * the user verbatim. They are thin: everything they do, the core does —
+ * the route store writes the state, the daemon serves the document, the
+ * proxy asks for it.
  *
- * The names are the ones the human decided (§6.2):
+ * The names are the ones the human decided:
  *
  *   publish_dev_server, remove_dev_server, list_dev_servers,
  *   dev_gateway_status.
@@ -177,7 +178,7 @@ const configSchema: JsonSchema = {
  *
  * The route is updated in place when the project and the branch already
  * have one: an agent that restarts a development server on another port
- * expects the same address to follow it (§6.2).
+ * expects the same address to follow it.
  */
 const publishDevServer: ToolDefinition = {
   name: 'publish_dev_server',
@@ -241,8 +242,8 @@ const publishDevServer: ToolDefinition = {
 
     const store = new RegistrationStore(context.config.stateDir);
     // The write is a read-modify-write, and two agent sessions may publish
-    // at the same time (D10): the lock keeps one of them from dropping
-    // the route of the other.
+    // at the same time: the route store is guarded by a lock file, and the
+    // lock keeps one of them from dropping the route of the other.
     const registration = await withRouteLock(context.config.stateDir, () =>
       store.upsert({
         project,

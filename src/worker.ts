@@ -3,7 +3,8 @@
  *
  * The daemon forks one worker per listener. The worker is the process that
  * picks the proxy adapter: the core hands the adapter to the worker, and
- * the worker never learns which proxy it renders for (D3).
+ * the worker never learns which proxy it renders for — the core is
+ * proxy-agnostic and Traefik is one adapter.
  *
  * The worker is an internal process of the daemon: the daemon starts it
  * with the role `registry` or `relay`. A user starts the daemon with

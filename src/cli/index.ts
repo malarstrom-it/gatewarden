@@ -15,7 +15,7 @@
  *
  * The commands of the old CLI (`register`, `unregister`, `list`, `status`,
  * `config`, `migrate`) keep their names and their behaviour. The commands
- * the specification adds (`setup`, `start`, `stop`, `doctor`,
+ * the package adds (`setup`, `start`, `stop`, `doctor`,
  * `install-service`) live next to them.
  *
  * Every command that says something about the state of the gateway can say
@@ -142,7 +142,7 @@ function emitJson(value: unknown): void {
 export { packageVersion };
 
 /**
- * The healthcheck of the package (§9.9).
+ * The healthcheck of the package: the doctor.
  *
  * The doctor, the launcher path of the daemon and the check of the
  * service unit live in their own module: the healthcheck is a thing of
@@ -215,7 +215,7 @@ function resolveConfig(
 }
 
 /**
- * One route, in the shape the MCP tools use (§6.2).
+ * One route, in the shape the MCP tools use.
  *
  * The shape lives in the core, so that the CLI, the MCP server and the pi
  * extension show the same route.
@@ -265,8 +265,8 @@ async function commandRegister(flags: Record<string, string | boolean>): Promise
 
   const store = new RegistrationStore(config.stateDir);
   // The write is a read-modify-write, and two agents may register at the
-  // same time (D10): the lock keeps the second one from dropping the
-  // route of the first.
+  // same time: the route store is guarded by a lock file, and the lock
+  // keeps the second one from dropping the route of the first.
   const registration = await withRouteLock(config.stateDir, () =>
     store.upsert({ project, branch, devPort, label, zone }),
   );
@@ -322,7 +322,7 @@ async function commandList(flags: Record<string, string | boolean>): Promise<num
       const up = await isPortListening(registration.devPort);
       routes.push(routeJson(registration, up ? 'up' : 'down'));
     }
-    // `routes` is the shape the MCP tool uses (§6.2); `registrations` is
+    // `routes` is the shape the MCP tool uses; `registrations` is
     // the raw state, for the scripts that read the store.
     emitJson({ routes, registrations });
     return 0;
@@ -351,7 +351,7 @@ async function commandList(flags: Record<string, string | boolean>): Promise<num
   return 0;
 }
 
-/** The state of the daemon, in the shape the MCP tool uses (§6.2). */
+/** The state of the daemon, in the shape the MCP tool uses. */
 export async function statusOf(
   config: Config,
   configPath: string,
@@ -363,7 +363,7 @@ export async function statusOf(
   const registrations = store.list();
 
   return {
-    // The four things the MCP tool `dev_gateway_status` returns (§6.2).
+    // The four things the MCP tool `dev_gateway_status` returns.
     ...status,
     // The keys the old CLI wrote, at the top level: a script written
     // against `gatewarden status --json` keeps reading them.
@@ -500,7 +500,7 @@ function commandConfig(flags: Record<string, string | boolean>): number {
 }
 
 /**
- * Move the old layout (`~/.traefik-dev/`) to the new one (§3.4).
+ * Move the old layout (`~/.traefik-dev/`) to the new one.
  *
  * The report says what moved and what stayed where it was. Nothing is ever
  * deleted: the old directory is left in place.
@@ -578,7 +578,7 @@ function commandMigrate(flags: Record<string, string | boolean>): number {
 }
 
 /**
- * Start the daemon and wait for it (§5.1).
+ * Start the daemon and wait for it.
  *
  * The daemon is started detached, so it outlives the command.
  */
@@ -643,7 +643,7 @@ async function commandStart(flags: Record<string, string | boolean>): Promise<nu
 export { isProcessAlive, isGatewayDaemon } from '../core/daemonControl.ts';
 
 /**
- * Stop the daemon (§5).
+ * Stop the daemon.
  *
  * The daemon removes its own pidfile when it stops. The command waits for
  * the process to be gone, and never stops a process that is not the
@@ -681,7 +681,7 @@ async function commandStop(flags: Record<string, string | boolean>): Promise<num
 }
 
 /**
- * The healthcheck: `gatewarden doctor` (§9.9).
+ * The healthcheck: `gatewarden doctor`.
  *
  * The doctor reports where the installation stands. It fails only when
  * something is broken — never because the machine it runs on is a CI
@@ -708,7 +708,7 @@ async function commandDoctor(flags: Record<string, string | boolean>): Promise<n
 }
 
 /**
- * Install the daemon as a service (§5.3).
+ * Install the daemon as a service.
  *
  * The unit is written first, and enabled after it. When the platform
  * refuses to enable it, the command says which command to run by hand.
@@ -756,7 +756,7 @@ function commandInstallService(flags: Record<string, string | boolean>): number 
 }
 
 /**
- * Walk a new installation through the six steps (§9).
+ * Walk a new installation through the six steps of the setup wizard.
  */
 async function commandSetup(flags: Record<string, string | boolean>): Promise<number> {
   const { config, configPath, paths } = resolveConfig(flags);

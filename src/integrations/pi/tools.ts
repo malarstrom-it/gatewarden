@@ -1,7 +1,7 @@
 /**
- * The native tools of the pi extension (§7).
+ * The native tools of the pi extension.
  *
- * The extension offers three of the four tools of §6.2:
+ * The extension offers three of the four tools of the MCP server:
  * `publish_dev_server`, `remove_dev_server` and `list_dev_servers`. The
  * fourth one, `dev_gateway_status`, is not a tool here: the status line
  * and the `/routes` command show the state of the gateway to the user
@@ -18,7 +18,7 @@ import type { RouteJson } from '../../core/status.ts';
 import { createToolContext, TOOLS as MCP_TOOLS, type ToolDefinition } from '../mcp/tools.ts';
 import type { PiExtensionContext, PiJsonSchema, PiToolDefinition } from './pi-api.ts';
 
-/** The three tools the extension offers (§7). */
+/** The three tools the extension offers. */
 export const PI_TOOL_NAMES = ['publish_dev_server', 'remove_dev_server', 'list_dev_servers'] as const;
 
 /**
@@ -67,7 +67,7 @@ function snippetOf(name: string): string {
 }
 
 /**
- * The routes, in the shape the tools return (§6.2).
+ * The routes, in the shape the tools return.
  *
  * The list tool of the MCP server does the work, so that the table, the
  * tool output and the status line all count the same routes.
@@ -93,10 +93,10 @@ export function createPiTools(options: PiToolOptions = {}): PiToolDefinition[] {
       async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
         const context = createToolContext({ cwd: ctx.cwd });
 
-        // The lazy start (§5.1): the daemon serves the document the proxy
-        // polls. Without it a published route is never served. A tool that
-        // only reads the routes does not start it: it would change the
-        // environment of a tool that is declared read-only.
+        // The lazy start: the daemon serves the document the proxy
+        // polls. Without it a published route is never served. A tool
+        // that only reads the routes does not start it: it would change
+        // the environment of a tool that is declared read-only.
         if (MUTATING_TOOLS.has(name)) {
           const started = await ensureDaemon(context.config, { configPath: context.configPath });
           if (started.error) throw new Error(started.error);
