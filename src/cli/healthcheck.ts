@@ -25,12 +25,20 @@
  * fails because the machine is a CI runner is a healthcheck nobody trusts.
  * `--strict` turns the warnings into errors as well, for the one who wants
  * the whole installation to be complete.
+ *
+ * The trust list (`allowedCidrs`) is in the report too. It holds the
+ * addresses that may talk to the gateway — the address of the proxy and
+ * the loopback of the machine — and a proxy that is not in it gets a
+ * 403, which is the most common reason for one. An installation that
+ * refuses its proxy is not broken, so that is a warning and never a
+ * failure.
  */
 
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {
+  detectIpv6Prefixes,
   listenHost,
   loadConfigWithReport,
   resolveConfigPath,
@@ -40,10 +48,11 @@ import {
 import { legacyAppPaths, legacyDir, logFileFor } from '../core/paths.ts';
 import { daemonStatus } from '../core/daemonControl.ts';
 import { RegistrationStore } from '../core/state.ts';
-import { isPortListening } from '../core/util/net.ts';
+import { isAddressAllowed, isLoopbackAddress, isPortListening, normaliseAddress } from '../core/util/net.ts';
 import { moduleDirectory } from '../core/util/module.ts';
 import { requireAdapter } from '../adapters/index.ts';
 import type { Config } from '../core/types.ts';
+import { proxyAddresses } from './setup.ts';
 import { legacyServiceUnitFor, serviceUnitFor, type ServiceUnit } from './service.ts';
 
 /**
@@ -146,6 +155,66 @@ function readDeclaredFields(configPath: string): Record<string, unknown> | undef
   } catch {
     return undefined;
   }
+}
+
+/**
+ * The environment variable that says where the proxy's API answers.
+ *
+ * The wizard is told with its `--api-base-url` flag. The doctor needs
+ * the same thing for the same reason: the trust list holds the
+ * addresses of the proxy, and the doctor compares them with the list.
+ * Without a flag of its own, the doctor reads the environment.
+ */
+const PROXY_API_URL_ENV = 'GATEWARDEN_PROXY_API_URL';
+
+/**
+ * The trust list the configuration file declares.
+ *
+ * The list the listeners use is the list of the file plus the IPv6
+ * prefixes of the networks of this machine, which the loader adds. The
+ * list of the file is the one the user writes, and the one the doctor
+ * asks about: the addresses the loader adds are the neighbours of this
+ * machine on its own networks, not the proxy.
+ */
+function declaredTrustList(declared: Record<string, unknown> | undefined, config: Config): string[] {
+  const value = declared?.['allowedCidrs'];
+  if (Array.isArray(value)) return value.filter((entry): entry is string => typeof entry === 'string');
+  // No file to read: the list of the loader, without the prefixes it
+  // adds for the networks of this machine.
+  const derived = detectIpv6Prefixes();
+  return config.allowedCidrs.filter(
+    (cidr) => !derived.some((prefix) => prefix.toLowerCase() === cidr.toLowerCase()),
+  );
+}
+
+/**
+ * Does the list hold an address that is not the loopback?
+ *
+ * The loopback is the machine itself: a process here is the only one
+ * that can have it. The trust list of an installation holds the
+ * addresses of the proxy and the loopback, so a list that holds nothing
+ * but the loopback is a list that no proxy on another machine is in.
+ */
+function holdsAddressBesidesLoopback(list: string[]): boolean {
+  return list.some((cidr) => !isLoopbackCidr(cidr));
+}
+
+/**
+ * Does the CIDR cover loopback addresses only?
+ *
+ * `127.0.0.1/32` and `127.0.0.0/8` are the loopback of the machine,
+ * and so is `::1/128`. A wider net (`0.0.0.0/0`, `::/0`) is not: it
+ * covers the world.
+ */
+function isLoopbackCidr(cidr: string): boolean {
+  const [network, bitsRaw] = cidr.split('/');
+  const address = normaliseAddress(network);
+  if (!isLoopbackAddress(address)) return false;
+  if (bitsRaw === undefined) return true;
+  const bits = Number(bitsRaw);
+  if (!Number.isInteger(bits)) return false;
+  // The IPv6 loopback is one address; the IPv4 loopback is a net.
+  return address.includes(':') ? bits === 128 : bits >= 8;
 }
 
 /** Does the path exist? */
@@ -301,6 +370,8 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
       'routes',
       'routes and zone',
       'proxy',
+      'trust list',
+      'proxy address',
       'service',
       'old service',
       'legacy layout',
@@ -505,10 +576,15 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
   // is not the proxy of the configuration is an error: the routes would be
   // published to the wrong place.
   let proxy: HealthCheck;
+  let proxyApiBaseUrl: string | undefined;
   try {
     const adapter = requireAdapter(config.proxy);
-    const base = adapter.defaultApiBaseUrl ?? '(the default of the adapter)';
-    const discovered = await adapter.discover({ timeoutMs: 1000 });
+    // Where the proxy's API answers. The wizard is told with a flag, the
+    // doctor with the environment: the address of the proxy is what the
+    // trust list is about.
+    proxyApiBaseUrl = env[PROXY_API_URL_ENV] ?? adapter.defaultApiBaseUrl;
+    const base = proxyApiBaseUrl ?? '(the default of the adapter)';
+    const discovered = await adapter.discover({ timeoutMs: 1000, apiBaseUrl: proxyApiBaseUrl });
     if (!discovered) {
       proxy = {
         name: 'proxy',
@@ -535,7 +611,108 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
   }
   checks.push(proxy);
 
-  // 10. The service.
+  // 10. The trust list.
+  //
+  // The addresses that may talk to the gateway. Both listeners answer
+  // the addresses in the list and nobody else, so the list is the
+  // answer to the question a user asks when a listener answers a 403.
+  // The report prints it: the user has to see which addresses may talk
+  // with the gateway.
+  //
+  // The list that is printed is the list the listeners use: the list of
+  // the configuration file plus the IPv6 prefixes of the networks of
+  // this machine, which the loader adds.
+  //
+  // An empty list is not an error: it is an installation that trusts
+  // nobody, and the doctor says so in plain words.
+  const trustList = declaredTrustList(declared, config);
+  if (!here) {
+    skipped('trust list', NOT_SET_UP);
+  } else if (trustList.length === 0 && config.allowedCidrs.length === 0) {
+    checks.push({
+      name: 'trust list',
+      status: 'warn',
+      detail: 'the trust list (allowedCidrs) is empty: no address may talk to the gateway',
+    });
+  } else if (trustList.length === 0) {
+    // The file holds nothing, and the machine adds the IPv6 prefixes of
+    // its own networks: the list is not empty, but the user has not
+    // named a single address in it.
+    checks.push({
+      name: 'trust list',
+      status: 'warn',
+      detail: `the trust list (allowedCidrs) of the configuration file is empty: the only addresses that may talk to the gateway are the ones this machine adds (${config.allowedCidrs.join(', ')})`,
+    });
+  } else {
+    checks.push({
+      name: 'trust list',
+      status: 'ok',
+      detail: `the trust list (allowedCidrs): ${config.allowedCidrs.join(', ')}`,
+    });
+  }
+
+  // 11. The address of the proxy.
+  //
+  // The trust list holds the addresses that may talk to the gateway:
+  // the address of the proxy — the one that polls the configuration
+  // document and sends the dispatch header — and the loopback of the
+  // machine. The listeners decide with the source address of the
+  // caller, so the address of the proxy is the one that has to be in
+  // the list. A proxy that is not in it gets a 403, and it is the most
+  // common reason for one.
+  //
+  // The doctor knows where the proxy is when it can resolve the host of
+  // the proxy's API: those are the addresses the proxy connects from,
+  // and the ones the setup wizard writes into the list.
+  //
+  // When the doctor does not know, it says what it can say: a list
+  // that holds nothing but the loopback is a list that no proxy on
+  // another machine is in.
+  //
+  // An installation without the right address in the list is not
+  // broken: it is an installation that refuses its proxy. That is a
+  // warning with the way out, never a failure.
+  if (!here) {
+    skipped('proxy address', NOT_SET_UP);
+  } else {
+    const sources = await proxyAddresses(proxyApiBaseUrl);
+    const uncovered = sources.filter((address) => !isAddressAllowed(address, config.allowedCidrs));
+    if (sources.length > 0) {
+      if (uncovered.length > 0) {
+        checks.push({
+          name: 'proxy address',
+          status: 'warn',
+          detail: `the proxy connects from ${uncovered.join(', ')}, and the trust list (allowedCidrs) does not cover it: the gateway answers it a 403 (add the address of your proxy to allowedCidrs)`,
+        });
+      } else {
+        checks.push({
+          name: 'proxy address',
+          status: 'ok',
+          detail: `the proxy connects from ${sources.join(', ')}, and the trust list (allowedCidrs) covers it`,
+        });
+      }
+    } else if (trustList.length === 0) {
+      checks.push({
+        name: 'proxy address',
+        status: 'warn',
+        detail:
+          'the trust list (allowedCidrs) of the configuration file is empty: the address of your proxy is not in it (add the address of your proxy to allowedCidrs)',
+      });
+    } else if (!holdsAddressBesidesLoopback(trustList)) {
+      checks.push({
+        name: 'proxy address',
+        status: 'warn',
+        detail: 'the trust list (allowedCidrs) of the configuration file holds the loopback and nothing else: a proxy that runs on another machine is not in it, and the gateway answers it a 403 (add the address of your proxy to allowedCidrs)',
+      });
+    } else {
+      skipped(
+        'proxy address',
+        'the doctor does not know where the proxy is: the trust list holds addresses besides the loopback',
+      );
+    }
+  }
+
+  // 12. The service.
   const unit = serviceUnitFor({
     daemonPath: daemonLauncherPath(),
     configPath,
@@ -551,7 +728,7 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
     missing('service', 'not installed: run "gatewarden install-service" so the daemon survives a reboot');
   }
 
-  // 11. The unit of the old name.
+  // 13. The unit of the old name.
   //
   // A unit that was installed before the rename is still on the machine,
   // and it names a launcher that does not exist any more: the daemon it
@@ -569,7 +746,7 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
     skipped('old service', 'there is no unit of the old name');
   }
 
-  // 12. The old layout.
+  // 14. The old layout.
   if (exists(legacy)) {
     checks.push({
       name: 'legacy layout',
@@ -580,7 +757,7 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
     skipped('legacy layout', 'there is no old layout to migrate');
   }
 
-  // 13. The layout of the name the directories had before the rename.
+  // 15. The layout of the name the directories had before the rename.
   //
   // An installation that was made under the old name keeps its
   // configuration and its route store in the directories of that name.
