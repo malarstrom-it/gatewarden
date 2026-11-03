@@ -11,6 +11,18 @@ The names under "Added", "Changed", "Deprecated", "Removed", "Fixed" and
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/#types-of-changes)
 names. Every release gets a section, newest first.
 
+## Unreleased
+
+### Fixed
+
+- **An unknown proxy id is an error, and not a loop.** A `proxy` key that
+  names an id the package does not know killed the worker at once, and the
+  daemon started it again and again: the log filled with "respawning", and
+  `gatewarden start` failed on a timeout that said nothing about the
+  mistake. The daemon stops with the reason now, the command says which id
+  is unknown and which ids exist — `unknown proxy "caddy" (known:
+  traefik)` — and `gatewarden doctor` reports the id as an error.
+
 ## 0.1.1 - 2026-11-01
 
 The version before this one, `0.1.0`, was published on the registry and

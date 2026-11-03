@@ -31,6 +31,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from '../src/core/config.ts';
 import { daemonStatus, isHealthy } from '../src/core/daemonControl.ts';
+import { removeInstallationFiles } from '../src/core/installation.ts';
 import { resolvePaths } from '../src/core/paths.ts';
 import type { Config } from '../src/core/types.ts';
 import { freePort } from './helpers/cli.ts';
@@ -214,6 +215,7 @@ test('the postuninstall script removes the configuration, the state and the cach
   fs.writeFileSync(path.join(cacheDir, 'something'), 'cached');
   const { configPath } = await makeConfig(stateDir);
   fs.writeFileSync(path.join(stateDir, 'routes.json'), JSON.stringify({ version: 1, registrations: [] }));
+  fs.writeFileSync(path.join(stateDir, 'daemon.error'), 'unknown proxy "caddy" (known: traefik)\n');
 
   t.after(() => {
     installed.cleanup();
@@ -230,8 +232,45 @@ test('the postuninstall script removes the configuration, the state and the cach
   assert.equal(result.code, 0, result.stderr);
   assert.equal(fs.existsSync(configPath), false, 'the configuration file is still there');
   assert.equal(fs.existsSync(path.join(stateDir, 'routes.json')), false, 'the route store is still there');
+  assert.equal(
+    fs.existsSync(path.join(stateDir, 'daemon.error')),
+    false,
+    'the reason the daemon stopped is still there',
+  );
   assert.equal(fs.existsSync(cacheDir), false, 'the cache directory is still there');
   assert.equal(fs.existsSync(stateDir), false, 'the state directory is still there');
+});
+
+test('the files of the gateway in the state directory go with the installation', (t) => {
+  // The reason the daemon stopped is a file of the gateway: it goes
+  // with the installation, and the files of somebody else stay.
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-owned-files-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  const stateDir = path.join(root, 'state');
+  fs.mkdirSync(stateDir, { recursive: true });
+  fs.writeFileSync(path.join(stateDir, 'routes.json'), '{}');
+  fs.writeFileSync(path.join(stateDir, 'daemon.error'), 'unknown proxy "caddy" (known: traefik)\n');
+  fs.writeFileSync(path.join(stateDir, 'somebody-elses-file'), 'not ours');
+
+  removeInstallationFiles({
+    configFile: path.join(root, 'config.json'),
+    stateDir,
+    cacheDir: path.join(root, 'cache'),
+    logFile: path.join(root, 'daemon.log'),
+  });
+
+  assert.equal(fs.existsSync(path.join(stateDir, 'routes.json')), false, 'the route store is still there');
+  assert.equal(
+    fs.existsSync(path.join(stateDir, 'daemon.error')),
+    false,
+    'the reason the daemon stopped is still there',
+  );
+  assert.equal(
+    fs.existsSync(path.join(stateDir, 'somebody-elses-file')),
+    true,
+    'a file of somebody else was removed',
+  );
 });
 
 test('the postuninstall script respects GATEWARDEN_HOME', async (t) => {

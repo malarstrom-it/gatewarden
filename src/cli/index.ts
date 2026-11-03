@@ -52,7 +52,7 @@ import { ensureDaemon, daemonStatus, isGatewayDaemon, isProcessAlive, pidFilePat
 import { isPortListening } from '../core/util/net.ts';
 import { slugify } from '../core/util/slug.ts';
 import { packageVersion } from '../core/util/module.ts';
-import { discoverProxyStatus, requireAdapter } from '../adapters/index.ts';
+import { discoverProxyStatus, requireAdapter, unknownProxyReason } from '../adapters/index.ts';
 import { gatewayStatus, routeJson } from '../core/status.ts';
 import type { RouteJson } from '../core/status.ts';
 import type { Config } from '../core/types.ts';
@@ -619,6 +619,20 @@ async function commandStart(flags: Record<string, string | boolean>): Promise<nu
     }
     process.stdout.write(`${detail}\n`);
     return 0;
+  }
+
+  // A proxy id the catalog does not know stops the gateway: the worker
+  // dies of it at once, every time. The command says so, instead of
+  // starting a daemon that cannot serve and waiting for a health check
+  // that will never answer.
+  const unknown = unknownProxyReason(config.proxy);
+  if (unknown) {
+    if (wantsJson(flags)) {
+      emitJson({ started: false, alreadyRunning: false, pid: null, error: unknown });
+      return 1;
+    }
+    process.stderr.write(`error: ${unknown}\n`);
+    return 1;
   }
 
   const started = await ensureDaemon(config, { configPath });

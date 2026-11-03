@@ -35,6 +35,7 @@ const OWNED_STATE_FILES = new Set([
   'registrations.json',
   'daemon.pid',
   'daemon.log',
+  'daemon.error',
 ]);
 
 /** Is the file one of the gateway's own? */

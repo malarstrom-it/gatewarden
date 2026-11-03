@@ -59,6 +59,52 @@ export function pidFilePath(config: Config): string {
   return path.join(config.stateDir, 'daemon.pid');
 }
 
+/**
+ * Path of the file that holds the reason the daemon stopped.
+ *
+ * The daemon writes it when it stops for a reason of its own — a proxy
+ * id the catalog does not know — and removes it when it starts. A
+ * command that waits for the daemon reads it, and can say what
+ * happened instead of reporting a timeout.
+ */
+export function daemonReasonPath(config: Config): string {
+  return path.join(config.stateDir, 'daemon.error');
+}
+
+/** The reason the daemon stopped, when it left one behind. */
+export function readDaemonReason(config: Config): string | null {
+  try {
+    const reason = fs.readFileSync(daemonReasonPath(config), 'utf8').trim();
+    return reason.length > 0 ? reason : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Write down the reason the daemon stopped.
+ *
+ * The reason is a nicety: the log holds it too. A state directory that
+ * cannot be written to must not keep the daemon from stopping.
+ */
+export function writeDaemonReason(config: Config, reason: string): void {
+  try {
+    fs.mkdirSync(config.stateDir, { recursive: true });
+    fs.writeFileSync(daemonReasonPath(config), `${reason}\n`);
+  } catch {
+    // ignore
+  }
+}
+
+/** Forget the reason of an earlier life of the daemon. */
+export function clearDaemonReason(config: Config): void {
+  try {
+    fs.rmSync(daemonReasonPath(config), { force: true });
+  } catch {
+    // ignore
+  }
+}
+
 /** Path of the log file. */
 export function logFilePath(config: Config): string {
   return logFileFor(config.stateDir);
@@ -146,6 +192,10 @@ function readPidFile(pidFile: string): number | null {
  * Make sure the daemon is running.
  *
  * Starts it detached when it is not, then waits for `/healthz`.
+ *
+ * A daemon that stops with a reason of its own — a proxy id the catalog
+ * does not know, for instance — is reported with that reason, and not
+ * with a timeout: the reason is what the reader needs.
  */
 export async function ensureDaemon(
   config: Config,
@@ -168,6 +218,11 @@ export async function ensureDaemon(
       if (await isHealthy(config)) {
         return { started: false, pid: status.pid };
       }
+      // The daemon may have stopped with a reason of its own.
+      const reason = readDaemonReason(config);
+      if (reason) {
+        return { started: false, pid: null, error: reason };
+      }
     }
     return {
       started: false,
@@ -177,6 +232,9 @@ export async function ensureDaemon(
   }
 
   fs.mkdirSync(config.stateDir, { recursive: true });
+  // The reason of an earlier life of the daemon is not the reason of
+  // this one.
+  clearDaemonReason(config);
   const logFile = logFilePath(config);
   const out = openLogFile(logFile);
 
@@ -202,6 +260,13 @@ export async function ensureDaemon(
     if (await isHealthy(config)) {
       const status = await daemonStatus(config);
       return { started: true, pid: status.pid };
+    }
+    // The daemon may have stopped with a reason of its own: a proxy id
+    // the catalog does not know, for instance. The reason is said, and
+    // not a timeout.
+    const reason = readDaemonReason(config);
+    if (reason) {
+      return { started: true, pid: null, error: reason };
     }
   }
 

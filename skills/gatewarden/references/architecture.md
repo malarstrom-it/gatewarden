@@ -58,6 +58,7 @@ Inside the state directory:
 | `routes.json` | the routes (the single source of truth, written atomically) |
 | `daemon.pid` | pid of the running daemon |
 | `daemon.log` | the daemon log (rotated at 5 MB, 3 files kept) |
+| `daemon.error` | why the daemon stopped, when it stopped for a reason of its own |
 
 `GATEWARDEN_HOME` puts all four in one directory, which is what the tests
 and a throwaway installation use.

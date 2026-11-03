@@ -66,6 +66,20 @@ test('the macos unit is a launchd agent', () => {
   ]);
 });
 
+test('the unit starts the daemon again only when it died, not when it stopped on purpose', () => {
+  // A daemon that stops because it cannot serve ends with the code
+  // zero. A unit that started it again anyway would fill its journal
+  // with the same failure for ever.
+  const linux = serviceUnitFor({ ...OPTIONS, platform: 'linux' });
+  assert.match(linux.content, /^Restart=on-failure$/m);
+
+  const darwin = serviceUnitFor({ ...OPTIONS, platform: 'darwin' });
+  // launchd starts a job that ended with a code that is not zero again,
+  // and leaves a job that ended with the code zero alone.
+  assert.match(darwin.content, /<key>KeepAlive<\/key>\s*<dict>\s*<key>SuccessfulExit<\/key>\s*<false\/>/);
+  assert.doesNotMatch(darwin.content, /<key>KeepAlive<\/key>\s*<true\/>/);
+});
+
 test('the windows unit is a scheduled task', () => {
   const unit = serviceUnitFor({ ...OPTIONS, platform: 'win32' });
 

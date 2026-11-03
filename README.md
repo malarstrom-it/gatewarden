@@ -236,10 +236,11 @@ the contract the package exports (`ProxyAdapter`, from `@malarstrom/gatewarden`)
 Traefik adapter that ships with the package is one such file, about five hundred lines.
 The package does not load an adapter at run time. The `proxy` key of the configuration
 file names one, and the daemon picks it from the adapters it is built with. An id it
-does not know is an error the worker dies of: it exits with `unknown proxy`, the daemon
-starts it again, and the gateway never answers — `gatewarden start` fails on the health
-check. A second adapter is therefore a change in the package, not a setting in the
-configuration file.
+does not know is a mistake in the configuration file, and the package says so: the
+daemon stops instead of starting the worker again and again, `gatewarden start` answers
+`unknown proxy "caddy" (known: traefik)` instead of a health check that never answers,
+and `gatewarden doctor` reports the id as an error. A second adapter is therefore a
+change in the package, not a setting in the configuration file.
 
 No second adapter ships with the package. Writing the one you want is your own work.
 

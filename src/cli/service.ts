@@ -109,7 +109,15 @@ function plistQuote(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-/** The systemd user unit. */
+/**
+ * The systemd user unit.
+ *
+ * The unit starts the daemon again when it died of something else, and
+ * not when it stopped on purpose: a daemon that stops because it
+ * cannot serve ends with the code zero, and `Restart=on-failure` leaves
+ * it alone. A unit that started such a daemon again every five seconds
+ * would fill the journal with the same failure for ever.
+ */
 function systemdUnit(opts: Required<Pick<ServiceUnitOptions, 'daemonPath' | 'configPath' | 'stateDir'>> & {
   nodePath: string;
   home: string;
@@ -127,6 +135,8 @@ function systemdUnit(opts: Required<Pick<ServiceUnitOptions, 'daemonPath' | 'con
     `Environment=GATEWARDEN_STATE_DIR=${opts.stateDir}`,
     'Restart=on-failure',
     'RestartSec=5',
+    '# A daemon that stops on purpose ends with the code zero: this unit',
+    '# starts it again only when it died of something else.',
     '',
     '[Install]',
     'WantedBy=default.target',
@@ -146,7 +156,16 @@ function systemdUnit(opts: Required<Pick<ServiceUnitOptions, 'daemonPath' | 'con
   };
 }
 
-/** The launchd agent. */
+/**
+ * The launchd agent.
+ *
+ * The agent starts the daemon again when it ended with a code that is
+ * not zero, and not when it stopped on purpose: a daemon that stops
+ * because it cannot serve ends with the code zero, and
+ * `SuccessfulExit=false` leaves it alone. `KeepAlive=true` would start
+ * it again after every exit, and the journal would fill with the same
+ * failure for ever.
+ */
 function launchdUnit(opts: Required<Pick<ServiceUnitOptions, 'daemonPath' | 'configPath' | 'stateDir'>> & {
   nodePath: string;
   home: string;
@@ -176,7 +195,10 @@ function launchdUnit(opts: Required<Pick<ServiceUnitOptions, 'daemonPath' | 'con
     '  <key>RunAtLoad</key>',
     '  <true/>',
     '  <key>KeepAlive</key>',
-    '  <true/>',
+    '  <dict>',
+    '    <key>SuccessfulExit</key>',
+    '    <false/>',
+    '  </dict>',
     '</dict>',
     '</plist>',
     '',
