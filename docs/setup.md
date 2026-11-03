@@ -211,7 +211,7 @@ What you write on top of it is step four's example.
 
 | Field | Default | What it means | Where the value comes from |
 | --- | --- | --- | --- |
-| `proxy` | `"traefik"` | which proxy adapter writes the configuration document | the only adapter is Traefik |
+| `proxy` | `"traefik"` | which proxy adapter writes the configuration document | the core is proxy-agnostic and this key names the adapter; the package ships with the Traefik adapter |
 | `registryPort` | `45002` | the port the configuration document is served on; the proxy polls it | free on the machine; it has to be open to the proxy |
 | `relayPort` | `45001` | the port the requests of the user arrive on | free on the machine; it has to be open to the proxy |
 | `advertisedIp` | detected | the IP the proxy reaches this machine on | empty = detected from the network interfaces on every run |
@@ -231,6 +231,11 @@ What you write on top of it is step four's example.
 | `logMaxBytes` | `5242880` | the log is rotated above this size | 5 MB |
 | `logKeep` | `3` | how many rotated log files to keep | 3 |
 | `autostart` | `true` | kept for compatibility: the install starts no daemon any more, and the daemon starts itself when a command needs it | `true` |
+
+**A second adapter is a change in the package, not a setting in this file.**
+The package ships with the Traefik adapter and loads no adapter at run time.
+How an adapter for another proxy is written: [The proxy
+adapter](../README.md#the-proxy-adapter).
 
 **An empty value means "derived", not "forgotten".** The address of the
 machine, the host name that is the address and the IPv6 prefixes of the
@@ -262,7 +267,14 @@ The other commands of the lifecycle:
 | `gatewarden stop` | stops the daemon; it removes its own pid file |
 | `gatewarden status` | the daemon, the ports, the files and the values of the configuration |
 | `gatewarden install-service` | writes the unit of the platform and enables it, so the daemon survives a reboot (`--no-enable` writes the unit without enabling it) |
-| `gatewarden migrate` | moves the old layouts (`~/.traefik-dev/` and `~/.config/dev-gateway/`) to the new one (`--dry-run` only reports) |
+| `gatewarden migrate` | writes the configuration and the route store of the old layouts into the new one — the layout of the old name first; the old files stay where they are (`--dry-run` only reports) |
+
+Nothing is deleted by the migration: the old files stay where they were, and
+the new layout holds the configuration and the route store in its own files.
+The layout of the old name is migrated first. A home that holds both old
+layouts therefore ends up with the configuration and the routes of the old
+name, and the files of `~/.traefik-dev/` are left alone — the new layout
+already holds what they hold.
 
 The log of the daemon is `daemon.log` in the state directory; the routes live
 in `routes.json` next to it. `gatewarden status` prints both paths.
@@ -328,20 +340,23 @@ gatewarden unregister --project probe --branch main
 The doctor reads the installation and writes one line per check:
 
 ```text
-ok    config file      /home/user/.config/gatewarden/config.json
-ok    state directory  /home/user/.local/state/gatewarden
-ok    daemon           running (pid 4711)
-ok    dns zone         example.com
-ok    registry port    :::45002
-ok    relay port       :::45001
-ok    routes           1 registered
-ok    routes and zone  1 registered, the zone is example.com
-warn  proxy            no traefik API answered
-warn  service          not installed: run "gatewarden install-service" to survive a reboot
-nothing is broken
+ok       config file        /home/user/.config/gatewarden/config.json
+ok       state directory    /home/user/.local/state/gatewarden
+ok       daemon             running (pid 4711)
+ok       dns zone           example.com
+ok       registry port      :::45002
+ok       relay port         :::45001
+ok       routes             1 registered
+ok       routes and zone    1 registered, the zone is example.com
+warn     proxy              no traefik API answered
+ok       trust list         the trust list (allowedCidrs): 127.0.0.1/32, ::1/128, 192.0.2.0/24
+skipped  proxy address      the doctor does not know where the proxy is: the trust list holds addresses besides the loopback
+warn     service            not installed: run "gatewarden install-service" to survive a reboot
+nothing is broken (2 checks are not in place here: proxy, service)
 ```
 
-The columns are the status, the name of the check and what it saw.
+The columns are the status, the name of the check and what it saw. A check
+that does not apply to the installation is `skipped`.
 
 | Check | What it looks at | `ok` | `warn` | `fail` |
 | --- | --- | --- | --- | --- |
@@ -355,8 +370,10 @@ The columns are the status, the name of the check and what it saw.
 | `routes` | the route store | always `ok`; the detail says how many routes there are | — | — |
 | `routes and zone` | the routes and the zone together — only when there is at least one route | the zone is there | — | there are routes but no zone: a new route cannot be named |
 | `proxy` | the API of the proxy (`/api/version` and `/api/http/routers`) | the API answered | no API answered — the gateway works without it, but the proxy is not reachable from here | the adapter failed: the detail says why |
-| `legacy layout` | the old directory `~/.traefik-dev/` | — | it is still there: `gatewarden migrate` moves it | — |
-| `old name layout` | the directories of the name the package had before the rename (`~/.config/dev-gateway/`) | — | it is still there: `gatewarden migrate` moves it | — |
+| `trust list` | the trust list (`allowedCidrs`) — the addresses that may talk to the gateway | the list holds an address; the detail prints the whole list | the list is empty: no address may talk to the gateway — or the configuration file holds nothing, and the only addresses that may talk to the gateway are the ones this machine adds | — |
+| `proxy address` | the address the proxy connects from — the one that polls the document and sends the dispatch header; when the doctor does not know where the proxy is, the check is skipped | the doctor found the proxy, and the trust list covers the addresses it connects from | the trust list does not cover the address of the proxy: the gateway answers it a `403` — or the list is empty, or holds the loopback and nothing else | — |
+| `legacy layout` | the old directory `~/.traefik-dev/` | — | it is still there: `gatewarden migrate` writes the configuration and the route store into the new layout and leaves the directory, so the warning stays until the directory is removed by hand | — |
+| `old name layout` | the directories of the name the package had before the rename (`~/.config/dev-gateway/` and the state directory of the same name) | — | it is still there: `gatewarden migrate` writes the configuration and the route store into the new layout and leaves the directories, so the warning stays until they are removed by hand | — |
 | `old service` | the unit of the name the package had before the rename (`dev-gateway.service`, the old launchd label) | — | it is still there: it runs a launcher that does not exist any more — `gatewarden install-service` writes the new one | — |
 | `service` | the unit of the platform | it is installed | it is not installed: `gatewarden install-service` makes the daemon survive a reboot | — |
 
