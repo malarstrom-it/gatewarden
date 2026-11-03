@@ -1,9 +1,9 @@
 /**
  * The four tools of the MCP server.
  *
- * The tools are the agent surface — MCP is the primary agent surface —
- * four calls, a typed contract each, and a result the agent can hand to
- * the user verbatim. They are thin: everything they do, the core does —
+ * MCP is the primary agent surface, and these tools are that surface: four
+ * calls, a typed contract each, and a result the agent can hand to the
+ * user verbatim. They are thin: everything they do, the core does —
  * the route store writes the state, the daemon serves the document, the
  * proxy asks for it.
  *

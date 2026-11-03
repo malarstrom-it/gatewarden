@@ -98,7 +98,11 @@ function failure(id: JsonRpcId | null, code: number, message: string): JsonRpcFa
 }
 
 export interface McpServerOptions {
-  /** The tools the server offers. Defaults to the four of the MCP server. */
+  /**
+   * The tools the server offers.
+   *
+   * Defaults to the four tools of the MCP server, the list in `tools.ts`.
+   */
   tools?: ToolDefinition[];
   /** The name and the version of the server. */
   serverInfo?: { name: string; version: string };

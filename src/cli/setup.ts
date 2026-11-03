@@ -16,9 +16,10 @@
  * claims everything is fine.
  *
  * The wizard is a client of the core: it asks the proxy adapter to
- * discover the proxy and to render the wiring — the core is
- * proxy-agnostic and Traefik is one adapter — and it writes the route
- * store through the same store the CLI uses.
+ * discover the proxy and to render the wiring, and it writes the route
+ * store through the same store the CLI uses. The core is proxy-agnostic,
+ * and the Traefik adapter is one implementation of the `ProxyAdapter`
+ * contract.
  */
 
 import fs from 'node:fs';

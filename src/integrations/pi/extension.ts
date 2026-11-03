@@ -12,8 +12,8 @@
  *     pi -e ./dist/integrations/pi/extension.js
  *
  * It is a client of the core like every other surface: it never hosts
- * the daemon — the daemon is never hosted inside an agent session — it
- * makes sure the daemon runs.
+ * the daemon, it makes sure the daemon runs. The daemon is always a
+ * separate process, never hosted inside an agent session.
  */
 
 import { ensureDaemon } from '../../core/daemonControl.ts';

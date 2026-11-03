@@ -8,8 +8,7 @@
  * The contract lives in the core, and not in the adapters, because the
  * core is the side that consumes it. The dependency runs one way: an
  * adapter may import the core, the core never imports an adapter.
- * The adapter types re-export it under the name the specification
- * gives it.
+ * The adapter types re-export it under the name `ProxyAdapter`.
  */
 
 import type { Config, Route } from './types.ts';
