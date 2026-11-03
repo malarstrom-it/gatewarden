@@ -63,8 +63,9 @@ starts by itself the first time a command needs it (step four).
 
 npm 12 blocks the install scripts of a dependency until the dependency is
 approved, and it names the package in a warning while it does. npm 11 warns
-and lets the scripts run. Both npm 11 (from 11.18 on) and npm 12 have the
-commands that review the scripts:
+and lets the scripts run. The commands that review the scripts arrived in
+npm 11.18: npm 11.16 and npm 11.17 do not have them. From npm 11.18 on
+they are the same in npm 11 and in npm 12:
 
 ```bash
 npm install-scripts ls
@@ -73,6 +74,9 @@ npm install-scripts approve @malarstrom/gatewarden
 
 Nothing breaks if you do not approve them: the wizard writes the same
 configuration file, and the commands work without one.
+
+What the scripts do, how to deny them, and what npm 11.16 and npm 11.17 call
+the same commands: [`docs/install-scripts.md`](install-scripts.md).
 
 The same package is a pi package, and pi installs it like any other:
 
