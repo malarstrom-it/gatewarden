@@ -8,7 +8,7 @@ const entry = resolveEntry(
   '../dist/integrations/mcp/server.js',
 );
 if (!entry) {
-  process.stderr.write(noBuildMessage('gatewarden-mcp'));
+  process.stderr.write(noBuildMessage('gatewarden-mcp', import.meta.url));
   process.exit(1);
 }
 

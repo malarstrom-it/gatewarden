@@ -11,7 +11,9 @@
  *   - a launcher that finds no build speaks about the installation and
  *     not about a checkout (S55);
  *   - the message about a missing build is one text that holds for
- *     every installation, and it names the launcher that wrote it (S79).
+ *     every installation, and it names the launcher that wrote it (S79);
+ *   - the message about a missing build names the command of the
+ *     installation the launcher is in (S95).
  *
  * The install is hermetic, and it needs no network: the packaging layer
  * is layer L3 of §11.3, and L3 needs no network. The tarball is
@@ -39,7 +41,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { listenHost } from '../src/core/config.ts';
 
-import { NO_BUILD_TEXT, resolveEntry } from '../bin/entry.mjs';
+import { noBuildText, resolveEntry } from '../bin/entry.mjs';
 import { copyDependencyClosure, linkBinaries, unpackTarball } from './helpers/install.ts';
 
 const execFileAsync = promisify(execFile);
@@ -207,15 +209,32 @@ function runLauncher(launcher: string): Promise<{ code: number | null; stderr: s
  * output only, and finds none — the state an installation is in when
  * its build is missing.
  *
+ * The kind of the installation is what the launcher reads: a project
+ * keeps the manifest of the project next to its `node_modules`, and the
+ * global root of npm keeps nothing next to it.
+ *
  * @param packageDir the directory the tarball was unpacked into
+ * @param kind 'project' for a dependency of a project, 'pnpm' for the
+ *   virtual store of pnpm inside a project, 'global' for the global root
+ *   of npm
  * @param t the test context, which removes the installation afterwards
  * @returns the directory of the installation
  */
-function installationWithoutBuild(packageDir: string, t: TestContext): string {
+function installationWithoutBuild(packageDir: string, kind: 'project' | 'pnpm' | 'global', t: TestContext): string {
   const broken = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-nobuild-'));
   t.after(() => fs.rmSync(broken, { recursive: true, force: true }));
 
-  const installed = path.join(broken, 'node_modules', '@malarstrom', 'gatewarden');
+  const root = kind === 'global' ? path.join(broken, 'prefix', 'lib') : path.join(broken, 'project');
+  fs.mkdirSync(root, { recursive: true });
+  if (kind !== 'global') {
+    fs.writeFileSync(path.join(root, 'package.json'), '{ "name": "reader" }\n');
+  }
+
+  // pnpm links the packages of a project into a store inside the
+  // `node_modules` of the project, and the launcher of such an
+  // installation lies in the store.
+  const store = kind === 'pnpm' ? path.join(root, 'node_modules', '.pnpm', '@malarstrom+gatewarden@0.1.1') : root;
+  const installed = path.join(store, 'node_modules', '@malarstrom', 'gatewarden');
   fs.mkdirSync(path.join(installed, 'bin'), { recursive: true });
   for (const launcher of ['entry.mjs', 'gatewarden.js', 'gatewarden-mcp.js', 'gatewarden-daemon.js']) {
     fs.copyFileSync(path.join(packageDir, 'bin', launcher), path.join(installed, 'bin', launcher));
@@ -574,7 +593,7 @@ describe('the published package', () => {
     // S55: the reader of an installed package has no checkout and
     // nothing to build. The message the launcher writes has to speak
     // about the installation, not about a working tree.
-    const installed = installationWithoutBuild(packageDir, t);
+    const installed = installationWithoutBuild(packageDir, 'global', t);
 
     for (const launcher of ['gatewarden.js', 'gatewarden-mcp.js', 'gatewarden-daemon.js']) {
       const run = await runLauncher(path.join(installed, 'bin', launcher));
@@ -590,7 +609,7 @@ describe('the published package', () => {
     // S79: the text is one text, and the name of the launcher is the
     // only thing that differs between the three messages. A reader who
     // ran `gatewarden-mcp` has to see which of the commands it was.
-    const installed = installationWithoutBuild(packageDir, t);
+    const installed = installationWithoutBuild(packageDir, 'global', t);
     const texts: string[] = [];
 
     for (const launcher of ['gatewarden.js', 'gatewarden-mcp.js', 'gatewarden-daemon.js']) {
@@ -602,19 +621,35 @@ describe('the published package', () => {
     }
 
     assert.equal(new Set(texts).size, 1, 'the launchers write different texts about a missing build');
-    assert.equal(texts[0], `${NO_BUILD_TEXT}\n`, 'the launchers write another text than the shared one');
+    assert.equal(
+      texts[0],
+      `${noBuildText(pathToFileURL(path.join(installed, 'bin', 'gatewarden.js')).href)}\n`,
+      'the launchers write another text than the shared one',
+    );
   });
 
-  test('the message about a missing build holds for a project install and for a global one', async (t) => {
-    // S79: the advice cannot assume that the package was installed
-    // globally. A reader who installed the package in a project has to
-    // find the command of that installation in the message, and a reader
-    // who installed it globally has to find the command of that one.
-    const installed = installationWithoutBuild(packageDir, t);
-    const run = await runLauncher(path.join(installed, 'bin', 'gatewarden.js'));
+  test('the message about a missing build names the command of the installation it is in', async (t) => {
+    // S95: the reader has to get a command that fits the installation
+    // and not two commands to choose from. A dependency of a project
+    // lives in the `node_modules` of that project — npm hoists it
+    // there, and pnpm links it into a virtual store inside it — and
+    // the global root of npm holds the packages of everybody.
+    const project = installationWithoutBuild(packageDir, 'project', t);
+    const store = installationWithoutBuild(packageDir, 'pnpm', t);
+    const global = installationWithoutBuild(packageDir, 'global', t);
 
-    assert.match(run.stderr, /"npm install @malarstrom\/gatewarden"/, 'the message does not name the command of a project install');
-    assert.match(run.stderr, /"npm install -g @malarstrom\/gatewarden"/, 'the message does not name the command of a global install');
+    const inProject = await runLauncher(path.join(project, 'bin', 'gatewarden.js'));
+    const inStore = await runLauncher(path.join(store, 'bin', 'gatewarden.js'));
+    const inGlobal = await runLauncher(path.join(global, 'bin', 'gatewarden.js'));
+
+    assert.match(inProject.stderr, /"npm install @malarstrom\/gatewarden"/, 'the message does not name the command of a project install');
+    assert.doesNotMatch(inProject.stderr, /"npm install -g @malarstrom\/gatewarden"/, 'the message of a project install names the command of a global install');
+
+    assert.match(inStore.stderr, /"npm install @malarstrom\/gatewarden"/, 'the message of a pnpm install does not name the command of a project install');
+    assert.doesNotMatch(inStore.stderr, /"npm install -g @malarstrom\/gatewarden"/, 'the message of a pnpm install names the command of a global install');
+
+    assert.match(inGlobal.stderr, /"npm install -g @malarstrom\/gatewarden"/, 'the message does not name the command of a global install');
+    assert.doesNotMatch(inGlobal.stderr, /"npm install @malarstrom\/gatewarden"/, 'the message of a global install names the command of a project install');
   });
 
   test('the text about a missing build is written in one place', () => {
@@ -625,7 +660,7 @@ describe('the published package', () => {
 
     for (const file of fs.readdirSync(path.join(REPO_ROOT, 'bin'))) {
       const text = fs.readFileSync(path.join(REPO_ROOT, 'bin', file), 'utf8');
-      if (text.includes(NO_BUILD_TEXT)) holders.push(file);
+      if (text.includes('the installed package has no build')) holders.push(file);
     }
 
     assert.deepEqual(holders, ['entry.mjs'], 'the text about a missing build is written in more than one place');

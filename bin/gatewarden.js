@@ -4,7 +4,7 @@ import { noBuildMessage, resolveEntry } from './entry.mjs';
 
 const entry = resolveEntry(import.meta.url, '../src/cli/index.ts', '../dist/cli/index.js');
 if (!entry) {
-  process.stderr.write(noBuildMessage('gatewarden'));
+  process.stderr.write(noBuildMessage('gatewarden', import.meta.url));
   process.exit(1);
 }
 

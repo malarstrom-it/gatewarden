@@ -13,6 +13,18 @@ names. Every release gets a section, newest first.
 
 ## Unreleased
 
+### Changed
+
+- **The message about a missing build names one command.** A launcher
+  without a build told the reader to reinstall the package the way it
+  was installed, and named the command of a project install and the
+  command of a global install, so the reader had to choose one of the
+  two. The launcher knows which installation it is in — a dependency of
+  a project lives in the `node_modules` of that project, and a global
+  installation lives in the global root of npm — and the message names
+  the command of that installation now: `npm install @malarstrom/gatewarden`
+  for a project, `npm install -g @malarstrom/gatewarden` for a global one.
+
 ### Fixed
 
 - **The manifest names no file that the package does not ship.** The

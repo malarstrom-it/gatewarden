@@ -4,7 +4,7 @@ import { noBuildMessage, resolveEntry } from './entry.mjs';
 
 const entry = resolveEntry(import.meta.url, '../src/daemon.ts', '../dist/daemon.js');
 if (!entry) {
-  process.stderr.write(noBuildMessage('gatewarden-daemon'));
+  process.stderr.write(noBuildMessage('gatewarden-daemon', import.meta.url));
   process.exit(1);
 }
 
