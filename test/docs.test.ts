@@ -1,16 +1,21 @@
 /**
  * The skill, the agent instructions and the documentation (S7, §8).
  *
- * Two acceptance criteria live here:
+ * Three acceptance criteria live here:
  *
  *   - the skill's front matter validates against the Agent Skills
  *     specification (the rules the reference implementation of the
  *     specification — `skills-ref` — enforces);
+ *   - every document the package ships documents only commands the CLI
+ *     has: the README, the documents of `docs/`, and the skill with its
+ *     reference files. The rules of the check are in
+ *     `helpers/commands.ts`, and the list of the commands the CLI has
+ *     comes from the source of the CLI;
  *   - the README's quick start works from a clean install: the package is
  *     packed, unpacked into a directory that looks like an installed
  *     package, and the commands of the quick start are run from it.
  *
- * The second one is the one that catches a documentation that describes an
+ * The last one is the one that catches a documentation that describes an
  * installation nobody can get. The install is hermetic: a temporary
  * directory, free ports the OS hands out, and the dependency copied from
  * the checkout. Nothing touches the installation of the user.
@@ -26,6 +31,15 @@ import test, { after, before, describe } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { copyDependencyClosure } from './helpers/install.ts';
+import {
+  cliCommands,
+  documentedCommands,
+  documentName,
+  shippedDocuments,
+  unknownCommandMessage,
+  unknownCommands,
+  unknownCommandsInFile,
+} from './helpers/commands.ts';
 import { promisify } from 'node:util';
 import { listenHost } from '../src/core/config.ts';
 
@@ -52,27 +66,26 @@ const ALLOWED_FIELDS = new Set([
   'compatibility',
 ]);
 
-/** The commands the CLI has and the README documents. */
-const CLI_COMMANDS = [
-  'register',
-  'unregister',
-  'list',
-  'status',
-  'config',
-  'setup',
-  'start',
-  'stop',
-  'doctor',
-  'install-service',
-];
-
 /**
  * Every command the CLI has.
  *
- * `migrate` is a command of the CLI and is documented in docs/setup.md,
- * not in the README.
+ * The list comes from the source of the CLI, not from a list in this
+ * test: a list in a test is wrong the moment the CLI gets a command.
  */
-const KNOWN_COMMANDS = new Set([...CLI_COMMANDS, 'version', 'help', 'migrate']);
+const CLI_COMMANDS = cliCommands();
+
+/**
+ * The commands the README has to document.
+ *
+ * `help` is the usage text of the CLI, not a command a reader runs, and
+ * `migrate` is documented in docs/setup.md, next to the other commands
+ * of the lifecycle. Every other command of the CLI belongs in the
+ * README.
+ */
+const README_COMMANDS = CLI_COMMANDS.filter((command) => !['help', 'migrate'].includes(command));
+
+/** Every command the CLI has: the names a document of the package may use. */
+const KNOWN_COMMANDS = new Set(CLI_COMMANDS);
 
 /**
  * Read the YAML front matter of a skill.
@@ -187,268 +200,10 @@ test('the agent instructions are a short, portable block', () => {
   assert.ok(lines.length <= 40, `the block is ${lines.length} lines long — it is a block, not a document`);
 });
 
-/**
- * The kinds of line a markdown text holds.
- *
- * - `prose` is running text, or a row of a table;
- * - `list` is an item of a list;
- * - `quote` is a quotation: the words of somebody else;
- * - `code` is a line of a code block.
- */
-type LineKind = 'prose' | 'list' | 'quote' | 'code';
-
-interface MarkdownLine {
-  kind: LineKind;
-  text: string;
-}
-
-/**
- * The lines of a markdown text, with the kind of each one.
- *
- * The lines of a fenced block and of an indented block are code, and
- * they are kept: a block can hold a command. Every other line is
- * prose, a list item or a quotation.
- */
-function markdownLines(markdown: string): MarkdownLine[] {
-  const lines: MarkdownLine[] = [];
-  let fence = '';
-  let indented = false;
-  let blank = true;
-
-  for (const line of markdown.split('\n')) {
-    const fenceMatch = /^\s{0,3}(`{3,}|~{3,})/.exec(line);
-    if (fenceMatch !== null) {
-      const marker = (fenceMatch[1] as string)[0] as string;
-      if (fence === '') fence = marker;
-      else if (fence === marker) fence = '';
-      indented = false;
-      blank = true;
-      continue;
-    }
-
-    if (fence !== '') {
-      // Inside a fenced block.
-      indented = false;
-      blank = true;
-      lines.push({ kind: 'code', text: line });
-      continue;
-    }
-
-    if (indented) {
-      if (line.trim() === '' || /^ {4}/.test(line)) {
-        // Inside an indented block.
-        blank = true;
-        lines.push({ kind: 'code', text: line });
-        continue;
-      }
-      indented = false;
-    }
-
-    if (/^ {4,}\S/.test(line) && blank) {
-      // The first line of an indented block.
-      indented = true;
-      blank = true;
-      lines.push({ kind: 'code', text: line });
-      continue;
-    }
-
-    blank = line.trim() === '';
-
-    if (/^\s{0,3}>/.test(line)) {
-      // A quotation is the words of somebody else.
-      lines.push({ kind: 'quote', text: line });
-      continue;
-    }
-
-    if (/^\s{0,3}(?:[-*+]|\d+[.)])\s+/.test(line)) {
-      lines.push({ kind: 'list', text: line });
-      continue;
-    }
-
-    lines.push({ kind: 'prose', text: line });
-  }
-
-  return lines;
-}
-
-/**
- * The text of a container without the markers that are not part of it:
- * the marker of a list item, the marker of a heading.
- */
-function stripMarkers(text: string): string {
-  return text.trim().replace(/^(?:[-*+]\s+|\d+[.)]\s+|#{1,6}\s+)+/, '').trim();
-}
-
-/**
- * The command a text names, if it names one.
- *
- * The text has to start with the name of the CLI and a command word
- * after it. What follows the command word is the rest of the command:
- * its arguments, or nothing.
- */
-function matchCommand(text: string): { word: string; rest: string } | undefined {
-  const match = /^gatewarden\s+([a-z][a-z0-9-]*)(.*)$/.exec(text);
-  if (match === null) return undefined;
-
-  const rest = match[2] as string;
-  // `gatewarden something.js` is a file name, not a command.
-  if (rest.startsWith('.')) return undefined;
-
-  return { word: match[1] as string, rest };
-}
-
-/**
- * Whether what follows a command describes it.
- *
- * A description is separated from the command by a dash or a colon. The
- * arguments of a command are flags, and they start with a dash too.
- */
-function isDescription(rest: string): boolean {
-  return /^[-–—:](\s|$)/.test(rest) || /^--/.test(rest);
-}
-
-/**
- * The command a line of prose documents, if it documents one.
- *
- * A line of prose documents a command when it holds nothing but the
- * command: an inline code span, or the plain text of the command. A
- * sentence that mentions a command ("run `gatewarden doctor` to check
- * the installation") is prose, and prose does not document a command.
- */
-function commandInProse(line: string): string | undefined {
-  const text = stripMarkers(line);
-  if (text === '') return undefined;
-
-  const span = /^`([^`]+)`$/.exec(text);
-  if (span !== null) return matchCommand(span[1] as string)?.word;
-
-  const command = matchCommand(text);
-  if (command === undefined) return undefined;
-  // Without code formatting the line has to hold the command alone.
-  if (command.rest.trim() !== '') return undefined;
-  return command.word;
-}
-
-/**
- * The command a list item or a table cell documents, if it documents
- * one.
- *
- * Such a container names a thing, and the thing comes first: the
- * leading code span of the container holds the command, or the plain
- * text of the container starts with the command and what follows it
- * describes it ("- `gatewarden register` - register a dev server.").
- */
-function commandInItem(item: string): string | undefined {
-  const text = stripMarkers(item);
-  if (text === '') return undefined;
-
-  // The leading code span: the command the container is about.
-  const span = /^`([^`]+)`/.exec(text);
-  if (span !== null) return matchCommand(span[1] as string)?.word;
-
-  // The plain text of the command, with a description after it.
-  const command = matchCommand(text);
-  if (command === undefined) return undefined;
-  const rest = command.rest.trim();
-  if (rest !== '' && !isDescription(rest)) return undefined;
-  return command.word;
-}
-
-/**
- * The command a line of a code block calls, if it calls one.
- *
- * A call starts in the first column with the name of the CLI and a
- * command word after it. The other lines of a block are not calls:
- *
- *   - a line with a prompt ("$ gatewarden register") shows a session;
- *   - an indented line continues the line above it;
- *   - a line that names the CLI and then a colon ("gatewarden: unknown
- *     command") is the output of a command.
- */
-function commandInCodeLine(line: string): string | undefined {
-  // A call starts in the first column: an indented line continues the
-  // line above it.
-  if (/^\s/.test(line)) return undefined;
-  // A prompt shows a session, not a command the text documents.
-  if (line.startsWith('$')) return undefined;
-  // The name of the CLI and a command word after it. A line that names
-  // the CLI and then a colon ("gatewarden: unknown command") is the
-  // output of a command: the colon is where the command word would be.
-  return matchCommand(line)?.word;
-}
-
-/**
- * The cells of a table row, or nothing when the line is not a row.
- */
-function tableCells(line: string): string[] | undefined {
-  const trimmed = line.trim();
-  if (!trimmed.startsWith('|') || !trimmed.endsWith('|') || trimmed.length < 2) return undefined;
-  return trimmed.slice(1, -1).split('|');
-}
-
-/**
- * The commands a markdown text documents.
- *
- * The commands come from the places where the text presents a command as
- * one: a table cell, a list item, a line of prose that holds nothing but
- * the command, and the calls of a code block. A mention in a sentence and
- * a quotation are left out.
- *
- * The words come back in the order they appear, with the repetitions
- * removed.
- */
-function documentedCommands(markdown: string): string[] {
-  const words: string[] = [];
-
-  const add = (word: string | undefined): void => {
-    if (word !== undefined && !words.includes(word)) words.push(word);
-  };
-
-  for (const line of markdownLines(markdown)) {
-    // A quotation is the words of somebody else, not a command of the
-    // CLI.
-    if (line.kind === 'quote') continue;
-
-    if (line.kind === 'code') {
-      add(commandInCodeLine(line.text));
-      continue;
-    }
-
-    if (line.kind === 'list') {
-      add(commandInItem(line.text));
-      continue;
-    }
-
-    const cells = tableCells(line.text);
-    if (cells === undefined) {
-      add(commandInProse(line.text));
-      continue;
-    }
-
-    for (const cell of cells) add(commandInItem(cell));
-  }
-
-  return words;
-}
-
-/** The commands a markdown text documents that the CLI does not have. */
-function unknownCommands(markdown: string, known: Set<string>): string[] {
-  return documentedCommands(markdown).filter((command) => !known.has(command));
-}
-
-/**
- * The message the check gives when a text documents a command the CLI
- * does not have.
- */
-function unknownCommandMessage(file: string, commands: string[]): string {
-  const names = commands.map((command) => `"gatewarden ${command}"`).join(', ');
-  return `${file} documents a command the CLI does not have: ${names}`;
-}
-
 test('the README documents every command the CLI has', () => {
   const readme = fs.readFileSync(README, 'utf8');
 
-  for (const command of CLI_COMMANDS) {
+  for (const command of README_COMMANDS) {
     assert.match(readme, new RegExp(`gatewarden ${command}\\b`), `the README does not document "gatewarden ${command}"`);
   }
 
@@ -459,11 +214,66 @@ test('the README documents every command the CLI has', () => {
   // The check has to see the commands the README documents. Without this
   // it would pass on an empty list.
   const documented = documentedCommands(readme);
-  for (const command of CLI_COMMANDS) {
+  for (const command of README_COMMANDS) {
     assert.ok(
       documented.includes(command),
       `the README does not document "gatewarden ${command}" as a command of its own`,
     );
+  }
+});
+
+test('every document the package ships documents only commands the CLI has', () => {
+  const documents = shippedDocuments();
+
+  // The check has to read the documents the package ships. Without this
+  // it would pass on a list that holds nothing.
+  for (const expected of ['README.md', 'docs/setup.md', 'skills/gatewarden/SKILL.md']) {
+    assert.ok(
+      documents.some((file) => documentName(file) === expected),
+      `the check does not read ${expected}`,
+    );
+  }
+
+  const seen = new Set<string>();
+  for (const file of documents) {
+    const unknown = unknownCommandsInFile(file, KNOWN_COMMANDS);
+    assert.deepEqual(unknown, [], unknownCommandMessage(documentName(file), unknown));
+
+    for (const command of documentedCommands(fs.readFileSync(file, 'utf8'))) seen.add(command);
+  }
+
+  // The check has to see the commands the documents document. Without
+  // this it would pass on documents it does not read.
+  assert.ok(seen.has('register'), 'the check does not see a single command of the documents');
+});
+
+test('the command check falls on a document outside the README', () => {
+  // A document that is not the README can document a command the CLI
+  // does not have, and the check has to fall on it. The document lives
+  // outside the package, so the check of the package is not changed by
+  // the test.
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-command-check-'));
+  const file = path.join(directory, 'healthcheck.md');
+
+  try {
+    fs.writeFileSync(
+      file,
+      ['# The healthcheck', '', '- `gatewarden frobnicate` - reports what is broken.', ''].join('\n'),
+    );
+
+    const unknown = unknownCommandsInFile(file, KNOWN_COMMANDS);
+    assert.deepEqual(
+      unknown,
+      ['frobnicate'],
+      'the command check does not fall on a document outside the README',
+    );
+    assert.equal(
+      unknownCommandMessage(documentName(file), unknown),
+      `${documentName(file)} documents a command the CLI does not have: "gatewarden frobnicate"`,
+      'the message of the check does not name the document and the command',
+    );
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
   }
 });
 
@@ -764,8 +574,7 @@ describe('the quick start from a clean install', () => {
 
   test('the quick start command is a command the CLI has', () => {
     const command = quickStartRegister();
-    const known = ['register', 'unregister', 'list', 'status', 'config', 'setup', 'start', 'stop', 'doctor', 'install-service', 'migrate'];
 
-    assert.ok(known.includes(command.split(' ')[1] as string), `"${command}" is not a command of the CLI`);
+    assert.ok(CLI_COMMANDS.includes(command.split(' ')[1] as string), `"${command}" is not a command of the CLI`);
   });
 });
