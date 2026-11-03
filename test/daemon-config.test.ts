@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { logFileFor } from '../src/core/paths.ts';
 import { openLogFile } from '../src/core/daemonControl.ts';
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const DAEMON = path.join(REPO_ROOT, 'bin', 'traefik-devd.js');
+const DAEMON = path.join(REPO_ROOT, 'bin', 'gatewarden-daemon.js');
 
 async function freePort(): Promise<number> {
   return new Promise((resolve, reject) => {

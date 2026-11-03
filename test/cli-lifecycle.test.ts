@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import test from 'node:test';
-import { LEGACY_DAEMON, freePort, makeCliFixture } from './helpers/cli.ts';
+import { DAEMON, freePort, makeCliFixture } from './helpers/cli.ts';
 
 test('start starts the daemon and waits for it', async (t) => {
   const cli = await makeCliFixture();
@@ -72,16 +72,16 @@ test('stop says that the daemon was not running', async (t) => {
   assert.equal(result.stopped, false);
 });
 
-test('stop stops a daemon that was started through the old launcher', async (t) => {
+test('stop stops a daemon that was started through the launcher of the package', async (t) => {
   const cli = await makeCliFixture();
   t.after(async () => {
     await cli.stopDaemon();
     cli.cleanup();
   });
 
-  // The daemon the way the live gateway runs it: through the launcher of
-  // the old name, `bin/traefik-devd.js`.
-  const daemon = spawn(process.execPath, [LEGACY_DAEMON, '--config', cli.configPath], {
+  // The daemon the way the live gateway runs it: through the launcher
+  // the package installs, `bin/gatewarden-daemon.js`.
+  const daemon = spawn(process.execPath, [DAEMON, '--config', cli.configPath], {
     env: cli.env,
     detached: true,
     stdio: 'ignore',
@@ -107,7 +107,7 @@ test('stop stops a daemon that was started through the old launcher', async (t) 
     '--json',
   ]);
   assert.equal(result.wasRunning, true);
-  assert.equal(result.stopped, true, 'the daemon of the old launcher was not stopped');
+  assert.equal(result.stopped, true, 'the daemon of the launcher was not stopped');
   assert.equal(fs.existsSync(pidFile), false);
 });
 

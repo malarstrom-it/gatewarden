@@ -13,7 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { RegistrationStore } from '../src/core/state.ts';
-import { LEGACY_CLI, REPO_ROOT, makeCliFixture } from './helpers/cli.ts';
+import { REPO_ROOT, makeCliFixture } from './helpers/cli.ts';
 
 test('register starts the daemon and records the registration', async (t) => {
   const cli = await makeCliFixture();
@@ -296,8 +296,8 @@ test('migrate --json reports what it moved', async (t) => {
   assert.match(parsed.legacyDir, /\.traefik-dev$/);
 });
 
-test('the old binary name still works, and so do the old command names', async (t) => {
-  const cli = await makeCliFixture({ cli: LEGACY_CLI });
+test('the command names of the pre-package layout still work', async (t) => {
+  const cli = await makeCliFixture();
   t.after(async () => {
     await cli.stopDaemon();
     cli.cleanup();

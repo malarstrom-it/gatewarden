@@ -65,7 +65,7 @@ that has been published is taken for good, so the next one is `0.1.1`.
 | R3 | The name carries no name of one installation, of the author's organisation, or of one proxy adapter — unless the convention of the place asks for it (an npm scope, a launchd label). | the brief |
 | R4 | The name is available where the world will meet it (the npm registry, the global bin directory). | the brief |
 | R5 | One concept, one name, everywhere it appears: package, binary, command, tool, directory, unit and documentation say the same thing. | derived from R2 |
-| R6 | A name that already works for somebody else keeps working: the old directory, the old variables, the old binaries. | derived from §6 |
+| R6 | A name that already works for somebody else keeps working: the old directory, the old variables, the old installation. | derived from §6 |
 
 ---
 
@@ -78,7 +78,7 @@ that has been published is taken for good, so the next one is `0.1.1`.
 | R3 | names no installation, no organisation, no proxy | the word itself names nothing but the product. The scope (`malarstrom`) and the launchd label (`com.malarstrom.gatewarden`) are the two places where the convention of the place asks for the publisher's identity, and R3 has an exception for exactly those. No name of the Traefik adapter is in the product name — the adapter is one implementation behind the `ProxyAdapter` contract. |
 | R4 | is available where the world meets it | `registry.npmjs.org/gatewarden` answers 404 and the npm search finds no package of that name (checked 2026-10-30). The search finds one unrelated package that uses the word in its description; it installs a binary of another name, so nothing fights over the global bin directory. The package is `@malarstrom/gatewarden`, so the unscoped name is not even published. |
 | R5 | one concept, one name | the package, the three binaries, the MCP server's name, the skill, the four directories, the three service names and the environment variables all carry the same word. The name of the CLI on the command line, in the documentation and in the error messages is the same word. |
-| R6 | what already works keeps working | §6: the old directories are migrated and reported, the old environment variables are read and deprecated, the old binaries still run, and the pre-package layout still works. |
+| R6 | what already works keeps working | §6: the old directories are migrated and reported, the old environment variables are read and deprecated, and the pre-package layout still works. The old binaries are the one exception: they were never published, so nothing outside the repository depended on them, and they are gone. |
 
 ---
 
@@ -132,8 +132,11 @@ the publisher's domain belongs in it — `com.malarstrom.gatewarden`.
 
 ## 6. The compatibility layer (R6)
 
-Everything that worked before the rename keeps working. Nothing is deleted:
-the old directories stay where they are, with the files in them.
+Everything that worked before the rename keeps working. Nothing of the
+installation is deleted: the old directories stay where they are, with the
+files in them. The launchers under the names of the pre-package repository
+are the one exception: they were never published, so nothing outside the
+repository depended on them, and they are gone.
 
 | What | Where it was | What happens now |
 | --- | --- | --- |
@@ -141,7 +144,7 @@ the old directories stay where they are, with the files in them.
 | the layout of the old name | `~/.config/dev-gateway/` and `~/.local/state/dev-gateway/` | read on the first run (the configuration is not lost), moved by `gatewarden migrate`, and reported by `gatewarden doctor` as *"the old layout is still there: run `gatewarden migrate`"* |
 | the environment variables of the old name | `DEV_GATEWAY_HOME`, `DEV_GATEWAY_CONFIG`, `DEV_GATEWAY_STATE_DIR`, `DEV_GATEWAY_AUTOSTART`, `DEV_GATEWAY_LOG_LEVEL` | read, below the current names, and deprecated: the CLI and the MCP server print one notice per variable that says which name to use instead. The current name wins when both are set |
 | the environment variables of the pre-package installation | `TRAEFIK_DEV_CONFIG`, `TRAEFIK_DEV_STATE_DIR`, `TRAEFIK_DEV_LOG_LEVEL` | read, below the current names and below the deprecated ones — unchanged by this slice |
-| the old binaries | `bin/traefik-dev.js`, `bin/traefik-devd.js` | still there, still working: they are the same launchers under the names the repository had before the package. They were never published, so nothing outside the repository depends on them — but they are the names a live installation knows |
+| the old binaries | the CLI and the daemon launcher of the pre-package names | gone: they were the same launchers under the names the repository had before the package, and they were never published, so nothing outside the repository depended on them. The launchers of the package are `bin/gatewarden.js` and `bin/gatewarden-daemon.js`, and a live installation knows those names |
 | the service unit of the old name | `dev-gateway.service`, `dev.mal.arstrom.dev-gateway`, the scheduled task `dev-gateway` | looked for and reported: `gatewarden doctor` has a check, `old service`, that says the unit is still there. It names a launcher that does not exist any more, so the daemon it would start never starts; `gatewarden install-service` writes the unit of the current name |
 | the MCP tool names and the CLI commands | `publish_dev_server`, `remove_dev_server`, `list_dev_servers`, `dev_gateway_status`, `register`, … | unchanged — they are the interface, not the name of the product |
 

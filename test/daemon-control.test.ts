@@ -26,7 +26,7 @@ import test from 'node:test';
 import { loadConfig } from '../src/core/config.ts';
 import { daemonStatus, ensureDaemon, isHealthy, isProcessAlive, processState, stopDaemon } from '../src/core/daemonControl.ts';
 import type { Config } from '../src/core/types.ts';
-import { CLI, LEGACY_DAEMON, freePort } from './helpers/cli.ts';
+import { CLI, DAEMON, freePort } from './helpers/cli.ts';
 
 /** A throwaway installation with a configuration file of its own. */
 async function makeConfig(): Promise<{ dir: string; configPath: string; config: Config }> {
@@ -184,7 +184,7 @@ test('the daemon runs before it serves', async (t) => {
   fs.writeFileSync(configPath, JSON.stringify({ ...raw, registryPort: takenPort }, null, 2));
   const config = loadConfig({ configPath, stateDir: dir });
 
-  const daemon = spawn(process.execPath, [LEGACY_DAEMON, '--config', configPath], {
+  const daemon = spawn(process.execPath, [DAEMON, '--config', configPath], {
     env: { ...process.env, HOME: dir, GATEWARDEN_STATE_DIR: dir },
     detached: true,
     stdio: 'ignore',

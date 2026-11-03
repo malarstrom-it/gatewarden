@@ -101,12 +101,12 @@ Traefik decodes the document with paerser, and **an empty map is rejected**:
 
 ```bash
 cd ~/projects/traefik-api
-node bin/traefik-dev.js register --project <p> --branch <b> --port <port>   # starts the daemon if needed
-node bin/traefik-dev.js list | status | unregister --project <p> --branch <b>
+node bin/gatewarden.js register --project <p> --branch <b> --port <port>   # starts the daemon if needed
+node bin/gatewarden.js list | status | unregister --project <p> --branch <b>
 ```
 
 State: `/home/node/.traefik-dev/` (`registrations.json`, `config.json`, `daemon.pid`, `daemon.log`).
-Daemon: `node bin/traefik-devd.js`; a code change needs a restart of that pid.
+Daemon: `node bin/gatewarden-daemon.js`; a code change needs a restart of that pid.
 
 ## The pi skill (installed 2026-10-22)
 
@@ -180,7 +180,7 @@ state dir), `review-states.py`, `craft-floor-check.py` (reads the craft floor of
 
 Gotchas recorded: the registry serves the HTML from the loaded module but CSS/JS from disk (mtime
 cache) — a change in `src/core/index-page.ts` needs a daemon restart, a change in `src/assets/*` does not.
-`traefik-dev status` does not start the daemon; only `register` does.
+`gatewarden status` does not start the daemon; only `register` does.
 
 ## The final visual world: Daylight (2026-10-23)
 
@@ -237,9 +237,9 @@ Read the commit by hash instead.
 registration, `400` with `{error, field}`, `403` without the header, `409` when that project+branch
 already has a route. The registry writes the **same** state file as the CLI
 (`~/.traefik-dev/registrations.json`, through the store's own upsert), so a route made in the page is
-one `traefik-dev list` shows and `traefik-dev unregister` removes.
+one `gatewarden list` shows and `gatewarden unregister` removes.
 
-Deliberate difference from the CLI: `traefik-dev register` **updates** an existing project+branch in
+Deliberate difference from the CLI: `gatewarden register` **updates** an existing project+branch in
 place (an agent restarting a dev server on another port wants that), while the page's create
 **never** changes a route the client can see — it returns `409` and names the route that exists.
 Keep the two different unless the client says otherwise.

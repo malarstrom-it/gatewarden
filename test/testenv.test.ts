@@ -159,7 +159,7 @@ test('a leftover of an earlier run is recognised, and nobody else is', () => {
   const settings = testEnvSettings({});
   const proxy = `${binaryPath(settings.cacheDir, settings.traefikVersion)} --configFile /tmp/x/traefik.yml`;
   const daemon = `node /src/daemon.ts --config ${settings.root}/config.json`;
-  const other = 'node /opt/devbox-traefik-api/bin/traefik-devd.js';
+  const other = 'node /opt/devbox-traefik-api/bin/some-other-tool.js';
   assert.equal(classifyCmdline(proxy, settings), 'proxy');
   assert.equal(classifyCmdline(daemon, settings), 'daemon');
   assert.equal(classifyCmdline(other, settings), 'unknown');

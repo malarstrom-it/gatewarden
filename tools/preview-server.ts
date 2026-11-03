@@ -8,7 +8,7 @@
  *
  * The state directory is a throwaway one, so the CLI can drive it too:
  *
- *   node bin/traefik-dev.js register --state-dir /tmp/traefik-preview \
+ *   node bin/gatewarden.js register --state-dir /tmp/traefik-preview \
  *     --config /tmp/traefik-preview/config.json --project x --branch y --port 5173
  *
  * A review tool: the daemon never loads it.

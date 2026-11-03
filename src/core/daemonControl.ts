@@ -331,9 +331,9 @@ export function processState(pid: number): string | null {
  * Is this process the gateway daemon?
  *
  * The daemon is started through one of its launchers: `daemon.ts` (the
- * lazy start), `gatewarden-daemon.js` and `traefik-devd.js` (the names
- * the package installs, the last one the old name of the second). All of
- * them are the daemon; a process that is none of them is not.
+ * lazy start) and `gatewarden-daemon.js` (the name the package
+ * installs). Both of them are the daemon; a process that is none of
+ * them is not.
  *
  * The pidfile is a file in the state directory: something else may have
  * written it, and the CLI must never stop a process it does not own. On

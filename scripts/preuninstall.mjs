@@ -49,9 +49,8 @@ function isAlive(pid) {
  * Is this process the daemon of *this* installation?
  *
  * The daemon is started through one of its launchers: `daemon.ts` (the
- * lazy start), `gatewarden-daemon.js` and `traefik-devd.js` (the names
- * the package installs, the last one the old name of the second). A
- * process that is none of them is not ours.
+ * lazy start) and `gatewarden-daemon.js` (the name the package
+ * installs). A process that is none of them is not ours.
  *
  * The name of the script is not enough. Two installations that share a
  * state directory share their pid file, and the pid in it may belong to

@@ -24,11 +24,8 @@ export const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url
 /** The CLI of the package. */
 export const CLI = path.join(REPO_ROOT, 'bin', 'gatewarden.js');
 
-/** The CLI under its old name. */
-export const LEGACY_CLI = path.join(REPO_ROOT, 'bin', 'traefik-dev.js');
-
-/** The daemon under its old name. */
-export const LEGACY_DAEMON = path.join(REPO_ROOT, 'bin', 'traefik-devd.js');
+/** The daemon launcher of the package. */
+export const DAEMON = path.join(REPO_ROOT, 'bin', 'gatewarden-daemon.js');
 
 /**
  * Ask the OS for a free TCP port.

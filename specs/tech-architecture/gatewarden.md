@@ -46,7 +46,7 @@ Error [ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING]: Stripping types is
 currently unsupported for files under node_modules
 ```
 
-The repository today runs its TypeScript directly (`node bin/traefik-dev.js`
+The repository today runs its TypeScript directly (`node bin/gatewarden.js`
 imports `../src/cli.ts`), which works in the repository and breaks the moment
 the package is installed. The package therefore builds to `dist/` with `tsc`
 and publishes `dist/`.
