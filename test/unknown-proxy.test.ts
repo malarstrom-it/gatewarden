@@ -27,9 +27,11 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fork, spawn } from 'node:child_process';
+import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv';
 import { isUnknownProxyError, requireAdapter, unknownProxyReason } from '../src/adapters/index.ts';
 import { fatalReason, stopWorker } from '../src/core/daemon.ts';
 import { McpServer } from '../src/integrations/mcp/server.ts';
+import { answersUnknownProxy, TOOLS } from '../src/integrations/mcp/tools.ts';
 import { freePort, makeCliFixture, REPO_ROOT, type CliFixture } from './helpers/cli.ts';
 
 /** The daemon of the package. */
@@ -234,6 +236,23 @@ test('the doctor reports an unknown proxy id as an error, with its reason', asyn
   assert.equal(report.ok, false);
 });
 
+test('only the status tool answers the failure of an unknown proxy id', () => {
+  const status = TOOLS.find((tool) => tool.name === 'dev_gateway_status');
+  const publish = TOOLS.find((tool) => tool.name === 'publish_dev_server');
+  assert.ok(status && publish, 'the tools of the server are missing');
+
+  const unknown = 'unknown proxy "caddy" (known: traefik)';
+  const other = 'daemon did not answer /healthz within 20000 ms';
+
+  // The status tool answers the mistake it reports.
+  assert.equal(answersUnknownProxy(status, { proxy: 'caddy' }, unknown), true);
+  // Every other tool fails when the daemon did not start.
+  assert.equal(answersUnknownProxy(publish, { proxy: 'caddy' }, unknown), false);
+  // The status tool fails for every other reason too.
+  assert.equal(answersUnknownProxy(status, { proxy: 'caddy' }, other), false);
+  assert.equal(answersUnknownProxy(status, { proxy: 'traefik' }, unknown), false);
+});
+
 /**
  * The sentence the status carries about an unknown proxy id.
  *
@@ -256,6 +275,21 @@ test('the status says which proxy id is unknown, and does not fail', async (t) =
     result.stdout,
     /proxy reason: The configuration file names a proxy the package does not know: unknown proxy "caddy" \(known: traefik\)\./,
   );
+  // The id that is unknown is named too.
+  assert.match(result.stdout, /^proxy: {8}caddy$/m);
+});
+
+test('the status says nothing about a proxy the package knows', async (t) => {
+  const fixture = await makeCliFixture({ config: { proxy: 'traefik' } });
+  t.after(() => fixture.cleanup());
+
+  const result = await fixture.runFail(['status']);
+
+  assert.equal(result.code, 0, `${result.stdout}${result.stderr}`);
+  // A proxy that answers needs no line of its own: the output of the
+  // status is the output it was before.
+  assert.doesNotMatch(result.stdout, /^proxy:/m);
+  assert.doesNotMatch(result.stdout, /proxy reason:/);
 });
 
 test('the status --json says why the proxy does not answer', async (t) => {
@@ -332,4 +366,17 @@ test('the MCP status tool says why the proxy does not answer, and does not fail'
   assert.equal(status.proxy.reason, UNKNOWN_PROXY_REASON);
   assert.equal(status.reason, UNKNOWN_PROXY_REASON);
   assert.equal(status.reachable, false);
+
+  // The answer is inside the schema the tool declares: a client that
+  // validates the answer against it accepts the answer.
+  const tool = TOOLS.find((entry) => entry.name === 'dev_gateway_status');
+  assert.ok(tool, 'the status tool is missing');
+  const validator = new AjvJsonSchemaValidator();
+  // The schema of the tool is a JSON Schema of this package; the
+  // validator of the SDK wants the schema in its own type.
+  const schema = tool.outputSchema as unknown as Parameters<
+    typeof validator.getValidator
+  >[0];
+  const validation = validator.getValidator(schema)(status);
+  assert.equal(validation.valid, true, validation.errorMessage);
 });

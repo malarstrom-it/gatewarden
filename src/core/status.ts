@@ -91,8 +91,6 @@ export interface DaemonStatusJson {
   healthy: boolean;
   running: boolean;
   pidFile: string;
-  /** The reason the daemon is not serving, when it is not. */
-  error?: string;
 }
 
 /** The configuration, in the shape the tools return. */

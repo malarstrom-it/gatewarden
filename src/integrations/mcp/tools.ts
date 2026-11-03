@@ -42,14 +42,6 @@ export interface ToolContext {
   paths: GatewayPaths;
   /** The working directory the project and the branch are inferred from. */
   cwd: string;
-  /**
-   * The reason the daemon could not start, when it could not.
-   *
-   * The server starts the daemon before it calls a tool. A tool that
-   * reports says where the installation stands, and the reason the
-   * daemon is not there is part of that.
-   */
-  daemonError?: string;
 }
 
 /** One tool: its contract and what it does. */
@@ -67,15 +59,34 @@ export interface ToolDefinition {
   /** What the tool does. */
   handler: (args: Record<string, unknown>, context: ToolContext) => Promise<unknown>;
   /**
-   * Does the tool need a daemon that runs?
+   * Does the tool report the mistake of an unknown proxy id?
    *
-   * The server starts the daemon before it calls a tool, and a daemon
-   * that did not start is a failure of the call — for every tool that
-   * needs it. The status tool does not need it: it reports where the
-   * installation stands, and a daemon that could not start is part of
-   * what it reports.
+   * The daemon stops when the configuration file names a proxy id the
+   * package does not know, and a daemon that did not start is a
+   * failure of the call — for every tool. The status tool is the one
+   * exception: it reports where the installation stands, and that
+   * mistake is what it reports.
    */
-  needsDaemon?: boolean;
+  reportsUnknownProxy?: boolean;
+}
+
+/**
+ * Does the tool answer the failure the daemon stopped with?
+ *
+ * The status tool answers when the daemon could not start because the
+ * configuration file names a proxy id the package does not know: that
+ * mistake is what the report is about. Every other failure of the
+ * daemon is a failure of the call, for every tool, as it was before.
+ */
+export function answersUnknownProxy(
+  tool: ToolDefinition,
+  config: Pick<Config, 'proxy'>,
+  error: string,
+): boolean {
+  if (tool.reportsUnknownProxy !== true) return false;
+  // The reason the daemon stopped with is the wording of the catalog,
+  // whole: the id that was asked for and the ids that exist.
+  return error === unknownProxyReason(config.proxy);
 }
 
 /**
@@ -368,9 +379,10 @@ const gatewardenStatus: ToolDefinition = {
     required: ['daemon', 'proxy', 'config', 'reachable'],
     additionalProperties: false,
   },
-  // The tool reports, so it does not need a daemon that runs: a daemon
-  // that could not start is part of what it reports.
-  needsDaemon: false,
+  // The tool reports, so it answers the daemon that could not start
+  // because of the mistake it reports: the configuration file names a
+  // proxy id the package does not know.
+  reportsUnknownProxy: true,
   async handler(_args, context) {
     // The reason the proxy does not answer, when the cause is known:
     // the configuration file names a proxy id the package does not
@@ -381,14 +393,15 @@ const gatewardenStatus: ToolDefinition = {
     );
     const status = await gatewayStatus(context.config, context.configPath, context.paths, proxy);
     return {
-      daemon: context.daemonError ? { ...status.daemon, error: context.daemonError } : status.daemon,
+      daemon: status.daemon,
       proxy: status.proxy,
       config: status.config,
       reachable: status.reachable,
       // The reason the proxy does not answer, in one sentence. It is
       // the sentence the proxy carries, so that a reader sees why
-      // without looking into the proxy.
-      reason: status.proxy.reason,
+      // without looking into the proxy. It is there when there is one:
+      // the answer stays inside the schema the tool declares.
+      ...(status.proxy.reason ? { reason: status.proxy.reason } : {}),
     };
   },
 };

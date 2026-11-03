@@ -464,8 +464,12 @@ async function commandStatus(flags: Record<string, string | boolean>): Promise<n
       `daemon:       ${status.running ? (status.healthy ? 'running' : 'running, but not serving yet') : 'not running'} (pid ${status.pid ?? '-'})`,
       `pidfile:      ${status.pidFile}`,
       `logfile:      ${paths.logFile}`,
-      `proxy:        ${config.proxy}`,
-      ...(proxyReason ? [`proxy reason: ${unknownProxyReasonSentence(proxyReason)}`] : []),
+      // The proxy is named only when the package does not know it: the
+      // id and the reason it does not answer belong together, and a
+      // proxy that answers needs no line of its own.
+      ...(proxyReason
+        ? [`proxy:        ${config.proxy}`, `proxy reason: ${unknownProxyReasonSentence(proxyReason)}`]
+        : []),
       `config file:  ${configPath}${fs.existsSync(configPath) ? '' : ' (missing, defaults are used)'}`,
       `state dir:    ${config.stateDir}`,
       `cache dir:    ${paths.cacheDir}`,
