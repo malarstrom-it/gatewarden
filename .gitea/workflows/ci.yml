@@ -86,6 +86,7 @@ jobs:
           - document.test.ts
           - golden.test.ts
           - healthcheck.test.ts
+          - install-scripts-doc.test.ts
           - lock.test.ts
           - mcp-conformance.test.ts
           - mcp-server.test.ts
