@@ -46,6 +46,7 @@ that changes on its own is a lock file nobody reviews.
 ## The commands
 
 ```bash
+npm run clean       # empties dist/, the output of the build
 npm run build       # the TypeScript build, into dist/
 npm test            # node --test, one file per area
 npm run typecheck   # tsc --noEmit
@@ -58,9 +59,10 @@ npm run test:e2e    # the end-to-end suite; needs a proxy
 machine. It starts daemons, writes to temporary directories and talks to real
 ports. Let it run.
 
-**The build deletes `dist/` before it writes it.** Never run `npm run build`
-while the tests are running: two of the test files read the compiled
-output, and a build in the middle of them takes the output away.
+**`npm run build` empties `dist/` before it writes it** — it runs
+`npm run clean` first. Never run `npm run build` while the tests are
+running: two of the test files read the compiled output, and a build in the
+middle of them takes the output away.
 
 **`npm pack` writes a tarball in the repository**, and `*.tgz` is not in
 `.gitignore`. Remove the tarball when you are done, or write it somewhere
@@ -69,6 +71,37 @@ else:
 ```bash
 npm pack --pack-destination /tmp
 ```
+
+### The scripts of the manifest
+
+The manifest holds thirteen scripts. They fall into two groups: the four
+that travel with the package, and the nine that belong to the checkout.
+
+**The four that ship with the package.** They are the scripts of the
+installation of the package, on the machine of the reader:
+
+- `postinstall` — `scripts/postinstall.mjs`
+- `prepare` — `npm run build`
+- `preuninstall` — `scripts/preuninstall.mjs`
+- `postuninstall` — `scripts/postuninstall.mjs`
+
+What each one does, and when npm runs it, is written down in
+`docs/install-scripts.md`. That page is guarded against the manifest, so it
+is the place to read it and not a copy of it here, which would drift.
+
+**The nine of the checkout.** They belong to the work in the repository:
+
+- `clean` — empties `dist/`, and only in a checkout: it looks for the build
+  configuration that the package does not ship;
+- `build` — the TypeScript build, into `dist/`;
+- `test` — the unit tests, with `node --test`;
+- `test:e2e` — the end-to-end suite;
+- `test:e2e:stop` — stops what an interrupted run of the suite left behind;
+- `typecheck` — the type check, with `tsc --noEmit`;
+- `prepublishOnly` — builds and tests the package before a publish;
+- `publish:dry-run` — shows what a publish would upload, without uploading
+  it;
+- `start` — starts the daemon.
 
 ## The tests
 
