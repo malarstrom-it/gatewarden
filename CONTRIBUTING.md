@@ -291,9 +291,9 @@ side by side.
 installation.** The private repository is not a public one, and it holds
 the zone of the installation, the addresses of its machines and the names
 of its containers — in `memory/`, in `specs/`, in `tools/`, in `test/`,
-in `PRODUCT.md`, in `SECURITY.md`, in `.impeccable/`, and in the guard
-itself, whose list of the identifiers of the installation names them one
-by one so that they stay out of the tarball. The test files and the
+in `PRODUCT.md`, in `SECURITY.md`, in `.impeccable/`, and in the history
+of the guard, which held the list of the identifiers of the installation
+until S80 took the list out of the repository. The test files and the
 golden files use the zone and the host name of the installation as their
 examples; they have to get other example values. A public repository is
 read by everybody, and the rule that keeps that data out of the npm
@@ -313,15 +313,26 @@ So before the push:
   fine; what matters is the same in both: no data of the installation
   reaches the public repository.
 
-The list of the values is in `test/published-identifiers.test.ts`, in
-`INSTALLATION_IDENTIFIERS`, and the guard holds every one of them. Search
-the working tree and the history for each of them:
+The values are not written down in the repository any more. The guard held
+them one by one, in a list of its own in
+`test/published-identifiers.test.ts`, until S80 took the list out: a
+public repository would publish the very values the list keeps out of the
+tarball. The guard protects the package with rules instead — no address
+of a private network, no address of an account outside the reserved
+domains, no number of the internal numbering, no pointer at a file the
+package does not ship, no git server — and the rules do not know the
+values of the installation. The maintainer does: the zone, the addresses,
+the host names, the account and the private git host of the installation
+are the values to look for. Search the working tree and the history for
+each of them:
 
 ```bash
-git grep -Il -F '<the value>' -- ':!test/published-identifiers.test.ts'
+git grep -Il -F '<the value>'
 git log --all -S'<the value>' --oneline
 ```
 
+The history is the checklist here, and the guard is not: a value that
+lies only in the history is still published when the history is pushed.
 The support address (`npm@malarstrom.se`) stays: it is public on
 purpose, and the guard names it in `PUBLIC_CONTACT_ADDRESSES`.
 
@@ -337,15 +348,14 @@ In `test/published-identifiers.test.ts`:
   'gitea' belonged to the time when the private server was the server of
   the project. The rule that keeps the private git server out of the
   tarball must therefore be the *host* and not the *word*;
-- the entry "the host of the git server of the project" in
-  `INSTALLATION_IDENTIFIERS` becomes the public host, `github.com` — step 1
-  takes the private host out of the list with the rest of the values.
-  `github.com` is the value `PUBLIC_GIT_HOST` allows, and it is what
-  makes the fields of the manifest legal;
+- the private git host of the project is one of the values of the
+  installation, and step 1 takes it out with the rest of them. The
+  public host, `github.com`, is the value `PUBLIC_GIT_HOST` allows, and
+  it is what makes the fields of the manifest legal;
 - add the rule that catches the host of a git server, so that the private
   git server stays out of the tarball without being written down. The
-  list of the identifiers leaves the repository in step 1, and this rule
-  has to keep working after that:
+  list of the identifiers left the repository in S80, and this rule has to
+  keep working after that:
 
   ```ts
   /**
@@ -502,11 +512,12 @@ a pull request in a public place instead of sending a message.
 package is the rule of the repository: the zone of the installation, the
 addresses of its machines, the names of its containers, the e-mail
 address of its certificate account and the private git server are data of
-one installation, and they are not public. The guard keeps them out of
-the tarball, and the same list is the checklist for the repository before
-it goes public. A public repository that carries the data of an
-installation has published it, and a published address cannot be taken
-back.
+one installation, and they are not public. The guard keeps private data
+out of the tarball with its rules, and the values of the installation are
+not written down in the repository any more — the history of step 1 is
+the checklist for the repository before it goes public. A public
+repository that carries the data of an installation has published it, and
+a published address cannot be taken back.
 
 **The published package stays what it is.** The package on npmjs.org is
 not the repository: it ships the compiled package, the scripts and the

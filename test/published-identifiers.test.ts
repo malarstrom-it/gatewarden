@@ -8,41 +8,76 @@
  * the host names of its containers, the e-mail address of its certificate
  * account — must not travel with it.
  *
- * This test is the guard that keeps it out. It packs the package the way
- * `test/packaging.test.ts` does, reads the files that go into the tarball,
- * and fails when one of them holds an identifier of that installation.
+ * This test is the guard that keeps private data out. It packs the package
+ * the way `test/packaging.test.ts` does, reads the files that go into the
+ * tarball, and fails when one of them carries something private.
  *
- * The lists it checks, and why:
+ * The rules it applies, and why:
  *
- *   1. **the identifiers of that installation**, one by one: the ACME
- *      account e-mail, the DNS zone, the private address ranges and the
- *      internal host names. They are named one by one, so that a failure
- *      says what leaked and in which file — and so that the next person
- *      can see what the guard is for;
- *   2. **the generic rules**: no address of a private network (the IPv4
- *      ranges of RFC 1918 and the IPv6 range that are their equivalent) and
- *      no e-mail address outside the domains that are reserved for
- *      examples. They catch the leak that is not in the list above: the
- *      address that was added yesterday, the account of another
- *      installation;
- *   3. **the one e-mail address the package may carry**: the support
- *      address, which is named on purpose (see
- *      `PUBLIC_CONTACT_ADDRESSES` below).
+ *   1. **no address of a private network**: the IPv4 ranges of RFC 1918
+ *      (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) and the IPv6
+ *      range that is their equivalent (`fc00::/7`). A network that exists
+ *      only inside somebody's house names the house;
+ *   2. **no e-mail address of an account** outside the domains that are
+ *      reserved for examples (RFC 2606 and RFC 6761). The one address the
+ *      package may carry is the support address of the package, which is
+ *      public by the decision of its maintainer (see
+ *      `PUBLIC_CONTACT_ADDRESSES` below);
+ *   3. **no number of the internal numbering**: the number of a paragraph,
+ *      a story or a decision points into a text the reader of the package
+ *      does not have;
+ *   4. **no pointer at a file the package does not ship**, in the
+ *      documentation and in the code;
+ *   5. **no git server and no repository**: the published package names no
+ *      repository until the project has a public mirror, and the host of
+ *      that mirror goes into `PUBLIC_GIT_HOST` below.
+ *
+ * The rules are the guard, and they are the whole of it. The values of the
+ * installation the package was written for are not written down in this
+ * file, and they must not be: the repository is about to become public,
+ * and a list of the values of the installation in a public repository
+ * publishes the very values the guard keeps out of the tarball. The one
+ * name that is left is the support address of the package, in
+ * `PUBLIC_CONTACT_ADDRESSES` below. It is public by the decision of the
+ * maintainer of the package, it is in the README of the package, and the
+ * rule of the reserved domains would catch it if it were not allowed on
+ * purpose.
+ *
+ * The rules above stand in their place, and they are narrower than the
+ * list of the identifiers was. They catch the address that was added
+ * yesterday and the account of another installation — the two kinds of
+ * value that have a shape a rule can recognise: an address and an
+ * account. A host name, a service name, the zone of the DNS and the path
+ * of the installation have no such shape. A plain word is not a private
+ * address and not the address of an account, so no rule of the guard
+ * catches them, and the guard does not catch them today either. Nothing
+ * of that kind is in the tarball, and the values of the installation are
+ * not written down in this repository any more, so the guard has no way
+ * of knowing them. When the repository goes public, the values go out of
+ * it with the scrubbing of the history (see the procedure in
+ * `CONTRIBUTING.md`), and the guard keeps what has a shape out of the
+ * tarball.
+ *
+ * A rule that cannot fail guards nothing, so every rule has a value that
+ * proves that it fires. The values are in `RULE_PROBES` below: they are the
+ * values of the standards — the ranges of the private networks, an address
+ * of an account outside the reserved domains, a number of the internal
+ * numbering, a path of a file the package does not ship, the name of a git
+ * server — and not one of them names anything of this installation.
  *
  * What stays on purpose: the name of the package and the organisation it
  * belongs to. They are the name of the package, not the data of an
  * installation, and the guard does not touch them. The Docker network name
- * of that installation is not in the list either: it is an ordinary word,
- * and the compiled type declarations of the package use it. The network name
- * is an example in the documentation, and the generic rules are what keep
- * the addresses of a private network out.
+ * of that installation is not guarded either: it is an ordinary word, and
+ * the compiled type declarations of the package use it. The network name is
+ * an example in the documentation, and the rules are what keep the
+ * addresses of a private network out.
  *
- * The git server of the project is in the list now (S31). It used to be an
- * exception: the manifest named it in `repository`, `homepage`, `bugs` and
- * `funding`, and the README named it as the place the source of the package
- * lives. The published package names no repository at all now — a package
+ * The published package names no repository (S31). It used to name one: the
+ * manifest named it in `repository`, `homepage`, `bugs` and `funding`, and the
+ * README named it as the place the source of the package lives. A package
  * that everybody can install from npmjs.org does not point a reader at a
- * private host — and the guard keeps it that way. When the project gets a
+ * private host, and the guard keeps it that way. When the project gets a
  * public mirror, its host goes into `PUBLIC_GIT_HOST` below, the fields of
  * the manifest come back, and the guard stops protecting that one host.
  *
@@ -132,33 +167,29 @@ const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 /**
- * The identifiers of the installation the package was written for.
+ * There is no list of the identifiers of the installation, and there may
+ * not be one (S80).
  *
- * Every entry is a value that names that installation and nobody else: an
- * account, a domain, an address, a host name. A package for the world
- * carries none of them.
+ * The list stood here until S80: nineteen values that named the
+ * installation the package was written for — the e-mail address of its
+ * certificate account, its personal domain, the zone of its DNS, the
+ * private address ranges and the host names of its machines. The list was
+ * a good rule for a repository of one installation: a failure said what
+ * leaked and in which file.
+ *
+ * The repository is about to become public, and there the list publishes
+ * the very values it is meant to keep out of the tarball. The values are
+ * also stale the day somebody renames something, and a list that is stale
+ * is a list that no longer guards anything.
+ *
+ * The rules of the guard take their place, and they are narrower than the
+ * list was. They catch the two kinds of value that have a shape a rule can
+ * recognise — an address and an account — and they do not catch a host
+ * name, a service name, the zone of the DNS or the path of the
+ * installation: a plain word is neither an address nor an account. The
+ * header of this file says the same, and the values themselves are not
+ * written down in this repository any more.
  */
-const INSTALLATION_IDENTIFIERS: Array<{ value: string; what: string }> = [
-  { value: 'mikael@malarstrom.se', what: 'the ACME account e-mail of that installation' },
-  { value: 'malarstrom.se', what: 'the personal domain of that installation' },
-  { value: 'home.malarstrom.com', what: 'the DNS zone of that installation' },
-  { value: '172.16.2.0/24', what: 'the trust list (the CIDR) of that installation' },
-  { value: '172.16.2.13', what: 'the address of the gateway host of that installation' },
-  { value: '172.16.2.1', what: 'the gateway address of the Docker network of that installation' },
-  { value: '172.16.2.6', what: 'the address of the proxy of that installation' },
-  { value: 'fdd0:0:0:2::d', what: 'the IPv6 address of that installation' },
-  { value: 'fdd0:0:0:2::/64', what: 'the IPv6 prefix of that installation' },
-  { value: 'devbox', what: 'the host name of that installation' },
-  { value: 'devbox.private', what: 'the host name of that installation on its Docker network' },
-  { value: 'e1e518cfcc56', what: 'the Docker-generated host name of that installation' },
-  { value: 'ix-traefik-traefik-1.private', what: 'the fqdn of the proxy of that installation' },
-  { value: 'truenas', what: 'the name of a service of that installation' },
-  { value: 'homebridge', what: 'the name of a service of that installation' },
-  { value: 'gitea-ssh', what: 'the name of an entry point of that installation' },
-  { value: 'herdr-ssh', what: 'the name of an entry point of that installation' },
-  { value: '/opt/devbox-traefik-api', what: 'the path of that installation on its machine' },
-  { value: 'gitea.home.malarstrom.com', what: 'the host of the git server of the project' },
-];
 
 /**
  * The public host of the source of the package.
@@ -179,6 +210,12 @@ const PUBLIC_GIT_HOST: string = '';
  * service holds the source, and where to ask for it. The name is listed
  * here so that the guard catches it wherever it hides — in the manifest, in
  * the readme, in a link or in a path of a workflow file.
+ *
+ * The name is the name of the software, and not an address, an account or
+ * a domain of the installation: it names nothing of the installation, and
+ * everybody knows it. The rule it belongs to is a rule of the published
+ * package — the package names no git server until the project has a public
+ * mirror, and then only the host of that mirror (see `PUBLIC_GIT_HOST`).
  */
 const GIT_SERVER_NAMES = ['gitea'];
 
@@ -193,15 +230,14 @@ const GIT_SERVER_NAMES = ['gitea'];
  * e-mail address the published package carries, and the guard accepts it
  * exactly.
  *
- * The allowance is narrow on purpose. The domain of the address is the
- * personal domain of the installation the package was written for, and the
- * guard keeps that domain forbidden everywhere else: only the places that
- * lie inside this exact address are allowed.
+ * The allowance is narrow on purpose. It is the address itself and nothing
+ * else, and every other address of an account is caught by the rule of the
+ * reserved domains.
  *
  * The address of the ACME account is not on this list. That account belongs
  * to the installation the package was written for, and its address says
- * nothing to a reader of the package. It stays forbidden, like every other
- * identifier of that installation.
+ * nothing to a reader of the package. It is caught by the rule of the
+ * reserved domains, like every other address of an account.
  */
 const PUBLIC_CONTACT_ADDRESSES: string[] = ['npm@malarstrom.se'];
 
@@ -407,20 +443,18 @@ function isPathOfTheReader(text: string, index: number): boolean {
 }
 
 /**
- * Does the place at `index` lie inside one of the allowed contact
- * addresses?
+ * Does the place at `index` lie inside the allowed text?
  *
- * The guard reads the files of the tarball as text, and the domain of the
- * support address is a part of that text. A place inside an allowed address
- * is not a leak: it is the address the package is allowed to carry.
+ * The guard reads the files of the tarball as text, and the public host of
+ * the project is a part of that text. A place inside it is not a leak: it
+ * is the place where the source of the package lives.
  */
-function insidePublicAddress(text: string, index: number): boolean {
-  for (const address of PUBLIC_CONTACT_ADDRESSES) {
-    let start = text.indexOf(address);
-    while (start !== -1) {
-      if (index >= start && index < start + address.length) return true;
-      start = text.indexOf(address, start + 1);
-    }
+function inside(text: string, index: number, allowed: string): boolean {
+  if (allowed === '') return false;
+  let start = text.indexOf(allowed);
+  while (start !== -1) {
+    if (index >= start && index < start + allowed.length) return true;
+    start = text.indexOf(allowed, start + 1);
   }
   return false;
 }
@@ -449,6 +483,288 @@ const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}
  * belongs to nobody.
  */
 const EXAMPLE_DOMAINS = new Set(['example.com', 'example.net', 'example.org', 'example', 'test', 'invalid']);
+
+/**
+ * What the rules of the guard read when they look at the package.
+ */
+interface GuardContext {
+  /** Every file of the tarball. */
+  files: string[];
+  /** The directories of the repository of the project. */
+  directories: string[];
+  /** The files of the root of the repository that the package does not ship. */
+  unshippedFiles: string[];
+  /** The directories the tarball holds, by the path that names them. */
+  shippedDirectories: Set<string>;
+  /** The names of the files of the repository that the package does not ship. */
+  unshippedNames: Set<string>;
+}
+
+/**
+ * What the rules need to know about a package and about the repository.
+ */
+function guardContext(files: string[]): GuardContext {
+  const shippedDirectories = new Set<string>();
+  for (const file of files) {
+    const parts = file.split('/');
+    for (let index = 1; index < parts.length; index += 1) {
+      shippedDirectories.add(parts.slice(0, index).join('/'));
+    }
+  }
+
+  return {
+    files,
+    directories: repositoryDirectories(),
+    unshippedFiles: repositoryFiles().filter((file) => !SHIPPED_ROOT_FILES.includes(file)),
+    shippedDirectories,
+    unshippedNames: unshippedRepositoryNames(files),
+  };
+}
+
+/**
+ * The addresses of a private network in a file.
+ *
+ * The ranges of RFC 1918 and the IPv6 range that is their equivalent. A
+ * network that exists only inside somebody's house names the house.
+ */
+function privateNetworkTraps(file: string, text: string): string[] {
+  const hits: string[] = [];
+  for (const pattern of [PRIVATE_IPV4, PRIVATE_IPV6]) {
+    for (const match of text.matchAll(pattern)) {
+      hits.push(`${file}:${lineOf(text, match.index ?? 0)}: "${match[0]}" — an address of a private network`);
+    }
+  }
+  return hits;
+}
+
+/**
+ * The addresses of an account in a file.
+ *
+ * The domains that RFC 2606 and RFC 6761 reserve belong to nobody, and the
+ * support address of the package is public by the decision of its
+ * maintainer. Every other address names an account, and the guard catches
+ * it.
+ */
+function accountAddressTraps(file: string, text: string): string[] {
+  const hits: string[] = [];
+  for (const match of text.matchAll(EMAIL)) {
+    // The support address is public on purpose and is allowed.
+    if (PUBLIC_CONTACT_ADDRESSES.includes(match[0].toLowerCase())) continue;
+    const domain = (match[0].split('@')[1] ?? '').toLowerCase();
+    const last = domain.split('.').pop() ?? '';
+    if (EXAMPLE_DOMAINS.has(domain) || EXAMPLE_DOMAINS.has(last)) continue;
+    hits.push(`${file}:${lineOf(text, match.index ?? 0)}: "${match[0]}" — the address of an account`);
+  }
+  return hits;
+}
+
+/**
+ * The number of the times a text names the support address of the package.
+ *
+ * The allowance is not a hole that may go quiet: the package has to name
+ * the support address, or a reader has nowhere to write.
+ */
+function supportAddressCount(text: string): number {
+  let count = 0;
+  for (const match of text.matchAll(EMAIL)) {
+    if (PUBLIC_CONTACT_ADDRESSES.includes(match[0].toLowerCase())) count += 1;
+  }
+  return count;
+}
+
+/**
+ * The names of a git server in a file.
+ *
+ * The published package names no git server until the project has a public
+ * mirror. The host of that mirror is the one place the name may stand: the
+ * guard protects the private host and not the public one.
+ */
+function gitServerTraps(file: string, text: string, publicHost: string = PUBLIC_GIT_HOST): string[] {
+  const hits: string[] = [];
+  for (const name of GIT_SERVER_NAMES) {
+    const pattern = new RegExp(name, 'gi');
+    for (const match of text.matchAll(pattern)) {
+      const index = match.index ?? 0;
+      if (inside(text, index, publicHost)) continue;
+      hits.push(`${file}:${lineOf(text, index)}: "${match[0]}" — the name of a git server`);
+    }
+  }
+  return hits;
+}
+
+/**
+ * The fields of the manifest that point at a repository.
+ *
+ * The published package names no repository: `repository`, `homepage`,
+ * `bugs` and `funding` are gone (S31). A package that everybody can
+ * install from npmjs.org does not point a reader at a private host.
+ */
+function repositoryFields(manifest: Record<string, unknown>): string[] {
+  return ['repository', 'homepage', 'bugs', 'funding'].filter((field) => manifest[field] !== undefined);
+}
+
+/**
+ * The paths of one documentation file of the package that the package does
+ * not ship.
+ *
+ * A reader of the installed package follows the paths the documentation
+ * names. A path into a directory the package does not ship leads nowhere:
+ * the file is in the repository of the project, and the reader of the
+ * package does not have the repository. A path into a directory the package
+ * does ship has to name a file that is really in the tarball — otherwise it
+ * leads nowhere either.
+ */
+function documentationPathTraps(file: string, text: string, context: GuardContext): string[] {
+  const traps: string[] = [];
+  const lines = text.split('\n');
+  const directory = path.posix.dirname(file);
+
+  lines.forEach((line, index) => {
+    for (const token of pathTokens(line)) {
+      const first = token.split('/')[0];
+      if (SHIPPED_DIRECTORIES.includes(`${first}/`)) {
+        // A path into a directory of the package: the file it names has
+        // to be in the tarball.
+        if (!resolvesInPackage(token, context.files)) {
+          traps.push(`${file}:${index + 1}: "${token}" — the package does not ship that file`);
+        }
+        continue;
+      }
+      if (context.directories.includes(first)) {
+        traps.push(`${file}:${index + 1}: "${token}" — the package ships no "${first}/" directory`);
+        continue;
+      }
+      // A path that is relative to the file that names it: the skill
+      // points at the files next to it. It is a pointer into the
+      // package, and the file it names has to be there.
+      if (
+        context.shippedDirectories.has(`${directory}/${first}`) &&
+        !resolvesInPackage(`${directory}/${token}`, context.files)
+      ) {
+        traps.push(`${file}:${index + 1}: "${token}" — the package does not ship that file`);
+        continue;
+      }
+      // A path into a name that is neither a directory of the package
+      // nor a directory of the repository: it exists nowhere. The
+      // rule of the guard says that a path into a directory the
+      // package does not ship is a trap, and this is one. It is only
+      // a pointer when the name it ends in is a file of the project;
+      // a host name, a port, a network and a path on the machine of
+      // the reader are something else, and those are not asked about
+      // here.
+      if (
+        POINTER_EXTENSIONS.some((extension) => token.endsWith(extension)) &&
+        !resolvesInPackage(token, context.files) &&
+        !resolvesInPackage(`${directory}/${token}`, context.files)
+      ) {
+        traps.push(`${file}:${index + 1}: "${token}" — the package does not ship that file`);
+      }
+    }
+
+    // A file of the root of the repository that the package does not
+    // ship: the security policy, the product description, the lock
+    // file. The name of such a file is a pointer to a file the reader
+    // of the package does not have.
+    for (const name of context.unshippedFiles) {
+      const pattern = new RegExp(`(?<![\\w.-])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w.-])`);
+      if (pattern.test(line)) traps.push(`${file}:${index + 1}: "${name}" — the package does not ship that file`);
+    }
+  });
+
+  return traps;
+}
+
+/**
+ * The values that prove that the rules of the guard fire.
+ *
+ * A rule that cannot fail guards nothing. Every entry of the list is a
+ * value that breaks one rule of the guard, the file of the tarball the
+ * value is planted in, and the rule itself.
+ *
+ * The values are the values of the standards and nothing else: an address
+ * of the ranges of RFC 1918, an address of the IPv6 range that is their
+ * equivalent, an address of an account outside the domains RFC 2606 and
+ * RFC 6761 reserve, a number of the internal numbering, a path of a file
+ * the package does not ship, the name of a git server. They name no
+ * installation and no host of this project, and they may be written here
+ * in a public repository.
+ *
+ * The list is the proof that the guard still catches what it has to catch
+ * after the identifiers of the installation left it (S80): the guard
+ * protects the published package against private data, and not against the
+ * values of the installation the package was written for.
+ */
+const RULE_PROBES: Array<{
+  /** The rule that the value breaks. */
+  what: string;
+  /** The value that breaks the rule. */
+  value: string;
+  /** The file of the tarball the value is planted in. */
+  file: string;
+  /** The rule itself, run over the planted file. */
+  find: (file: string, text: string, context: GuardContext) => string[];
+}> = [
+  {
+    what: 'an address of a private network (the ranges of RFC 1918)',
+    value: '192.168.7.21',
+    file: 'README.md',
+    find: (file, text) => privateNetworkTraps(file, text),
+  },
+  {
+    what: 'an address of a private network (the IPv6 range that is their equivalent)',
+    value: 'fd12:3456::1',
+    file: 'README.md',
+    find: (file, text) => privateNetworkTraps(file, text),
+  },
+  {
+    what: 'the address of an account outside the reserved domains',
+    value: 'operator@acme-account.org',
+    file: 'README.md',
+    find: (file, text) => accountAddressTraps(file, text),
+  },
+  {
+    what: 'the number of a paragraph of the internal specification',
+    value: '§4.2',
+    file: 'README.md',
+    find: (file, text) => internalNumberingTraps(file, text),
+  },
+  {
+    what: 'the number of a story of the internal plan',
+    value: 'S8',
+    file: 'README.md',
+    find: (file, text) => internalNumberingTraps(file, text),
+  },
+  {
+    what: 'the number of a decision of the internal specification',
+    value: 'D3',
+    file: 'README.md',
+    find: (file, text) => internalNumberingTraps(file, text),
+  },
+  {
+    what: 'the number of a paragraph of the internal specification, in words',
+    value: 'avsnitt 4',
+    file: 'README.md',
+    find: (file, text) => internalNumberingTraps(file, text),
+  },
+  {
+    what: 'the name of a git server',
+    value: 'gitea',
+    file: 'README.md',
+    find: (file, text) => gitServerTraps(file, text),
+  },
+  {
+    what: 'a pointer at a file the package does not ship, in the documentation',
+    value: 'docs/not-shipped.md',
+    file: 'README.md',
+    find: (file, text, context) => documentationPathTraps(file, text, context),
+  },
+  {
+    what: 'a pointer at a file the package does not ship, in the code',
+    value: 'dist/not-shipped.js',
+    file: 'bin/gatewarden.js',
+    find: (file, text, context) => codePathTraps(file, text, context),
+  },
+];
 
 /**
  * The environment of a nested npm.
@@ -888,11 +1204,7 @@ describe('the published package', () => {
   /**
    * The context the rule reads the code with.
    */
-  const codeContext = (): { files: string[]; directories: string[]; unshippedNames: Set<string> } => ({
-    files,
-    directories: repositoryDirectories(),
-    unshippedNames: unshippedRepositoryNames(files),
-  });
+  const codeContext = (): GuardContext => guardContext(files);
 
   /**
    * The text of a copy of the tarball in which a line is planted in one
@@ -959,42 +1271,12 @@ describe('the published package', () => {
     assert.deepEqual(rootFiles, [...SHIPPED_ROOT_FILES].sort(), 'the tarball holds the wrong files in its root');
   });
 
-  test('the tarball holds no identifier of this installation', () => {
-    const hits: string[] = [];
-
-    for (const file of files) {
-      const text = fs.readFileSync(path.join(packageDir, file), 'utf8');
-      for (const { value, what } of INSTALLATION_IDENTIFIERS) {
-        let index = text.indexOf(value);
-        while (index !== -1) {
-          // A public mirror of the source, when there is one, is allowed.
-          const onPublicHost = PUBLIC_GIT_HOST !== '' && text.startsWith(PUBLIC_GIT_HOST, index - PUBLIC_GIT_HOST.length + value.length);
-          // The domain of the support address is a part of that address.
-          const inPublicAddress = insidePublicAddress(text, index);
-          if (!onPublicHost && !inPublicAddress) hits.push(`${file}:${lineOf(text, index)}: "${value}" — ${what}`);
-          index = text.indexOf(value, index + value.length);
-        }
-      }
-    }
-
-    assert.deepEqual(
-      hits,
-      [],
-      'the published package carries the data of the installation it was written for:\n' + hits.join('\n'),
-    );
-  });
-
   test('the tarball names no git server', () => {
     const hits: string[] = [];
 
     for (const file of files) {
       const text = fs.readFileSync(path.join(packageDir, file), 'utf8');
-      for (const name of GIT_SERVER_NAMES) {
-        const pattern = new RegExp(name, 'gi');
-        for (const match of text.matchAll(pattern)) {
-          hits.push(`${file}:${lineOf(text, match.index ?? 0)}: "${match[0]}" — the name of a git server`);
-        }
-      }
+      hits.push(...gitServerTraps(file, text));
     }
 
     assert.deepEqual(
@@ -1008,9 +1290,8 @@ describe('the published package', () => {
     // The fields of the manifest that point at a repository are gone
     // (S31): `repository`, `homepage`, `bugs` and `funding`.
     const manifest = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8')) as Record<string, unknown>;
-    for (const field of ['repository', 'homepage', 'bugs', 'funding']) {
-      assert.equal(manifest[field], undefined, `the manifest of the tarball still has "${field}"`);
-    }
+    const fields = repositoryFields(manifest);
+    assert.deepEqual(fields, [], `the manifest of the tarball still has "${fields.join('", "')}"`);
   });
 
   test('the tarball holds no address of a private network', () => {
@@ -1018,11 +1299,7 @@ describe('the published package', () => {
 
     for (const file of files) {
       const text = fs.readFileSync(path.join(packageDir, file), 'utf8');
-      for (const pattern of [PRIVATE_IPV4, PRIVATE_IPV6]) {
-        for (const match of text.matchAll(pattern)) {
-          hits.push(`${file}:${lineOf(text, match.index ?? 0)}: "${match[0]}" — an address of a private network`);
-        }
-      }
+      hits.push(...privateNetworkTraps(file, text));
     }
 
     assert.deepEqual(
@@ -1039,17 +1316,8 @@ describe('the published package', () => {
 
     for (const file of files) {
       const text = fs.readFileSync(path.join(packageDir, file), 'utf8');
-      for (const match of text.matchAll(EMAIL)) {
-        // The support address is public on purpose and is allowed.
-        if (PUBLIC_CONTACT_ADDRESSES.includes(match[0].toLowerCase())) {
-          support += 1;
-          continue;
-        }
-        const domain = (match[0].split('@')[1] ?? '').toLowerCase();
-        const last = domain.split('.').pop() ?? '';
-        if (EXAMPLE_DOMAINS.has(domain) || EXAMPLE_DOMAINS.has(last)) continue;
-        hits.push(`${file}:${lineOf(text, match.index ?? 0)}: "${match[0]}" — the address of an account`);
-      }
+      hits.push(...accountAddressTraps(file, text));
+      support += supportAddressCount(text);
     }
 
     assert.deepEqual(
@@ -1072,69 +1340,11 @@ describe('the published package', () => {
     // into a directory the package does ship has to name a file that is
     // really in the tarball — otherwise it leads nowhere either.
     const hits: string[] = [];
-    const directories = repositoryDirectories();
-    const unshippedFiles = repositoryFiles().filter((file) => !SHIPPED_ROOT_FILES.includes(file));
-    const shippedDirectories = new Set<string>();
-    for (const file of files) {
-      const parts = file.split('/');
-      for (let index = 1; index < parts.length; index += 1) {
-        shippedDirectories.add(parts.slice(0, index).join('/'));
-      }
-    }
+    const context = guardContext(files);
 
     for (const file of files.filter((name) => name.endsWith('.md'))) {
       const text = fs.readFileSync(path.join(packageDir, file), 'utf8');
-      const lines = text.split('\n');
-      const directory = path.posix.dirname(file);
-
-      lines.forEach((line, index) => {
-        for (const token of pathTokens(line)) {
-          const first = token.split('/')[0];
-          if (SHIPPED_DIRECTORIES.includes(`${first}/`)) {
-            // A path into a directory of the package: the file it names
-            // has to be in the tarball.
-            if (!resolvesInPackage(token, files)) {
-              hits.push(`${file}:${index + 1}: "${token}" — the package does not ship that file`);
-            }
-            continue;
-          }
-          if (directories.includes(first)) {
-            hits.push(`${file}:${index + 1}: "${token}" — the package ships no "${first}/" directory`);
-            continue;
-          }
-          // A path that is relative to the file that names it: the skill
-          // points at the files next to it. It is a pointer into the
-          // package, and the file it names has to be there.
-          if (shippedDirectories.has(`${directory}/${first}`) && !resolvesInPackage(`${directory}/${token}`, files)) {
-            hits.push(`${file}:${index + 1}: "${token}" — the package does not ship that file`);
-            continue;
-          }
-          // A path into a name that is neither a directory of the package
-          // nor a directory of the repository: it exists nowhere. The
-          // rule of the guard says that a path into a directory the
-          // package does not ship is a trap, and this is one. It is only
-          // a pointer when the name it ends in is a file of the project;
-          // a host name, a port, a network and a path on the machine of
-          // the reader are something else, and those are not asked about
-          // here.
-          if (
-            POINTER_EXTENSIONS.some((extension) => token.endsWith(extension)) &&
-            !resolvesInPackage(token, files) &&
-            !resolvesInPackage(`${directory}/${token}`, files)
-          ) {
-            hits.push(`${file}:${index + 1}: "${token}" — the package does not ship that file`);
-          }
-        }
-
-        // A file of the root of the repository that the package does not
-        // ship: the security policy, the product description, the lock
-        // file. The name of such a file is a pointer to a file the
-        // reader does not have.
-        for (const name of unshippedFiles) {
-          const pattern = new RegExp(`(?<![\\w.-])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w.-])`);
-          if (pattern.test(line)) hits.push(`${file}:${index + 1}: "${name}" — the package does not ship that file`);
-        }
-      });
+      hits.push(...documentationPathTraps(file, text, context));
     }
 
     assert.deepEqual(
@@ -1403,5 +1613,85 @@ describe('the published package', () => {
     for (const file of SHIPPED_ROOT_FILES) {
       assert.ok(files.includes(file), `the tarball holds no "${file}"`);
     }
+  });
+
+  test('every rule of the guard catches the value that breaks it', () => {
+    // A rule that cannot fail guards nothing. Every value of the list is
+    // planted in a copy of the package, the rule that the value breaks is
+    // run over the planted file, and the rule has to catch the value.
+    //
+    // The values are the values of the standards, and none of them names
+    // the installation the package was written for: the guard protects
+    // the published package against private data, and not against the
+    // values of this installation (S80).
+    const context = guardContext(files);
+
+    for (const probe of RULE_PROBES) {
+      const text = plant(probe.file, probe.value);
+      const hits = probe.find(probe.file, text, context);
+
+      assert.ok(hits.length > 0, `the guard did not catch "${probe.value}" — ${probe.what}`);
+
+      // The rule may catch the part of the value it knows: the number of
+      // a paragraph is `§4` when the paragraph is `§4.2`.
+      const caught = hits.map((hit) => /"([^"]*)"/.exec(hit)?.[1] ?? '');
+      assert.ok(
+        caught.some((value) => value.includes(probe.value) || probe.value.includes(value)),
+        `the guard caught "${caught[0]}" instead of "${probe.value}" — ${probe.what}`,
+      );
+    }
+  });
+
+  test('the guard catches a repository in the manifest', () => {
+    // The rule of the manifest is a rule of the published package: it
+    // names no repository until the project has a public mirror. A
+    // manifest that names one is caught, and the fields it may name are
+    // named one by one.
+    const manifest = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8')) as Record<string, unknown>;
+    assert.deepEqual(repositoryFields(manifest), [], 'the manifest of the tarball names a repository');
+
+    for (const field of ['repository', 'homepage', 'bugs', 'funding']) {
+      const planted = { ...manifest, [field]: 'https://git.example.com/traefik-api/traefik-api.git' };
+      assert.deepEqual(repositoryFields(planted), [field], `the rule did not catch the planted "${field}"`);
+    }
+  });
+
+  test('the guard protects the private host and not the public one', () => {
+    // The published package names no git server, and the project has no
+    // public mirror yet (`PUBLIC_GIT_HOST` is empty), so every name of a
+    // git server is caught. When the mirror exists, its host is the one
+    // place the name may stand: the guard protects the private host and
+    // not the public one.
+    const text = 'The source of the package lives at gitea.example.com.';
+
+    assert.deepEqual(
+      gitServerTraps('README.md', text),
+      ['README.md:1: "gitea" — the name of a git server'],
+      'the guard did not catch the name of a git server',
+    );
+    assert.deepEqual(
+      gitServerTraps('README.md', text, 'gitea.example.com'),
+      [],
+      'the guard caught the public host of the project',
+    );
+    assert.deepEqual(
+      gitServerTraps('README.md', 'The source of the package lives at gitea.internal.example.', 'gitea.example.com'),
+      ['README.md:1: "gitea" — the name of a git server'],
+      'the guard let a name of a git server through that is not the public host',
+    );
+  });
+
+  test('the guard allows the support address and the reserved domains', () => {
+    // The one address the published package may carry is the support
+    // address of the package, and the domains that RFC 2606 and RFC 6761
+    // reserve belong to nobody. Every other address of an account is
+    // caught.
+    assert.deepEqual(accountAddressTraps('README.md', 'Write to npm@malarstrom.se.'), [], 'the support address was caught');
+    assert.deepEqual(accountAddressTraps('README.md', 'Write to admin@example.com.'), [], 'a reserved domain was caught');
+    assert.deepEqual(
+      accountAddressTraps('README.md', 'Write to operator@acme-account.org.'),
+      ['README.md:1: "operator@acme-account.org" — the address of an account'],
+      'the address of an account was not caught',
+    );
   });
 });
