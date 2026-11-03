@@ -110,7 +110,6 @@ function parseFrontMatter(content: string): { fields: Record<string, string>; bo
   return { fields, body: content.slice(end + 4).replace(/^\n/, '') };
 }
 
-/** Ask the OS for a free TCP port. */
 /**
  * Ask the OS for a free TCP port.
  *
@@ -189,14 +188,29 @@ test('the agent instructions are a short, portable block', () => {
 });
 
 /**
- * The lines of a markdown text that are prose.
+ * The kinds of line a markdown text holds.
  *
- * The lines of a fenced code block are left out, and so are the lines of
- * an indented code block. A code block holds a transcript or a quoted
- * output, and neither documents a command.
+ * - `prose` is running text, or a row of a table;
+ * - `list` is an item of a list;
+ * - `quote` is a quotation: the words of somebody else;
+ * - `code` is a line of a code block.
  */
-function proseLines(markdown: string): string[] {
-  const lines: string[] = [];
+type LineKind = 'prose' | 'list' | 'quote' | 'code';
+
+interface MarkdownLine {
+  kind: LineKind;
+  text: string;
+}
+
+/**
+ * The lines of a markdown text, with the kind of each one.
+ *
+ * The lines of a fenced block and of an indented block are code, and
+ * they are kept: a block can hold a command. Every other line is
+ * prose, a list item or a quotation.
+ */
+function markdownLines(markdown: string): MarkdownLine[] {
+  const lines: MarkdownLine[] = [];
   let fence = '';
   let indented = false;
   let blank = true;
@@ -213,67 +227,172 @@ function proseLines(markdown: string): string[] {
     }
 
     if (fence !== '') {
-      // Inside a code block: a transcript or a quoted output.
+      // Inside a fenced block.
+      indented = false;
       blank = true;
+      lines.push({ kind: 'code', text: line });
       continue;
     }
 
     if (indented) {
       if (line.trim() === '' || /^ {4}/.test(line)) {
+        // Inside an indented block.
         blank = true;
+        lines.push({ kind: 'code', text: line });
         continue;
       }
       indented = false;
     }
 
     if (/^ {4,}\S/.test(line) && blank) {
+      // The first line of an indented block.
       indented = true;
       blank = true;
+      lines.push({ kind: 'code', text: line });
       continue;
     }
 
     blank = line.trim() === '';
-    lines.push(line);
+
+    if (/^\s{0,3}>/.test(line)) {
+      // A quotation is the words of somebody else.
+      lines.push({ kind: 'quote', text: line });
+      continue;
+    }
+
+    if (/^\s{0,3}(?:[-*+]|\d+[.)])\s+/.test(line)) {
+      lines.push({ kind: 'list', text: line });
+      continue;
+    }
+
+    lines.push({ kind: 'prose', text: line });
   }
 
   return lines;
 }
 
 /**
- * The command a container of text documents, if it documents one.
- *
- * A container documents a command when it holds nothing else: the whole
- * content is the command, either as an inline code span or as the plain
- * text of the command on a line of its own. A container that holds a
- * sentence ("run `gatewarden doctor` to check the installation") is
- * prose, and prose does not document a command.
+ * The text of a container without the markers that are not part of it:
+ * the marker of a list item, the marker of a heading.
  */
-function commandWord(container: string): string | undefined {
-  // A list marker, a heading marker or a quote marker is not part of the
-  // command.
-  const text = container.trim().replace(/^(?:[-*+]\s+|\d+[.)]\s+|#{1,6}\s+|>+\s*)+/, '').trim();
-  if (text === '') return undefined;
+function stripMarkers(text: string): string {
+  return text.trim().replace(/^(?:[-*+]\s+|\d+[.)]\s+|#{1,6}\s+)+/, '').trim();
+}
 
-  const span = /^`([^`]+)`$/.exec(text);
-  const candidate = span === null ? text : (span[1] as string);
-  const match = /^gatewarden\s+([a-z][a-z0-9-]*)(.*)$/.exec(candidate);
+/**
+ * The command a text names, if it names one.
+ *
+ * The text has to start with the name of the CLI and a command word
+ * after it. What follows the command word is the rest of the command:
+ * its arguments, or nothing.
+ */
+function matchCommand(text: string): { word: string; rest: string } | undefined {
+  const match = /^gatewarden\s+([a-z][a-z0-9-]*)(.*)$/.exec(text);
   if (match === null) return undefined;
 
-  const word = match[1] as string;
   const rest = match[2] as string;
   // `gatewarden something.js` is a file name, not a command.
   if (rest.startsWith('.')) return undefined;
-  // Without code formatting the container has to hold the command alone.
-  if (span === null && rest.trim() !== '') return undefined;
-  return word;
+
+  return { word: match[1] as string, rest };
+}
+
+/**
+ * Whether what follows a command describes it.
+ *
+ * A description is separated from the command by a dash or a colon. The
+ * arguments of a command are flags, and they start with a dash too.
+ */
+function isDescription(rest: string): boolean {
+  return /^[-–—:](\s|$)/.test(rest) || /^--/.test(rest);
+}
+
+/**
+ * The command a line of prose documents, if it documents one.
+ *
+ * A line of prose documents a command when it holds nothing but the
+ * command: an inline code span, or the plain text of the command. A
+ * sentence that mentions a command ("run `gatewarden doctor` to check
+ * the installation") is prose, and prose does not document a command.
+ */
+function commandInProse(line: string): string | undefined {
+  const text = stripMarkers(line);
+  if (text === '') return undefined;
+
+  const span = /^`([^`]+)`$/.exec(text);
+  if (span !== null) return matchCommand(span[1] as string)?.word;
+
+  const command = matchCommand(text);
+  if (command === undefined) return undefined;
+  // Without code formatting the line has to hold the command alone.
+  if (command.rest.trim() !== '') return undefined;
+  return command.word;
+}
+
+/**
+ * The command a list item or a table cell documents, if it documents
+ * one.
+ *
+ * Such a container names a thing, and the thing comes first: the
+ * leading code span of the container holds the command, or the plain
+ * text of the container starts with the command and what follows it
+ * describes it ("- `gatewarden register` - register a dev server.").
+ */
+function commandInItem(item: string): string | undefined {
+  const text = stripMarkers(item);
+  if (text === '') return undefined;
+
+  // The leading code span: the command the container is about.
+  const span = /^`([^`]+)`/.exec(text);
+  if (span !== null) return matchCommand(span[1] as string)?.word;
+
+  // The plain text of the command, with a description after it.
+  const command = matchCommand(text);
+  if (command === undefined) return undefined;
+  const rest = command.rest.trim();
+  if (rest !== '' && !isDescription(rest)) return undefined;
+  return command.word;
+}
+
+/**
+ * The command a line of a code block calls, if it calls one.
+ *
+ * A call starts in the first column with the name of the CLI and a
+ * command word after it. The other lines of a block are not calls:
+ *
+ *   - a line with a prompt ("$ gatewarden register") shows a session;
+ *   - an indented line continues the line above it;
+ *   - a line that names the CLI and then a colon ("gatewarden: unknown
+ *     command") is the output of a command.
+ */
+function commandInCodeLine(line: string): string | undefined {
+  // A call starts in the first column: an indented line continues the
+  // line above it.
+  if (/^\s/.test(line)) return undefined;
+  // A prompt shows a session, not a command the text documents.
+  if (line.startsWith('$')) return undefined;
+  // The name of the CLI and a command word after it. A line that names
+  // the CLI and then a colon ("gatewarden: unknown command") is the
+  // output of a command: the colon is where the command word would be.
+  return matchCommand(line)?.word;
+}
+
+/**
+ * The cells of a table row, or nothing when the line is not a row.
+ */
+function tableCells(line: string): string[] | undefined {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('|') || !trimmed.endsWith('|') || trimmed.length < 2) return undefined;
+  return trimmed.slice(1, -1).split('|');
 }
 
 /**
  * The commands a markdown text documents.
  *
  * The commands come from the places where the text presents a command as
- * one: a table cell that holds nothing but the command, or a line of its
- * own. A mention in a sentence and a code block are left out.
+ * one: a table cell, a list item, a line of prose that holds nothing but
+ * the command, and the calls of a code block. A mention in a sentence and
+ * a quotation are left out.
  *
  * The words come back in the order they appear, with the repetitions
  * removed.
@@ -281,17 +400,32 @@ function commandWord(container: string): string | undefined {
 function documentedCommands(markdown: string): string[] {
   const words: string[] = [];
 
-  for (const line of proseLines(markdown)) {
-    const trimmed = line.trim();
-    const cells =
-      trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.length > 1
-        ? trimmed.slice(1, -1).split('|')
-        : [line];
+  const add = (word: string | undefined): void => {
+    if (word !== undefined && !words.includes(word)) words.push(word);
+  };
 
-    for (const cell of cells) {
-      const word = commandWord(cell);
-      if (word !== undefined && !words.includes(word)) words.push(word);
+  for (const line of markdownLines(markdown)) {
+    // A quotation is the words of somebody else, not a command of the
+    // CLI.
+    if (line.kind === 'quote') continue;
+
+    if (line.kind === 'code') {
+      add(commandInCodeLine(line.text));
+      continue;
     }
+
+    if (line.kind === 'list') {
+      add(commandInItem(line.text));
+      continue;
+    }
+
+    const cells = tableCells(line.text);
+    if (cells === undefined) {
+      add(commandInProse(line.text));
+      continue;
+    }
+
+    for (const cell of cells) add(commandInItem(cell));
   }
 
   return words;
@@ -300,6 +434,15 @@ function documentedCommands(markdown: string): string[] {
 /** The commands a markdown text documents that the CLI does not have. */
 function unknownCommands(markdown: string, known: Set<string>): string[] {
   return documentedCommands(markdown).filter((command) => !known.has(command));
+}
+
+/**
+ * The message the check gives when a text documents a command the CLI
+ * does not have.
+ */
+function unknownCommandMessage(file: string, commands: string[]): string {
+  const names = commands.map((command) => `"gatewarden ${command}"`).join(', ');
+  return `${file} documents a command the CLI does not have: ${names}`;
 }
 
 test('the README documents every command the CLI has', () => {
@@ -311,11 +454,7 @@ test('the README documents every command the CLI has', () => {
 
   // Every command the README documents has to be a command the CLI has.
   const unknown = unknownCommands(readme, KNOWN_COMMANDS);
-  assert.deepEqual(
-    unknown,
-    [],
-    `the README documents a command the CLI does not have: ${unknown.map((command) => `"gatewarden ${command}"`).join(', ')}`,
-  );
+  assert.deepEqual(unknown, [], unknownCommandMessage('the README', unknown));
 
   // The check has to see the commands the README documents. Without this
   // it would pass on an empty list.
@@ -367,6 +506,91 @@ test('the command check catches a documented command the CLI does not have', () 
   ].join('\n');
 
   assert.deepEqual(unknownCommands(markdown, KNOWN_COMMANDS), ['frobnicate']);
+});
+
+test('the command check reads a list item as a command', () => {
+  const markdown = [
+    '## The CLI',
+    '',
+    '- `gatewarden register` - register a dev server.',
+    '- `gatewarden frobnicate` - do something the CLI cannot do.',
+  ].join('\n');
+
+  assert.deepEqual(
+    unknownCommands(markdown, KNOWN_COMMANDS),
+    ['frobnicate'],
+    'the command check does not read a list item as a command',
+  );
+});
+
+test('the command check reads a list item in plain text as a command', () => {
+  const markdown = [
+    '## The CLI',
+    '',
+    '- gatewarden register - register a dev server.',
+    '- gatewarden frobnicate - do something the CLI cannot do.',
+  ].join('\n');
+
+  assert.deepEqual(
+    unknownCommands(markdown, KNOWN_COMMANDS),
+    ['frobnicate'],
+    'the command check does not read a list item in plain text as a command',
+  );
+});
+
+test('the command check reads a quotation as the words of somebody else', () => {
+  const markdown = ['## The CLI', '', '> gatewarden frobnicate'].join('\n');
+
+  assert.deepEqual(
+    documentedCommands(markdown),
+    [],
+    'the command check reads a quotation as a command of the CLI',
+  );
+});
+
+test('the command check reads a call in a code block as a command', () => {
+  const markdown = [
+    '## The CLI',
+    '',
+    '```bash',
+    'gatewarden register --project my-app',
+    'gatewarden frobnicate',
+    '```',
+  ].join('\n');
+
+  assert.deepEqual(
+    unknownCommands(markdown, KNOWN_COMMANDS),
+    ['frobnicate'],
+    'the command check does not read a call in a code block as a command',
+  );
+});
+
+test('the command check reads a transcript in a code block as output', () => {
+  const markdown = [
+    '## The CLI',
+    '',
+    '```text',
+    '$ gatewarden frobnicate',
+    'gatewarden: unknown command "frobnicate"',
+    '```',
+  ].join('\n');
+
+  assert.deepEqual(
+    documentedCommands(markdown),
+    [],
+    'the command check reads the output of a command as a command',
+  );
+});
+
+test('the command check names the command the CLI does not have', () => {
+  const markdown = ['- `gatewarden frobnicate` - do something the CLI cannot do.'].join('\n');
+  const unknown = unknownCommands(markdown, KNOWN_COMMANDS);
+
+  assert.equal(
+    unknownCommandMessage('the README', unknown),
+    'the README documents a command the CLI does not have: "gatewarden frobnicate"',
+    'the message of the check does not name the command the CLI does not have',
+  );
 });
 
 /** The quick start of the README: the commands between its two headings. */
