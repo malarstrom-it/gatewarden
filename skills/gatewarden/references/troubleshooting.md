@@ -74,6 +74,17 @@ addresses in `allowedCidrs`. A request from anywhere else is refused. The
 answer says why: `forbidden: the source address 192.0.2.7 is not in the trust
 list (allowedCidrs)`.
 
+Two things cause it:
+
+* the address of the proxy is not in `allowedCidrs` — add the address of the
+  proxy to `allowedCidrs` and restart the daemon;
+* the installation has a `secret` and the caller did not present it in the
+  `X-Relay-Secret` header.
+
+The second one says `forbidden: the relay secret is missing or wrong`. The
+answer does not say which of the two it was: a caller that sends the wrong
+value is refused the same way as a caller that sends none.
+
 ## The registry answers 403
 
 By design, and for the same reason: the registry serves the configuration
@@ -91,11 +102,19 @@ forbidden: the source address 192.0.2.7 is not in the trust list (allowedCidrs)
 
 Two things cause it:
 
-* the address of the proxy is not in `allowedCidrs` — the proxy cannot poll
-  the document, so no route reaches it. Add the address of the proxy to
-  `allowedCidrs` and restart the daemon;
+* the address of the proxy is not in the trust list — not in `allowedCidrs`
+  and not in `registryAllowedCidrs` — so the proxy cannot poll the document,
+  and no route reaches it. Add the address of the proxy to `allowedCidrs` and
+  restart the daemon;
 * the installation has a `secret` and the caller did not present it in the
-  `X-Registry-Secret` header.
+  `X-Registry-Secret` header. The answer says `forbidden: the registry
+  secret is missing or wrong`, and it does not say whether the value was
+  missing or wrong.
+
+The two listeners take the same secret, but each one in its own header: the
+relay reads it in `X-Relay-Secret` and the registry in `X-Registry-Secret`.
+A proxy that presents the secret to the relay and not to the registry
+therefore gets `403` from the registry while the relay answers `200`.
 
 A refusal of the registry does not stop the relay: the two have their own
 lists, and `registryAllowedCidrs` widens the list of the registry without

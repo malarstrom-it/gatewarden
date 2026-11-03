@@ -198,14 +198,20 @@ the installation you are in, and `gatewarden config --write` writes the file.
 Both listeners bind on every address of the machine, and both answer only the addresses
 in the trust list. An address outside the list gets `403`.
 
+The address is only the first of the two causes. Both listeners also check the shared `secret`
+of the installation: the relay takes it in `X-Relay-Secret` and the registry in
+`X-Registry-Secret`, so a caller that presents it to the relay but not to the registry
+gets `403` from the registry alone. The answer says which of the two rules was broken,
+but a missing secret and a wrong secret read the same: `secret is missing or wrong`.
+
 `allowedCidrs` covers the relay, which takes the `X-Dev-Target` dispatch header from
 those addresses, and the registry as well. `registryAllowedCidrs` covers the registry
 alone, on top of `allowedCidrs`. It widens the list and never narrows it.
 
 The default of `allowedCidrs` is the loopback of the machine and the IPv6 prefixes of its
 own networks. The address of your proxy is not on it: add it, or every request from the
-proxy is refused with `403`. The daemon reads the file at start-up, so restart it after
-a change.
+proxy is refused with `403` before the secret is even looked at. The daemon reads the
+file at start-up, so restart it after a change.
 
 ## The proxy adapter
 
@@ -315,9 +321,9 @@ returned URL, and remove the route after the server is gone.
 | `gatewarden register` says `no DNS zone is configured` | The configuration file has no `zone` | Write the zone into the configuration file (`"zone": "example.com"`) and register again |
 | The address answers `502` | The dev server does not listen on the port you registered | Look at it with `gatewarden list`. The state column says `up` or `down` |
 | The address answers `404` at the proxy | The proxy has not picked the route up yet, or the wiring is not in place | Wait one poll interval. Then check that the `http` provider is in the static configuration of the proxy, and that the proxy was restarted after it was added |
-| The relay answers `403` | The address of the proxy is not in `allowedCidrs` | Add the address of the proxy to `allowedCidrs` in the configuration file, and restart the daemon |
-| The registry answers `403` | The address that asks for the configuration document is not in the trust list | Add the address to `allowedCidrs` or to `registryAllowedCidrs`, and restart the daemon. The answer says which address was refused |
-| The registry answers `403`, the relay answers `200` | Two causes. The registry has two lists — the list of the relay (`allowedCidrs`) and, on top of it, the list of the registry (`registryAllowedCidrs`) — and the address that polls the registry is in neither of them. The two listeners are then reached from different addresses: the relay sees the one that is in its own list. Or the installation has a `secret` and the poll did not present it: the relay takes the secret in `X-Relay-Secret` and the registry in `X-Registry-Secret`, so a proxy that presents it to the relay but not to the registry gets `403` here | Add the address that polls the registry to `allowedCidrs` or to `registryAllowedCidrs` in the configuration file, and restart the daemon. If the installation has a `secret`, let the proxy send it in `X-Registry-Secret` when it polls the document. The answer says which address was refused, or that the secret is missing |
+| The relay answers `403` | Two causes. The address of the proxy is not in `allowedCidrs`. Or the installation has a `secret` and the request did not present it: the relay takes the secret in `X-Relay-Secret` | Add the address of the proxy to `allowedCidrs` in the configuration file, and restart the daemon. If the installation has a `secret`, let the proxy send it in `X-Relay-Secret`. The answer says which address was refused, or that the secret is missing or wrong |
+| The registry answers `403` | Two causes. The address that asks for the configuration document is not in the trust list — the list of the relay (`allowedCidrs`) and, on top of it, the list of the registry (`registryAllowedCidrs`). Or the installation has a `secret` and the poll did not present it: the registry takes the secret in `X-Registry-Secret` | Add the address to `allowedCidrs` or to `registryAllowedCidrs`, and restart the daemon. If the installation has a `secret`, let the proxy send it in `X-Registry-Secret` when it polls the document. The answer says which address was refused, or that the secret is missing or wrong |
+| The registry answers `403`, the relay answers `200` | Two causes. The registry has two lists — the list of the relay (`allowedCidrs`) and, on top of it, the list of the registry (`registryAllowedCidrs`) — and the address that polls the registry is in neither of them. The two listeners are then reached from different addresses: the relay sees the one that is in its own list. Or the installation has a `secret` and the poll did not present it, or presented the wrong value: the relay takes the secret in `X-Relay-Secret` and the registry in `X-Registry-Secret`, so a proxy that presents it to the relay but not to the registry gets `403` here | Add the address that polls the registry to `allowedCidrs` or to `registryAllowedCidrs` in the configuration file, and restart the daemon. If the installation has a `secret`, let the proxy send it in `X-Registry-Secret` when it polls the document. The answer says which address was refused, or that the secret is missing or wrong |
 | The certificate of the address is not trusted | The resolver was not asked for a wildcard of the project, or the zone is another one | Look at the resolver in the log of the proxy. `"tlsMode": "fqdn"` asks for one certificate per address instead of one per project |
 | The host name does not resolve | The DNS zone has no wildcard record for the subdomains | Add a `*` record for the zone to your DNS |
 | `gatewarden doctor` says `not running` | The daemon is not up | Run `gatewarden start`, and read the log file the command names |
