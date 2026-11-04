@@ -9,6 +9,12 @@
  * TypeScript source is used, so a launcher always runs the code that is in
  * the working tree; the compiled build is the fallback for a checkout
  * without the sources.
+ *
+ * A launcher names the compiled module it runs, and nothing else. The
+ * source is derived from that name here, so that no launcher of the
+ * published package names a path of the source: the package ships no
+ * source, and a path of the source in the package is a path the reader
+ * of the package cannot follow.
  */
 
 import { existsSync } from 'node:fs';
@@ -17,6 +23,12 @@ import { fileURLToPath } from 'node:url';
 
 /** The name of the package on the registry. */
 const PACKAGE_NAME = '@malarstrom/gatewarden';
+
+/** The directory the compiled output of the package lives in. */
+const COMPILED_DIRECTORY = 'dist';
+
+/** The directory the TypeScript source of the package lives in. */
+const SOURCE_DIRECTORY = 'src';
 
 /**
  * The `node_modules` directories in the path of a launcher.
@@ -41,14 +53,51 @@ function nodeModulesOf(launcherUrl) {
 }
 
 /**
- * @param launcherUrl the URL of the launcher (`import.meta.url`)
- * @param source the source module, relative to the launcher
- * @param compiled the compiled module, relative to the launcher
- * @returns the URL of the module to run, or `null` when neither exists
+ * The source of a compiled module.
+ *
+ * The two forms of the code of the package mirror each other: the
+ * TypeScript source in the source directory and the compiled output in
+ * the compiled directory. A launcher names the compiled module it runs,
+ * and the source of that module is derived from the name — the compiled
+ * directory becomes the source directory, and the extension of the
+ * compiled module becomes the extension of the source.
+ *
+ * @param {string} compiled the compiled module, relative to the launcher
+ * @returns {string | null} the source module, relative to the launcher,
+ *   or `null` when the name of the compiled module names no source
  */
-export function resolveEntry(launcherUrl, source, compiled) {
+function sourceOf(compiled) {
+  const parts = compiled.split('/');
+  const directory = parts.lastIndexOf(COMPILED_DIRECTORY);
+  const file = parts[parts.length - 1];
+
+  if (directory === -1 || !file.endsWith('.js')) return null;
+
+  parts[directory] = SOURCE_DIRECTORY;
+  parts[parts.length - 1] = `${file.slice(0, -'.js'.length)}.ts`;
+
+  return parts.join('/');
+}
+
+/**
+ * The module a launcher runs.
+ *
+ * The launcher names the compiled module, and the source of that module
+ * is derived from the name. An installed package runs the compiled
+ * module: the package ships no source, and Node cannot strip TypeScript
+ * types under `node_modules`. A checkout runs the source when it is
+ * there, so that the launcher runs the code of the working tree; the
+ * compiled module is the fallback for a checkout without the sources.
+ *
+ * @param {string} launcherUrl the URL of the launcher (`import.meta.url`)
+ * @param {string} compiled the compiled module, relative to the launcher
+ * @returns {URL | null} the URL of the module to run, or `null` when
+ *   neither the source nor the compiled module exists
+ */
+export function resolveEntry(launcherUrl, compiled) {
   const installed = nodeModulesOf(launcherUrl).length > 0;
-  const candidates = installed ? [compiled] : [source, compiled];
+  const source = sourceOf(compiled);
+  const candidates = installed || source === null ? [compiled] : [source, compiled];
 
   for (const candidate of candidates) {
     const url = new URL(candidate, launcherUrl);
