@@ -12,7 +12,7 @@
  * | --- | --- | --- |
  * | registry port | 45002 | 46002 |
  * | relay port | 45001 | 46001 |
- * | domain | `home.malarstrom.com` | `gwtest.local` |
+ * | domain | `example.com` | `gwtest.local` |
  * | state directory | `~/.local/state/gatewarden/` | `/tmp/gatewarden-test/` |
  *
  * The ports of the live system are named here as well, so that the test

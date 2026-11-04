@@ -134,14 +134,14 @@ def main() -> None:
                 "name": "Project Card",
                 "kind": "card",
                 "html": '<section class="card overflow-hidden"><div class="border-b border-border px-6 py-4">'
-                '<h2 class="text-lg font-semibold tracking-tight">traefik-api</h2></div></section>',
+                '<h2 class="text-lg font-semibold tracking-tight">my-app</h2></div></section>',
                 "css": ".card{background:#fff;border:1px solid #e2e6ee;border-radius:12px}",
             },
             {
                 "name": "Route Table",
                 "kind": "custom",
                 "html": '<table class="table"><thead class="table-head"><tr><th>Route</th><th>Endpoint</th>'
-                '<th>Status</th></tr></thead><tbody class="table-body"><tr><td>main</td><td>main.traefik-api.home.malarstrom.com</td>'
+                '<th>Status</th></tr></thead><tbody class="table-body"><tr><td>main</td><td>main.my-app.example.com</td>'
                 '<td><span class="route-state badge">Up</span></td></tr></tbody></table>',
                 "css": ".table{width:100%;font-size:14px}.table-head th{font-size:12px;text-transform:uppercase;"
                 "letter-spacing:.025em;color:#57616d;padding:12px 24px;border-bottom:1px solid #e2e6ee}"

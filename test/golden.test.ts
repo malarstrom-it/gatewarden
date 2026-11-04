@@ -13,6 +13,10 @@
  * S3 changed the contract in exactly one place: the index router is gone
  * (D8, §10.1). The golden files hold the same document without that router,
  * and the test below proves that the rest of the document did not move.
+ *
+ * S81 changed the values of the fixtures once, and the golden files with
+ * them: the zone and the host name of the installation became the example
+ * values of the repository. The shape of the documents did not move.
  */
 
 import assert from 'node:assert/strict';
@@ -53,6 +57,6 @@ test('no golden document holds an index router any more (D8)', () => {
   for (const goldenCase of GOLDEN_CASES) {
     const document = traefikAdapter.render(goldenCase.routes, goldenCase.config);
     assert.ok(!document.includes('dev-index'), `the ${goldenCase.name} document still holds the index router`);
-    assert.ok(!document.includes('index.home.malarstrom.com'), `the ${goldenCase.name} document still holds the index host`);
+    assert.ok(!document.includes('index.example.com'), `the ${goldenCase.name} document still holds the index host`);
   }
 });

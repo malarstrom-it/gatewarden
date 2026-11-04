@@ -10,7 +10,7 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-URL = sys.argv[1] if len(sys.argv) > 1 else "https://index.home.malarstrom.com/"
+URL = sys.argv[1] if len(sys.argv) > 1 else "https://index.example.com/"
 OUT = Path(sys.argv[2] if len(sys.argv) > 2 else "artifacts/screenshots")
 OUT.mkdir(parents=True, exist_ok=True)
 

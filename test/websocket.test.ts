@@ -114,7 +114,7 @@ test('a websocket upgrade is tunnelled through the relay', { timeout: TEST_TIMEO
   const server = createRelayServer(store, makeConfig({}));
   state.server = server;
   const port = await listen(server);
-  const registration = store.upsert({ project: 'alpha', branch: 'main', devPort: echo.port, zone: 'home.malarstrom.com' });
+  const registration = store.upsert({ project: 'alpha', branch: 'main', devPort: echo.port, zone: 'example.com' });
   const round = await wsRoundTrip(port, '/ws', 'hello hmr', { [DISPATCH_HEADER]: registration.id });
   state.round = round;
   await round.close();
@@ -130,7 +130,7 @@ test('the relay forwards the dispatch header to the websocket upstream', { timeo
   const server = createRelayServer(store, makeConfig({}));
   state.server = server;
   const port = await listen(server);
-  const registration = store.upsert({ project: 'alpha', branch: 'main', devPort: echo.port, zone: 'home.malarstrom.com' });
+  const registration = store.upsert({ project: 'alpha', branch: 'main', devPort: echo.port, zone: 'example.com' });
   const round = await wsRoundTrip(port, '/ws', 'ping', { [DISPATCH_HEADER]: registration.id });
   state.round = round;
   await round.close();
@@ -170,7 +170,7 @@ test('closing the relay closes the upgraded sockets', { timeout: TEST_TIMEOUT },
   const server = createRelayServer(store, makeConfig({}));
   state.server = server;
   const port = await listen(server);
-  const registration = store.upsert({ project: 'alpha', branch: 'main', devPort: echo.port, zone: 'home.malarstrom.com' });
+  const registration = store.upsert({ project: 'alpha', branch: 'main', devPort: echo.port, zone: 'example.com' });
   const connection = await openUpgrade(port, '/ws', { [DISPATCH_HEADER]: registration.id });
   state.connection = connection;
 
@@ -193,7 +193,7 @@ test('the relay survives a peer that resets an upgrade', { timeout: TEST_TIMEOUT
   const server = createRelayServer(store, makeConfig({}));
   state.server = server;
   const port = await listen(server);
-  const registration = store.upsert({ project: 'alpha', branch: 'main', devPort: echo.port, zone: 'home.malarstrom.com' });
+  const registration = store.upsert({ project: 'alpha', branch: 'main', devPort: echo.port, zone: 'example.com' });
 
   // A peer that resets the connection instead of closing it: the
   // refusal and the reset race each other. Node hands the upgraded
