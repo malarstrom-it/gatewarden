@@ -951,10 +951,11 @@ order, and every one of them is a thing the user does.
 
 The installation is then **verified**: `gatewarden doctor` checks the
 configuration file, the state directory, the daemon, the zone, the shared
-middlewares, the two ports, the routes, the proxy, the service unit and
-the old layout, and names every check it made with the reason for it
-(§9.9, D14); `curl http://<host>:45002/healthz` answers `ok`; a
-registered route opens in a browser.
+middlewares, the two ports, the routes, the proxy, the trust list, the
+address of the proxy, the service unit and the old layout, and names every
+check it made with the reason for it (§9.9, D14); `curl
+http://<host>:45002/healthz` answers `ok`; a registered route opens in a
+browser.
 
 The doctor never fails because of the machine it runs on: a missing
 daemon, a missing zone, a proxy that does not answer and a service that
@@ -1095,9 +1096,10 @@ Every check has a name, a status and a reason:
 The checks are the configuration file, the state directory, the daemon,
 the DNS zone, the shared middlewares, the two ports the gateway serves on
 (the registry and the relay), the routes, the routes and the zone
-together, the proxy, the service unit, and the old layout.
+together, the proxy, the trust list, the trust list of the registry, the
+address of the proxy, the service unit, and the old layout.
 
-Two of them are worth naming:
+Three of them are worth naming:
 
 * **The daemon is lazy.** The daemon starts by itself with the first route
   (D7), so a daemon that does not run is the normal state of an
@@ -1111,6 +1113,23 @@ Two of them are worth naming:
   to an installation that is not set up here: the zone is one of the
   things to do, with the reason and the way to get one, and the doctor
   exits 0.
+* **The trust list and the address of the proxy.** The trust list
+  (`allowedCidrs`) holds the addresses that may talk to the gateway, and
+  the doctor prints the list it uses. The address of the proxy has to be
+  in it: the proxy polls the document and sends the dispatch header, and
+  an address that is not in the list is answered with a 403 (D15). The
+  doctor resolves the host of the proxy's API and compares the addresses
+  it finds with the list. An installation that refuses its own proxy is
+  not broken: it is a warning with the way out, never a failure.
+
+The address of the proxy's API is read from the environment variable
+`GATEWARDEN_PROXY_API_URL`; the wizard is told the same address with its
+`--api-base-url` flag. Without the variable the doctor uses the default
+of the adapter (`http://127.0.0.1:8080` for Traefik), and that default is
+the address of a proxy on this machine. The doctor resolves the host of
+that address and compares the addresses it finds with the trust list — the
+proxy itself is not asked. It needs the address most when the proxy runs
+on another machine.
 
 The exit code is 0 unless a check failed. `--strict` makes the warnings
 errors as well — for the one who wants the whole installation to be
