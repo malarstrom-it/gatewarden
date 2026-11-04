@@ -114,6 +114,15 @@ stays on the registry, and the one to install.
 - **A release is gated.** A version that does not typecheck, does not build
   or does not pass the tests never reaches the registry: the build and the
   tests are the gate of the release.
+- **The doctor warns about a proxy that is not in the trust list.** The
+  proxy polls the configuration document and sends the dispatch header, and
+  an address that is not in `allowedCidrs` is answered with a `403` — the
+  most common reason for one. The doctor resolves the host of the proxy's
+  API and compares the addresses it finds with the trust list: a proxy
+  that the list does not cover is a warning with the way out, never a
+  failure. The doctor prints the trust list it uses as well, so a reader
+  can see which addresses may talk to the gateway. The address of the
+  proxy's API is read from `GATEWARDEN_PROXY_API_URL`.
 
 ### Changed
 
@@ -162,6 +171,12 @@ stays on the registry, and the one to install.
   the daemon starts the worker and that `gatewarden start` starts the
   daemon. The test suite keeps every message of the package free of paths
   into the sources.
+- **The launchers of an installed package speak about the installation.** A
+  launcher in a package that was installed without its compiled output said
+  "no build found — run "npm run build"", and that command belongs to a
+  checkout: a reader of an installed package has no checkout and nothing to
+  build. The message says that the installation is incomplete and names the
+  command that reinstalls the package the way it was installed.
 
 ### Security
 
