@@ -238,9 +238,11 @@ The maintainer cuts the releases, not the contributors.
 1. The version in `package.json` is set to the next version, and the
    changelog gets its section.
 2. The commit is tagged `vX.Y.Z`. The tag and the version must agree.
-3. The publish workflow stages the version on the npm registry. It does not
-   publish it: a maintainer approves the staged version with two-factor
-   authentication, in the CLI or on npmjs.com.
+3. The publish workflow publishes the version from GitHub, with npm's
+   trusted publishing: no token is used and no secret is stored in the
+   repository. The tag is the trigger, and the workflow publishes the
+   version the tag names. What npm asks for by hand is written down in
+   "Moving the repository to GitHub" below.
 4. The release notes are the section of the changelog.
 
 Never publish, never tag a release, and never touch the registry from a
