@@ -355,6 +355,7 @@ ok       routes             1 registered
 ok       routes and zone    1 registered, the zone is example.com
 warn     proxy              no traefik API answered
 ok       trust list         the trust list (allowedCidrs): 127.0.0.1/32, ::1/128, 192.0.2.0/24
+ok       registry list      the trust list of the registry (registryAllowedCidrs) is empty: the registry serves the configuration document to the same addresses as the relay
 skipped  proxy address      the doctor does not know where the proxy is: the trust list holds addresses besides the loopback
 warn     service            not installed: run "gatewarden install-service" to survive a reboot
 nothing is broken (2 checks are not in place here: proxy, service)
@@ -376,7 +377,8 @@ that does not apply to the installation is `skipped`.
 | `routes and zone` | the routes and the zone together — only when there is at least one route | the zone is there | — | there are routes but no zone: a new route cannot be named |
 | `proxy` | the API of the proxy (`/api/version` and `/api/http/routers`) | the API answered | no API answered — the gateway works without it, but the proxy is not reachable from here | the adapter failed: the detail says why |
 | `trust list` | the trust list (`allowedCidrs`) — the addresses that may talk to the gateway | the list holds an address; the detail prints the whole list | the list is empty: no address may talk to the gateway — or the configuration file holds nothing, and the only addresses that may talk to the gateway are the ones this machine adds | — |
-| `proxy address` | the address the proxy connects from — the one that polls the document and sends the dispatch header; when the doctor does not know where the proxy is, the check is skipped | the doctor found the proxy, and the trust list covers the addresses it connects from | the trust list does not cover the address of the proxy: the gateway answers it a `403` — or the list is empty, or holds the loopback and nothing else | — |
+| `registry list` | the trust list of the registry (`registryAllowedCidrs`) — the addresses that may read the configuration document | the detail prints the whole list; an empty list is not a warning: the registry then serves the document to the same addresses as the relay | — | — |
+| `proxy address` | the addresses the host of the proxy's API resolves to — the addresses the proxy connects from are usually the same; when the doctor does not know where the proxy is, the check is skipped | the doctor resolved the host of the proxy's API, and the trust list covers the addresses it found | the trust list does not cover the addresses of the host of the proxy's API: the gateway answers them a `403` — or the list is empty, or holds the loopback and nothing else | — |
 | `legacy layout` | the old directory `~/.traefik-dev/` | — | it is still there: `gatewarden migrate` writes the configuration and the route store into the new layout and leaves the directory, so the warning stays until the directory is removed by hand | — |
 | `old name layout` | the directories of the name the package had before the rename (`~/.config/dev-gateway/` and the state directory of the same name) | — | it is still there: `gatewarden migrate` writes the configuration and the route store into the new layout and leaves the directories, so the warning stays until they are removed by hand | — |
 | `old service` | the unit of the name the package had before the rename (`dev-gateway.service`, the old launchd label) | — | it is still there: it runs a launcher that does not exist any more — `gatewarden install-service` writes the new one | — |
@@ -395,6 +397,33 @@ no proxy API in reach).
   "paths": { "configPath": "…", "stateDir": "…", "logFile": "…" }
 }
 ```
+
+### The address of the proxy's API
+
+The doctor has to know where the proxy is: the addresses the proxy
+connects from are the addresses the trust list has to hold. It takes
+them from the address of the proxy's API — it resolves the host of that
+address and uses the addresses it finds. The proxy itself is not asked.
+
+The address is a URL to the API of the proxy — the base URL, the one the
+adapter appends its own paths to. The doctor reads it from the
+environment:
+
+```bash
+export GATEWARDEN_PROXY_API_URL="http://proxy.example.com:8080"
+```
+
+Without the variable the doctor uses the default of the adapter, and that
+default is the address of a proxy on this machine (`http://127.0.0.1:8080` for
+Traefik). The variable is needed when the proxy lives somewhere else: on
+another machine, in a container, or behind a name that is not the one it is
+reached by. The doctor reads the variable alone — nothing else in the package
+reads it.
+
+The addresses the doctor compares are the ones the host of the API resolves
+to, and they are not always the address the proxy connects from: a proxy
+behind NAT connects from the address of the NAT, and the trust list has to
+hold that one.
 
 ---
 
@@ -426,13 +455,18 @@ more than a setup that claims everything is fine.
 | `--yes` | the same as `--non-interactive` |
 | `--no-verify` | skips the end-to-end verification |
 | `--proxy <id>` | the proxy to set up (default: the configured one) |
-| `--api-base-url <url>` | where the proxy's API answers |
+| `--api-base-url <url>` | where the proxy's API answers — a URL to the API of the proxy, the one the adapter appends its own paths to |
 | `--poll-interval <ms>` | how long the proxy gets to pick the route up (default: 3000) |
 | `--prompt-timeout <s>` | how long a question waits for an answer (default: 30) |
 
 Without a terminal (no TTY on the standard input) the wizard never asks: it
 keeps the values the configuration file holds and reports them as
 unconfirmed.
+
+The doctor needs the same address and has no flag of its own: it reads it
+from the environment variable `GATEWARDEN_PROXY_API_URL`, the same URL that
+`--api-base-url` names. See [The address of the proxy's
+API](#the-address-of-the-proxys-api).
 
 ### The six steps
 

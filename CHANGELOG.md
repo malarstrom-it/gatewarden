@@ -13,47 +13,6 @@ names. Every release gets a section, newest first.
 
 ## Unreleased
 
-### Changed
-
-- **The package names one address everywhere.** The security policy named
-  another address than the readme, and the package names one address now:
-  the support address, which the readme named already. A report that goes
-  to the address of the package reaches the maintainer of the package, and
-  the guard reads the documents of the repository too.
-
-- **The package says where its source lives.** The manifest names the
-  repository of the project in `repository`, `homepage` and `bugs`, and
-  the README has a section that names it too. A reader on npmjs.org
-  reaches the source from the page of the package now, and the page of
-  the package no longer asks a question it could not answer.
-
-- **The message about a missing build names one command.** A launcher
-  without a build told the reader to reinstall the package the way it
-  was installed, and named the command of a project install and the
-  command of a global install, so the reader had to choose one of the
-  two. The launcher knows which installation it is in — a dependency of
-  a project lives in the `node_modules` of that project, and a global
-  installation lives in the global root of npm — and the message names
-  the command of that installation now: `npm install @malarstrom/gatewarden`
-  for a project, `npm install -g @malarstrom/gatewarden` for a global one.
-
-### Fixed
-
-- **The manifest names no file that the package does not ship.** The
-  command that empties the build output of a checkout pointed at a
-  script that the package does not carry: a reader who ran it in an
-  installed package got an error about a file that was not there. The
-  command removes the build output itself now, and it does nothing in an
-  installed package — there is no build output there to empty.
-
-- **An unknown proxy id is an error, and not a loop.** A `proxy` key that
-  names an id the package does not know killed the worker at once, and the
-  daemon started it again and again: the log filled with "respawning", and
-  `gatewarden start` failed on a timeout that said nothing about the
-  mistake. The daemon stops with the reason now, the command says which id
-  is unknown and which ids exist — `unknown proxy "caddy" (known:
-  traefik)` — and `gatewarden doctor` reports the id as an error.
-
 ## 0.1.1 - 2026-11-01
 
 The version before this one, `0.1.0`, was published on the registry and
@@ -120,6 +79,15 @@ stays on the registry, and the one to install.
 - **A release is gated.** A version that does not typecheck, does not build
   or does not pass the tests never reaches the registry: the build and the
   tests are the gate of the release.
+- **The doctor warns about a proxy that is not in the trust list.** The
+  proxy polls the configuration document and sends the dispatch header, and
+  an address that is not in `allowedCidrs` is answered with a `403` — the
+  most common reason for one. The doctor resolves the host of the proxy's
+  API and compares the addresses it finds with the trust list: a proxy
+  that the list does not cover is a warning with the way out, never a
+  failure. The doctor prints the trust list it uses as well, so a reader
+  can see which addresses may talk to the gateway. The address of the
+  proxy's API is read from `GATEWARDEN_PROXY_API_URL`.
 
 ### Changed
 
@@ -135,6 +103,27 @@ stays on the registry, and the one to install.
   public name of the package is unchanged: the name in the npm scope, the
   names of the binaries, the names of the MCP tools, the commands and the
   ports stay what they were.
+- **The package says where its source lives.** The manifest names the
+  repository of the project in `repository`, `homepage` and `bugs`, and
+  the README has a section that names it too. A reader on npmjs.org
+  reaches the source from the page of the package now, and the page of
+  the package no longer asks a question it could not answer.
+
+- **The package names one address everywhere.** The security policy named
+  another address than the readme, and the package names one address now:
+  the support address, which the readme named already. A report that goes
+  to the address of the package reaches the maintainer of the package, and
+  the guard reads the documents of the repository too.
+
+- **The message about a missing build names one command.** A launcher
+  without a build told the reader to reinstall the package the way it
+  was installed, and named the command of a project install and the
+  command of a global install, so the reader had to choose one of the
+  two. The launcher knows which installation it is in — a dependency of
+  a project lives in the `node_modules` of that project, and a global
+  installation lives in the global root of npm — and the message names
+  the command of that installation now: `npm install @malarstrom/gatewarden`
+  for a project, `npm install -g @malarstrom/gatewarden` for a global one.
 
 ### Deprecated
 
@@ -168,6 +157,25 @@ stays on the registry, and the one to install.
   the daemon starts the worker and that `gatewarden start` starts the
   daemon. The test suite keeps every message of the package free of paths
   into the sources.
+- **The launchers of an installed package speak about the installation.** A
+  launcher in a package that was installed without its compiled output said
+  "no build found — run "npm run build"", and that command belongs to a
+  checkout: a reader of an installed package has no checkout and nothing to
+  build. The message says that the installation is incomplete and names the
+  command that reinstalls the package the way it was installed.
+- **The manifest names no file that the package does not ship.** The
+  command that empties the build output of a checkout pointed at a
+  script that the package does not carry: a reader who ran it in an
+  installed package got an error about a file that was not there. The
+  command removes the build output itself now, and it does nothing in an
+  installed package — there is no build output there to empty.
+- **An unknown proxy id is an error, and not a loop.** A `proxy` key that
+  names an id the package does not know killed the worker at once, and the
+  daemon started it again and again: the log filled with "respawning", and
+  `gatewarden start` failed on a timeout that said nothing about the
+  mistake. The daemon stops with the reason now, the command says which id
+  is unknown and which ids exist — `unknown proxy "caddy" (known:
+  traefik)` — and `gatewarden doctor` reports the id as an error.
 
 ### Security
 
