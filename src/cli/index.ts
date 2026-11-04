@@ -45,7 +45,12 @@ import {
   resolvePaths,
   type GatewayPaths,
 } from '../core/paths.ts';
-import { legacyAppLayout, migrateLegacyAppLayout, migrateLegacyLayout } from '../core/migrate.ts';
+import {
+  legacyAppLayout,
+  migrateLegacyAppLayout,
+  migrateLegacyLayout,
+  type LayoutMigrationReport,
+} from '../core/migrate.ts';
 import { RegistrationStore } from '../core/state.ts';
 import { withRouteLock } from '../core/lock.ts';
 import { ensureDaemon, daemonStatus, isGatewayDaemon, isProcessAlive, pidFilePath, stopDaemon } from '../core/daemonControl.ts';
@@ -514,10 +519,76 @@ function commandConfig(flags: Record<string, string | boolean>): number {
 }
 
 /**
- * Move the old layout (`~/.traefik-dev/`) to the new one.
+ * The lines of one old layout.
  *
- * The report says what moved and what stayed where it was. Nothing is ever
- * deleted: the old directory is left in place.
+ * The lines say what happened to the layout: what was moved, what was not
+ * moved and why, and where the files that were not moved are. A layout that
+ * was left behind is not "nothing to migrate": the report says that it was
+ * not migrated, and the reason says why.
+ *
+ * @param label The name of the layout, as the report heads it.
+ * @param name The name of the layout, as the sentences about it read.
+ */
+function migrationLines(
+  label: string,
+  name: string,
+  report: LayoutMigrationReport,
+  dryRun: boolean,
+): string[] {
+  const lines: string[] = [`${label}:  ${report.legacyDir}`];
+
+  if (report.config !== undefined) {
+    lines.push(`configuration:  ${report.config.from} -> ${report.config.to}`);
+  }
+  if (report.routes !== undefined) {
+    lines.push(
+      `routes:         ${report.routes.from} -> ${report.routes.to} (${report.routes.count} routes)`,
+    );
+  }
+  for (const file of report.skipped) {
+    lines.push(`not migrated:   ${file.reason}`);
+  }
+  for (const file of report.leftInPlace) lines.push(`left in place:  ${file}`);
+  for (const note of report.notes) lines.push(`note:           ${note}`);
+
+  const notMigrated = report.skipped.map((file) => file.what);
+  const list = notMigrated.join(' and the ');
+  if (report.migrated && notMigrated.length === 0) {
+    lines.push(dryRun ? 'dry run: nothing was moved' : `the ${name} was migrated`);
+  } else if (report.migrated) {
+    lines.push(
+      dryRun
+        ? `dry run: the ${name} would be partly migrated: the ${list} would not come over`
+        : `the ${name} was partly migrated: the ${list} did not come over`,
+    );
+  } else if (notMigrated.length > 0) {
+    if (report.skipped.every((file) => file.byNewerLayout)) {
+      lines.push(
+        dryRun
+          ? `dry run: the ${name} would not be migrated: the newer layout comes first`
+          : `the ${name} was not migrated: the newer layout was migrated instead`,
+      );
+    } else {
+      const why = `the new layout already holds its own ${notMigrated.join(' and ')}`;
+      lines.push(
+        dryRun
+          ? `dry run: the ${name} would not be migrated: ${why}`
+          : `the ${name} was not migrated: ${why}`,
+      );
+    }
+  } else {
+    lines.push(`nothing to migrate in the ${label}`);
+  }
+
+  return lines;
+}
+
+/**
+ * Move the old layouts to the new one.
+ *
+ * The report says what happened to every layout: what moved, what stayed
+ * where it was, and why a layout was not migrated at all. Nothing is ever
+ * deleted: the old directories are left in place.
  */
 function commandMigrate(flags: Record<string, string | boolean>): number {
   const dryRun = flags['dry-run'] === true;
@@ -557,34 +628,15 @@ function commandMigrate(flags: Record<string, string | boolean>): number {
     return 0;
   }
 
-  const lines: string[] = [`old name layout:  ${oldNameReport.legacyDir}`];
-  if (oldNameReport.config) {
-    lines.push(`configuration:  ${oldNameReport.config.from} -> ${oldNameReport.config.to}`);
-  }
-  if (oldNameReport.routes) {
-    lines.push(
-      `routes:         ${oldNameReport.routes.from} -> ${oldNameReport.routes.to} (${oldNameReport.routes.count} routes)`,
-    );
-  }
-  for (const file of oldNameReport.leftInPlace) lines.push(`left in place:  ${file}`);
-  for (const note of oldNameReport.notes) lines.push(`note:           ${note}`);
-  if (oldNameReport.migrated) {
-    lines.push(dryRun ? 'dry run: nothing was moved' : 'the old name layout was migrated');
-  } else {
-    lines.push('nothing to migrate in the old name layout');
-  }
-
-  lines.push(`legacy layout:  ${report.legacyDir}`);
-  if (report.config) lines.push(`configuration:  ${report.config.from} -> ${report.config.to}`);
-  if (report.routes) {
-    lines.push(`routes:         ${report.routes.from} -> ${report.routes.to} (${report.routes.count} routes)`);
-  }
-  for (const file of report.leftInPlace) lines.push(`left in place:  ${file}`);
-  for (const note of report.notes) lines.push(`note:           ${note}`);
-  if (report.migrated) {
-    lines.push(dryRun ? 'dry run: nothing was moved' : 'the old layout was migrated');
-  } else {
-    lines.push('nothing to migrate');
+  const lines: string[] = [
+    ...migrationLines('old name layout', 'old name layout', oldNameReport, dryRun),
+    ...migrationLines('legacy layout', 'old layout', report, dryRun),
+  ];
+  // The way forward is a line of its own, at the end of the report: it
+  // names the file that holds the routes that did not come over, and says
+  // what to do with it.
+  for (const advice of [oldNameReport.next, report.next]) {
+    if (advice !== undefined) lines.push(`next:  ${advice}`);
   }
 
   process.stdout.write(lines.join('\n') + '\n');

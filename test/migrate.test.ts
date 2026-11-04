@@ -557,3 +557,120 @@ test('the dry run of a home with both old layouts says the same thing twice', as
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
+
+/** A path as a pattern: the dots of a file name are not wildcards. */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+test('a home with both old layouts says what happened to the older one', async () => {
+  // The older layout is left behind when the newer one has already taken
+  // the files of the new layout. The report has to say that, and where the
+  // routes of the older layout are: "nothing to migrate" would hide it.
+  const { home } = makeBothLayouts();
+  try {
+    const { stdout } = await execFileAsync(process.execPath, [CLI, 'migrate'], {
+      env: cliEnv(home),
+      cwd: REPO_ROOT,
+    });
+
+    // The newer layout was migrated, the older one was not.
+    assert.match(stdout, /the old name layout was migrated/);
+    assert.match(stdout, /the old layout was not migrated/);
+    assert.doesNotMatch(
+      stdout,
+      /nothing to migrate in the legacy layout/,
+      `the report calls the skipped layout empty:\n${stdout}`,
+    );
+
+    // The files of the older layout are named, with the routes they hold.
+    const oldRoutes = path.join(home, '.traefik-dev', 'registrations.json');
+    assert.match(stdout, new RegExp(escapeRegExp(oldRoutes)));
+    assert.match(stdout, /not migrated:.*route store/);
+    assert.match(stdout, /1 routes/);
+
+    // The way forward is a line of its own, and it names the file that
+    // holds the routes that did not come over.
+    const next = stdout.trim().split('\n').filter((line) => line.startsWith('next:'));
+    assert.equal(next.length, 1, `the report has no way forward:\n${stdout}`);
+    assert.match(next[0] ?? '', /registrations\.json/);
+
+    // Nothing was deleted: the old files are still where they were.
+    assert.ok(fs.existsSync(oldRoutes), 'the old route store was deleted');
+    assert.ok(fs.existsSync(path.join(home, '.traefik-dev', 'config.json')));
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('the report says what happened to every layout, in every home', async () => {
+  // Three homes: only the pre-package layout, only the layout of the old
+  // name, and both of them. Every layout of every home has a line of its
+  // own that says what happened to it.
+  const legacy = makeLegacy();
+  const oldName = makeOldName();
+  const both = makeBothLayouts();
+  const homes = [
+    { home: legacy.home, legacy: 'migrated', oldName: 'empty' },
+    { home: oldName.home, legacy: 'empty', oldName: 'migrated' },
+    { home: both.home, legacy: 'not migrated', oldName: 'migrated' },
+  ];
+  try {
+    for (const { home, legacy: what, oldName } of homes) {
+      const { stdout } = await execFileAsync(process.execPath, [CLI, 'migrate'], {
+        env: cliEnv(home),
+        cwd: REPO_ROOT,
+      });
+
+      // Both layouts are in the report.
+      assert.match(stdout, /old name layout:/);
+      assert.match(stdout, /legacy layout:/);
+
+      // The layout of the old name.
+      if (oldName === 'migrated') {
+        assert.match(stdout, /the old name layout was migrated/);
+      } else {
+        assert.match(stdout, /nothing to migrate in the old name layout/);
+      }
+
+      // The pre-package layout.
+      if (what === 'migrated') {
+        assert.match(stdout, /the old layout was migrated/);
+      } else if (what === 'empty') {
+        assert.match(stdout, /nothing to migrate in the legacy layout/);
+      } else {
+        assert.match(stdout, /the old layout was (not migrated|partly migrated)/);
+      }
+    }
+  } finally {
+    for (const home of [legacy.home, oldName.home, both.home]) {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  }
+});
+
+test('migrate --json says what happened to the older layout too', async () => {
+  const { home } = makeBothLayouts();
+  try {
+    const { stdout } = await execFileAsync(process.execPath, [CLI, 'migrate', '--json'], {
+      env: cliEnv(home),
+      cwd: REPO_ROOT,
+    });
+    const parsed = JSON.parse(stdout) as {
+      migrated: boolean;
+      skipped: Array<{ what: string; from: string; count?: number }>;
+      next?: string;
+      oldName: { migrated: boolean; skipped: unknown[] };
+    };
+
+    assert.equal(parsed.oldName.migrated, true, 'the newer layout was not migrated');
+    assert.equal(parsed.migrated, false, 'the older layout was migrated');
+    assert.ok(parsed.skipped.length > 0, 'the report does not say what was skipped');
+    assert.equal(parsed.skipped[0]?.what, 'configuration file');
+    assert.match(parsed.skipped[1]?.from ?? '', /registrations\.json/);
+    assert.equal(parsed.skipped[1]?.count, 1);
+    assert.match(parsed.next ?? '', /registrations\.json/);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
