@@ -88,6 +88,15 @@ const README_COMMANDS = CLI_COMMANDS.filter((command) => !['help', 'migrate'].in
 const KNOWN_COMMANDS = new Set(CLI_COMMANDS);
 
 /**
+ * The commands a markdown text documents that the CLI does not have,
+ * and the message the check gives about them.
+ */
+function unknownWithMessage(markdown: string): { unknown: string[]; message: string } {
+  const unknown = unknownCommands(markdown, KNOWN_COMMANDS);
+  return { unknown, message: unknownCommandMessage('the README', unknown) };
+}
+
+/**
  * Read the YAML front matter of a skill.
  *
  * The parser is deliberately small: it reads the fields this package's
@@ -277,20 +286,13 @@ test('the command check falls on a document outside the README', () => {
   }
 });
 
-test('the command check reads the commands, not the quoted output', () => {
+test('the command check reads the commands, not the sentences that mention them', () => {
   const markdown = [
     '## The CLI',
     '',
     '| Command | What it does |',
     '| --- | --- |',
     '| `gatewarden status` | Show the daemon state. |',
-    '',
-    'The output of a command that does not exist looks like this:',
-    '',
-    '```text',
-    '$ gatewarden frobnicate',
-    'gatewarden: unknown command "frobnicate"',
-    '```',
     '',
     'A sentence that mentions a command is prose, not documentation:',
     '',
@@ -299,10 +301,25 @@ test('the command check reads the commands, not the quoted output', () => {
     'Run `gatewarden frobnicate` to see the error.',
   ].join('\n');
 
-  // The command of the table, and nothing else: the code block and the
-  // two sentences are not documentation.
+  // The command of the table, and nothing else: the two sentences are
+  // not documentation.
   assert.deepEqual(documentedCommands(markdown), ['status']);
   assert.deepEqual(unknownCommands(markdown, KNOWN_COMMANDS), []);
+});
+
+test('the command check reads a sentence in a list item as prose', () => {
+  const markdown = [
+    '## The CLI',
+    '',
+    '- Run `gatewarden doctor` to check the installation.',
+    '- Run `gatewarden frobnicate` to see the error.',
+  ].join('\n');
+
+  assert.deepEqual(
+    unknownCommands(markdown, KNOWN_COMMANDS),
+    [],
+    'the command check reads a sentence in a list item as a command',
+  );
 });
 
 test('the command check catches a documented command the CLI does not have', () => {
@@ -375,20 +392,97 @@ test('the command check reads a call in a code block as a command', () => {
   );
 });
 
-test('the command check reads a transcript in a code block as output', () => {
+test('the command check reads the output of the CLI as a command it does not have', () => {
+  // The CLI writes this line for a command it does not have
+  // (src/cli/index.ts), so the line names a command the CLI lacks.
   const markdown = [
     '## The CLI',
     '',
     '```text',
     '$ gatewarden frobnicate',
-    'gatewarden: unknown command "frobnicate"',
+    'error: unknown command "frobnicate"',
     '```',
   ].join('\n');
 
+  const { unknown, message } = unknownWithMessage(markdown);
   assert.deepEqual(
-    documentedCommands(markdown),
-    [],
-    'the command check reads the output of a command as a command',
+    unknown,
+    ['frobnicate'],
+    'the command check does not read the output of the CLI as a command the CLI does not have',
+  );
+  assert.equal(
+    message,
+    'the README documents a command the CLI does not have: "gatewarden frobnicate"',
+    'the message of the check does not name the command the CLI does not have',
+  );
+});
+
+test('the command check reads an indented code block as a command', () => {
+  const markdown = [
+    '## The CLI',
+    '',
+    'A command in an indented block is a command:',
+    '',
+    '    gatewarden frobnicate',
+    '',
+  ].join('\n');
+
+  const { unknown, message } = unknownWithMessage(markdown);
+  assert.deepEqual(
+    unknown,
+    ['frobnicate'],
+    'the command check does not read an indented code block as a command',
+  );
+  assert.equal(
+    message,
+    'the README documents a command the CLI does not have: "gatewarden frobnicate"',
+    'the message of the check does not name the command the CLI does not have',
+  );
+});
+
+test('the command check reads a code block in a list item as a command', () => {
+  const markdown = [
+    '## The CLI',
+    '',
+    '- Register a dev server:',
+    '',
+    '  ```bash',
+    '  gatewarden frobnicate',
+    '  ```',
+    '',
+  ].join('\n');
+
+  const { unknown, message } = unknownWithMessage(markdown);
+  assert.deepEqual(
+    unknown,
+    ['frobnicate'],
+    'the command check does not read a code block in a list item as a command',
+  );
+  assert.equal(
+    message,
+    'the README documents a command the CLI does not have: "gatewarden frobnicate"',
+    'the message of the check does not name the command the CLI does not have',
+  );
+});
+
+test('the command check reads a list item with a description that starts with a point as a command', () => {
+  const markdown = [
+    '## The CLI',
+    '',
+    '- gatewarden register. Register a dev server.',
+    '- gatewarden frobnicate. Do something the CLI cannot do.',
+  ].join('\n');
+
+  const { unknown, message } = unknownWithMessage(markdown);
+  assert.deepEqual(
+    unknown,
+    ['frobnicate'],
+    'the command check does not read a list item with a description that starts with a point as a command',
+  );
+  assert.equal(
+    message,
+    'the README documents a command the CLI does not have: "gatewarden frobnicate"',
+    'the message of the check does not name the command the CLI does not have',
   );
 });
 

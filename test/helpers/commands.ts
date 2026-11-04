@@ -7,6 +7,11 @@
  * its reference files — so they live here, in one place, and every
  * document is read with them.
  *
+ * The rules read the places where a text presents a command as one: a
+ * table cell, a list item, a line of prose that holds nothing but the
+ * command, the calls of a code block (however the block is indented)
+ * and the output of the CLI for a command it does not have.
+ *
  * The list of the commands the CLI has comes from the source of the CLI
  * (`src/cli/index.ts`), not from a list written in a test: a list in a
  * test can be wrong the moment the CLI gets a command.
@@ -33,6 +38,33 @@ type LineKind = 'prose' | 'list' | 'quote' | 'code';
 interface MarkdownLine {
   kind: LineKind;
   text: string;
+  /**
+   * The spaces every line of the code block the line belongs to shares.
+   *
+   * A call in a block starts after them: a block in a list item is
+   * indented with the item, and an indented block is indented with four
+   * spaces. For every other kind of line the number is zero.
+   */
+  indent: number;
+}
+
+/**
+ * The number of spaces the lines of a code block share.
+ *
+ * A block in a list item is indented with the item, an indented block
+ * with four spaces. The number is the smallest indentation of the lines
+ * that are not blank, and a call in the block starts after it.
+ */
+function sharedIndent(block: string[]): number {
+  let indent = Number.POSITIVE_INFINITY;
+
+  for (const line of block) {
+    if (line.trim() === '') continue;
+    const spaces = /^ */.exec(line)?.[0].length ?? 0;
+    if (spaces < indent) indent = spaces;
+  }
+
+  return indent === Number.POSITIVE_INFINITY ? 0 : indent;
 }
 
 /**
@@ -44,16 +76,28 @@ interface MarkdownLine {
  */
 function markdownLines(markdown: string): MarkdownLine[] {
   const lines: MarkdownLine[] = [];
+  const block: string[] = [];
   let fence = '';
   let indented = false;
   let blank = true;
+
+  /** The lines of the code block that ends here, with its indentation. */
+  const flush = (): void => {
+    if (block.length === 0) return;
+    const indent = sharedIndent(block);
+    for (const text of block) lines.push({ kind: 'code', text, indent });
+    block.length = 0;
+  };
 
   for (const line of markdown.split('\n')) {
     const fenceMatch = /^\s{0,3}(`{3,}|~{3,})/.exec(line);
     if (fenceMatch !== null) {
       const marker = (fenceMatch[1] as string)[0] as string;
       if (fence === '') fence = marker;
-      else if (fence === marker) fence = '';
+      else if (fence === marker) {
+        fence = '';
+        flush();
+      }
       indented = false;
       blank = true;
       continue;
@@ -61,27 +105,25 @@ function markdownLines(markdown: string): MarkdownLine[] {
 
     if (fence !== '') {
       // Inside a fenced block.
-      indented = false;
-      blank = true;
-      lines.push({ kind: 'code', text: line });
+      block.push(line);
       continue;
     }
 
     if (indented) {
       if (line.trim() === '' || /^ {4}/.test(line)) {
         // Inside an indented block.
-        blank = true;
-        lines.push({ kind: 'code', text: line });
+        block.push(line);
         continue;
       }
       indented = false;
+      flush();
     }
 
     if (/^ {4,}\S/.test(line) && blank) {
       // The first line of an indented block.
       indented = true;
       blank = true;
-      lines.push({ kind: 'code', text: line });
+      block.push(line);
       continue;
     }
 
@@ -89,17 +131,19 @@ function markdownLines(markdown: string): MarkdownLine[] {
 
     if (/^\s{0,3}>/.test(line)) {
       // A quotation is the words of somebody else.
-      lines.push({ kind: 'quote', text: line });
+      lines.push({ kind: 'quote', text: line, indent: 0 });
       continue;
     }
 
     if (/^\s{0,3}(?:[-*+]|\d+[.)])\s+/.test(line)) {
-      lines.push({ kind: 'list', text: line });
+      lines.push({ kind: 'list', text: line, indent: 0 });
       continue;
     }
 
-    lines.push({ kind: 'prose', text: line });
+    lines.push({ kind: 'prose', text: line, indent: 0 });
   }
+
+  flush();
 
   return lines;
 }
@@ -124,8 +168,10 @@ function matchCommand(text: string): { word: string; rest: string } | undefined 
   if (match === null) return undefined;
 
   const rest = match[2] as string;
-  // `gatewarden something.js` is a file name, not a command.
-  if (rest.startsWith('.')) return undefined;
+  // `gatewarden something.js` is a file name, not a command. A point
+  // that ends the sentence is not a file name: the words after it are
+  // the description of the command.
+  if (rest.startsWith('.') && !/^\.(\s|$)/.test(rest)) return undefined;
 
   return { word: match[1] as string, rest };
 }
@@ -133,11 +179,14 @@ function matchCommand(text: string): { word: string; rest: string } | undefined 
 /**
  * Whether what follows a command describes it.
  *
- * A description is separated from the command by a dash or a colon. The
- * arguments of a command are flags, and they start with a dash too.
+ * A description is separated from the command by a dash or a colon. A
+ * sentence that ends with the command is described too: the words after
+ * the point start the next sentence ("gatewarden frobnicate. Does
+ * nothing."). The arguments of a command are flags, and they start with
+ * a dash too.
  */
 function isDescription(rest: string): boolean {
-  return /^[-–—:](\s|$)/.test(rest) || /^--/.test(rest);
+  return /^[-–—:](\s|$)/.test(rest) || /^--/.test(rest) || /^[.!?](\s|$)/.test(rest);
 }
 
 /**
@@ -188,26 +237,60 @@ function commandInItem(item: string): string | undefined {
 }
 
 /**
+ * The spaces a line of a code block shares with the block, taken away.
+ */
+function stripIndent(line: string, indent: number): string {
+  let index = 0;
+  while (index < line.length && index < indent && line[index] === ' ') index += 1;
+  return line.slice(index);
+}
+
+/**
+ * The command the output of the CLI names, if it names one.
+ *
+ * The CLI answers a command it does not have with
+ *
+ *   error: unknown command "frobnicate"
+ *
+ * (see `src/cli/index.ts`). The line names a command the CLI does not
+ * have: the CLI writes it only for a command it lacks. A document that
+ * holds such a line documents a command the CLI does not have.
+ */
+function commandInOutput(line: string): string | undefined {
+  const match = /^error: unknown command "([^"]+)"/.exec(line);
+  if (match === null) return undefined;
+
+  const word = match[1] as string;
+  if (!/^[a-z][a-z0-9-]*$/.test(word)) return undefined;
+  return word;
+}
+
+/**
  * The command a line of a code block calls, if it calls one.
  *
- * A call starts in the first column with the name of the CLI and a
- * command word after it. The other lines of a block are not calls:
+ * A call starts in the first column of the block with the name of the
+ * CLI and a command word after it. The other lines of a block are not
+ * calls:
  *
  *   - a line with a prompt ("$ gatewarden register") shows a session;
- *   - an indented line continues the line above it;
- *   - a line that names the CLI and then a colon ("gatewarden: unknown
- *     command") is the output of a command.
+ *   - a line that is indented deeper than the block continues the line
+ *     above it;
+ *   - a line that holds the output of the CLI for a command it does not
+ *     have ("error: unknown command "frobnicate"") names that command.
  */
-function commandInCodeLine(line: string): string | undefined {
-  // A call starts in the first column: an indented line continues the
-  // line above it.
-  if (/^\s/.test(line)) return undefined;
+function commandInCodeLine(line: string, indent: number): string | undefined {
+  // A call starts in the first column of the block: a line that is
+  // indented deeper continues the line above it.
+  const text = stripIndent(line, indent);
+  if (text.trim() === '') return undefined;
+  if (/^\s/.test(text)) return undefined;
   // A prompt shows a session, not a command the text documents.
-  if (line.startsWith('$')) return undefined;
-  // The name of the CLI and a command word after it. A line that names
-  // the CLI and then a colon ("gatewarden: unknown command") is the
-  // output of a command: the colon is where the command word would be.
-  return matchCommand(line)?.word;
+  if (text.startsWith('$')) return undefined;
+  // The output of the CLI for a command it does not have.
+  const output = commandInOutput(text);
+  if (output !== undefined) return output;
+  // The name of the CLI and a command word after it.
+  return matchCommand(text)?.word;
 }
 
 /**
@@ -224,8 +307,9 @@ function tableCells(line: string): string[] | undefined {
  *
  * The commands come from the places where the text presents a command as
  * one: a table cell, a list item, a line of prose that holds nothing but
- * the command, and the calls of a code block. A mention in a sentence and
- * a quotation are left out.
+ * the command, the calls of a code block (however the block is indented)
+ * and the output of the CLI for a command it does not have. A mention in
+ * a sentence and a quotation are left out.
  *
  * The words come back in the order they appear, with the repetitions
  * removed.
@@ -243,7 +327,7 @@ export function documentedCommands(markdown: string): string[] {
     if (line.kind === 'quote') continue;
 
     if (line.kind === 'code') {
-      add(commandInCodeLine(line.text));
+      add(commandInCodeLine(line.text, line.indent));
       continue;
     }
 
