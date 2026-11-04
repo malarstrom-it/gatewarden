@@ -53,7 +53,7 @@ import {
 } from '../core/config.ts';
 import { legacyAppPaths, legacyDir, logFileFor } from '../core/paths.ts';
 import { daemonStatus } from '../core/daemonControl.ts';
-import { RegistrationStore } from '../core/state.ts';
+import { LEGACY_ROUTES_FILE, ROUTES_FILE, RegistrationStore } from '../core/state.ts';
 import { isAddressAllowed, isLoopbackAddress, isPortListening, normaliseAddress } from '../core/util/net.ts';
 import { moduleDirectory } from '../core/util/module.ts';
 import { requireAdapter } from '../adapters/index.ts';
@@ -230,6 +230,106 @@ function exists(target: string): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * One file of an old layout, and the place it has in the new one.
+ */
+interface OldLayoutFile {
+  /** What the file is. */
+  what: string;
+  /** Where the file is in the old layout. */
+  from: string;
+  /** Where the file belongs in the new layout. */
+  to: string;
+}
+
+/**
+ * What an old layout holds, and what of it the new layout has.
+ *
+ * The question the doctor asks about an old layout is not "is the old
+ * directory still there" but "is there anything in it that the new
+ * layout does not have yet". A migration copies the configuration file
+ * and the route store into the new layout and leaves the old directory
+ * where it is, so a directory that is still there after a migration is
+ * not a sign that the migration is waiting: it is the sign that the
+ * migration has run.
+ */
+interface OldLayoutState {
+  /** The files of the old layout that the new layout has. */
+  migrated: OldLayoutFile[];
+  /** The files of the old layout that the new layout does not have. */
+  pending: OldLayoutFile[];
+}
+
+/**
+ * The state of an old layout against the new one.
+ *
+ * The two files a migration moves are the configuration file and the
+ * route store. The pidfile and the log of the old layout belong to a
+ * daemon that runs, and they are never migrated, so they do not count
+ * here: an old directory that holds nothing else has nothing left to
+ * migrate.
+ */
+function oldLayoutState(opts: {
+  oldConfigFile: string;
+  oldRoutesFile: string;
+  newConfigFile: string;
+  newRoutesFile: string;
+}): OldLayoutState {
+  const migrated: OldLayoutFile[] = [];
+  const pending: OldLayoutFile[] = [];
+
+  const files: OldLayoutFile[] = [
+    { what: 'the configuration file', from: opts.oldConfigFile, to: opts.newConfigFile },
+    { what: 'the route store', from: opts.oldRoutesFile, to: opts.newRoutesFile },
+  ];
+
+  for (const file of files) {
+    if (!exists(file.from)) continue;
+    (exists(file.to) ? migrated : pending).push(file);
+  }
+
+  return { migrated, pending };
+}
+
+/**
+ * The directories of an old layout that hold the files in question.
+ *
+ * The old layout of the name the package had before the rename has two
+ * directories: one for the configuration and one for the route store.
+ * The name of the layout in the report is the name of the directories
+ * that hold the files the report talks about.
+ */
+function oldLayoutDirs(files: OldLayoutFile[], fallback: string[]): string[] {
+  const dirs = [...new Set(files.map((file) => path.dirname(file.from)))];
+  return dirs.length > 0 ? dirs : fallback;
+}
+
+/**
+ * The reason of the check of an old layout.
+ *
+ * When something is waiting, the reason says what it is and where it
+ * belongs: the migration has not run, or it has not run for that file.
+ * When nothing is waiting, the reason says what the migration did and
+ * what the user may do with the old directories: the migration leaves
+ * them where they are on purpose, so the user may leave them there as
+ * well, or remove them. The advice to run the migration again belongs to
+ * the first case only.
+ */
+function oldLayoutDetail(dirs: string[], state: OldLayoutState): string {
+  const label = dirs.length === 1 ? dirs[0] : `${dirs[0]} and ${dirs[1]}`;
+
+  if (state.pending.length > 0) {
+    const waiting = state.pending
+      .map((file) => `${file.what} (${file.from}) has not been migrated to ${file.to} yet`)
+      .join('; ');
+    return `${label} is still there: ${waiting} (run "gatewarden migrate")`;
+  }
+
+  const copied = state.migrated.map((file) => `${file.what} to ${file.to}`).join(' and ');
+  const what = dirs.length === 1 ? 'the old directory' : 'the old directories';
+  return `${label} is still there: the migration copied the files to the new layout (${copied}); ${what} can be left in place or removed by you`;
 }
 
 /**
@@ -794,30 +894,78 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
   }
 
   // 15. The old layout.
-  if (exists(legacy)) {
+  //
+  // The migration copies the configuration file and the route store into
+  // the new layout and leaves the old directory where it is. The
+  // directory being there is therefore not a reason to warn: what the
+  // doctor asks is whether something in it is still waiting to be
+  // migrated.
+  const legacyState = oldLayoutState({
+    oldConfigFile: legacyConfig,
+    oldRoutesFile: path.join(legacy, LEGACY_ROUTES_FILE),
+    newConfigFile: configPath,
+    newRoutesFile: path.join(stateDir, ROUTES_FILE),
+  });
+  if (!exists(legacy)) {
+    skipped('legacy layout', 'there is no old layout to migrate');
+  } else if (legacyState.pending.length > 0) {
     checks.push({
       name: 'legacy layout',
       status: 'warn',
-      detail: `${legacy} is still there: run "gatewarden migrate"`,
+      detail: oldLayoutDetail(oldLayoutDirs(legacyState.pending, [legacy]), legacyState),
+    });
+  } else if (legacyState.migrated.length > 0) {
+    // The migration has run: everything the old layout held is in the
+    // new layout, and the old directory is only left in place.
+    checks.push({
+      name: 'legacy layout',
+      status: 'ok',
+      detail: oldLayoutDetail(oldLayoutDirs(legacyState.migrated, [legacy]), legacyState),
     });
   } else {
-    skipped('legacy layout', 'there is no old layout to migrate');
+    skipped(
+      'legacy layout',
+      `${legacy} holds no configuration and no route store: there is nothing to migrate`,
+    );
   }
 
   // 16. The layout of the name the directories had before the rename.
   //
   // An installation that was made under the old name keeps its
   // configuration and its route store in the directories of that name.
-  // The migration moves them; until it has run, the old layout is still
-  // there, and the doctor says so.
-  if (exists(oldName.configDir) || exists(oldName.stateDir)) {
+  // The migration moves them and leaves the directories where they
+  // are, so the doctor asks the same question here as it asks about the
+  // old layout: is there anything in them that is still waiting to be
+  // migrated?
+  const oldNameState = oldLayoutState({
+    oldConfigFile: oldNameConfig,
+    oldRoutesFile: path.join(oldName.stateDir, ROUTES_FILE),
+    newConfigFile: configPath,
+    newRoutesFile: path.join(stateDir, ROUTES_FILE),
+  });
+  const oldNameDirs = [
+    ...(exists(oldName.configDir) ? [oldName.configDir] : []),
+    ...(exists(oldName.stateDir) ? [oldName.stateDir] : []),
+  ];
+  if (oldNameDirs.length === 0) {
+    skipped('old name layout', 'there is no old name layout to migrate');
+  } else if (oldNameState.pending.length > 0) {
     checks.push({
       name: 'old name layout',
       status: 'warn',
-      detail: `${oldName.configDir} is still there: run "gatewarden migrate"`,
+      detail: oldLayoutDetail(oldLayoutDirs(oldNameState.pending, oldNameDirs), oldNameState),
+    });
+  } else if (oldNameState.migrated.length > 0) {
+    checks.push({
+      name: 'old name layout',
+      status: 'ok',
+      detail: oldLayoutDetail(oldLayoutDirs(oldNameState.migrated, oldNameDirs), oldNameState),
     });
   } else {
-    skipped('old name layout', 'there is no old name layout to migrate');
+    skipped(
+      'old name layout',
+      `${oldLayoutDirs([], oldNameDirs).join(' and ')} holds no configuration and no route store: there is nothing to migrate`,
+    );
   }
 
   return {

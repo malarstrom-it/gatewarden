@@ -624,6 +624,124 @@ test('the doctor says that the layout of the old name is still there', async (t)
   assert.equal(zone?.status, 'ok', `the doctor says: ${zone?.detail}`);
 });
 
+test('the doctor does not warn about the old layout after a migration', async (t) => {
+  // The migration copies the configuration file and the route store into
+  // the new layout and leaves the old directory where it is. The doctor
+  // asks whether something in that directory is still waiting to be
+  // migrated: nothing is, so there is no warning — and the reason says
+  // that the old directory may stay where it is.
+  const dir = makeEmptyDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const legacy = path.join(dir, 'home', '.traefik-dev');
+  fs.mkdirSync(legacy, { recursive: true });
+  fs.writeFileSync(
+    path.join(legacy, 'config.json'),
+    JSON.stringify({
+      proxy: 'traefik',
+      registryPort: 45102,
+      relayPort: 45101,
+      zone: 'migrated.test',
+      stateDir: path.join(dir, 'state'),
+    }),
+  );
+  fs.writeFileSync(path.join(legacy, 'registrations.json'), JSON.stringify({ registrations: [] }));
+
+  const migrate = await runCli(dir, ['migrate'], { configPath: false });
+  assert.equal(migrate.code, 0, `the migration failed: ${migrate.stdout}${migrate.stderr}`);
+  assert.ok(fs.existsSync(legacy), 'the migration leaves the old directory in place');
+
+  const run = await runCli(dir, ['doctor', '--json'], { configPath: false });
+  const report = JSON.parse(run.stdout) as Report;
+
+  const layout = report.checks.find((check) => check.name === 'legacy layout');
+  assert.equal(layout?.status, 'ok', `the doctor says: ${layout?.detail}`);
+  assert.match(layout?.detail ?? '', /the migration copied the files/);
+  assert.match(layout?.detail ?? '', /can be left in place or removed by you/);
+  assert.doesNotMatch(layout?.detail ?? '', /gatewarden migrate/);
+});
+
+test('the doctor still warns about the old files that were not migrated', async (t) => {
+  // The new layout has a configuration file of its own, but no route
+  // store: the route store of the old layout is still waiting, and the
+  // doctor says what it is and where it belongs.
+  const dir = makeEmptyDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const legacy = path.join(dir, 'home', '.traefik-dev');
+  fs.mkdirSync(legacy, { recursive: true });
+  fs.writeFileSync(
+    path.join(legacy, 'config.json'),
+    JSON.stringify({
+      proxy: 'traefik',
+      registryPort: 45102,
+      relayPort: 45101,
+      zone: 'legacy.test',
+      stateDir: path.join(dir, 'state'),
+    }),
+  );
+  fs.writeFileSync(path.join(legacy, 'registrations.json'), JSON.stringify({ registrations: [] }));
+
+  const configDir = path.join(dir, 'config', 'gatewarden');
+  fs.mkdirSync(configDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(configDir, 'config.json'),
+    JSON.stringify({
+      proxy: 'traefik',
+      registryPort: 45102,
+      relayPort: 45101,
+      zone: 'new.test',
+      stateDir: path.join(dir, 'state'),
+    }),
+  );
+
+  const run = await runCli(dir, ['doctor', '--json'], { configPath: false });
+  const report = JSON.parse(run.stdout) as Report;
+
+  const layout = report.checks.find((check) => check.name === 'legacy layout');
+  assert.equal(layout?.status, 'warn', `the doctor says: ${layout?.detail}`);
+  assert.match(layout?.detail ?? '', /route store/);
+  assert.match(layout?.detail ?? '', /has not been migrated/);
+  assert.match(layout?.detail ?? '', /gatewarden migrate/);
+});
+
+test('the doctor does not warn about the layout of the old name after a migration', async (t) => {
+  // The same as the old layout: the migration copies the files into the
+  // new layout and leaves the directories of the old name where they
+  // are, and the warning goes away with them.
+  const dir = makeEmptyDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const oldConfigDir = path.join(dir, 'config', 'dev-gateway');
+  const oldStateDir = path.join(dir, 'state', 'dev-gateway');
+  fs.mkdirSync(oldConfigDir, { recursive: true });
+  fs.mkdirSync(oldStateDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(oldConfigDir, 'config.json'),
+    JSON.stringify({
+      proxy: 'traefik',
+      registryPort: 45102,
+      relayPort: 45101,
+      zone: 'oldname.test',
+      stateDir: path.join(dir, 'state'),
+    }),
+  );
+  fs.writeFileSync(path.join(oldStateDir, 'routes.json'), JSON.stringify({ registrations: [] }));
+
+  const migrate = await runCli(dir, ['migrate'], { configPath: false });
+  assert.equal(migrate.code, 0, `the migration failed: ${migrate.stdout}${migrate.stderr}`);
+  assert.ok(fs.existsSync(oldConfigDir), 'the migration leaves the old directories in place');
+
+  const run = await runCli(dir, ['doctor', '--json'], { configPath: false });
+  const report = JSON.parse(run.stdout) as Report;
+
+  const layout = report.checks.find((check) => check.name === 'old name layout');
+  assert.equal(layout?.status, 'ok', `the doctor says: ${layout?.detail}`);
+  assert.match(layout?.detail ?? '', /the migration copied the files/);
+  assert.match(layout?.detail ?? '', /can be left in place or removed by you/);
+  assert.doesNotMatch(layout?.detail ?? '', /gatewarden migrate/);
+});
+
 test('the doctor says that the unit of the old name is still there', async (t) => {
   // A unit that was installed before the rename is still on the machine.
   // It names a launcher that does not exist any more, so the daemon it
