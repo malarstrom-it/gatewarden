@@ -102,6 +102,7 @@ jobs:
           - mcp-server.test.ts
           - migrate.test.ts
           - net.test.ts
+          - no-build-message.test.ts
           - packaging.test.ts
           - paths.test.ts
           - pi-extension.test.ts
@@ -111,10 +112,12 @@ jobs:
           - relay.test.ts
           - service.test.ts
           - slug.test.ts
+          - source-paths.test.ts
           - state.test.ts
           - testenv.test.ts
           - trust.test.ts
           - uninstall.test.ts
+          - unknown-proxy.test.ts
           - websocket.test.ts
     steps:
       - uses: actions/checkout@v4
