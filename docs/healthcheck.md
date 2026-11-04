@@ -13,6 +13,17 @@ broken. The rule it follows is short:
 The doctor changes nothing. It does not migrate the old layout and it
 does not start a daemon.
 
+The paths it reads are the paths of the installation: `GATEWARDEN_HOME`
+(everything in one directory), `GATEWARDEN_CONFIG` (the configuration
+file only) and `GATEWARDEN_STATE_DIR` (the state directory only) move
+them, the same way they move every other command; without them the paths
+are the ones of the platform (`XDG_CONFIG_HOME` and `XDG_STATE_HOME` on
+Linux, the directories of the platform elsewhere). The names they had
+before the rename (`DEV_GATEWAY_HOME`, `DEV_GATEWAY_CONFIG`,
+`DEV_GATEWAY_STATE_DIR`) still work, and they are deprecated. The API of
+the proxy has an address of its own: `GATEWARDEN_PROXY_API_URL` (see [The
+address of the proxy's API](#the-address-of-the-proxys-api)).
+
 ## The statuses
 
 | Status | What it means | The exit code |
@@ -66,13 +77,16 @@ object, with a top-level `ok` that is `false` when a check failed:
 | `relay port` | something listens there | nothing listens there: the daemon has not started it | — |
 | `routes` | the routes are counted | — | — |
 | `routes and zone` | the routes have a zone | there are no routes, or the configuration has no zone yet: a new route cannot be named | — |
-| `proxy` | the proxy answers | no proxy answers: it runs on another machine | the proxy answers and is not the one of the configuration, or the adapter does not exist |
+| `proxy` | the proxy answers | no proxy answers: it runs on another machine | the proxy answers and is not the one of the configuration, or the adapter of the `proxy` key does not exist — the core is proxy-agnostic, the key names the adapter, and the package ships with the Traefik adapter |
+| `trust list` | the list holds an address, and the detail prints the whole list | the list is empty: no address may talk to the gateway — or the configuration file holds nothing, and the only addresses that may talk to the gateway are the ones this machine adds; skipped when there is no installation on this machine | — |
+| `registry list` | the detail prints the whole list of the registry (`registryAllowedCidrs`); an empty list is not a warning: the registry then serves the configuration document to the same addresses as the relay | skipped when there is no installation on this machine | — |
+| `proxy address` | the doctor resolved the host of the proxy's API, and the trust list covers the addresses it found | the trust list does not cover the addresses of the host of the proxy's API: the gateway answers them a 403 — or the list is empty, or holds the loopback and nothing else; skipped when the doctor does not know where the proxy is: the trust list holds addresses besides the loopback | — |
 | `service` | the unit is installed | it is not installed: run `gatewarden install-service` | — |
 | `legacy layout` | — | there is nothing to migrate | — (it is still there: a warning) |
 | `old name layout` | — | there is nothing to migrate | — (it is still there: a warning) |
 | `old service` | — | there is no unit of the old name | — (it is still there: a warning) |
 
-Two of them are worth reading twice:
+Three of them are worth reading twice:
 
 * **The daemon is lazy.** It starts by itself with the first route, so a
   daemon that does not run is the normal state of a fresh installation.
@@ -85,6 +99,44 @@ Two of them are worth reading twice:
   wrong — the host names of the routes cannot be built from it — and
   that is a failure. A file that declares a zone has declared an
   installation, and its daemon has to run.
+* **The trust list is the list of addresses the gateway answers.** Both
+  listeners answer the addresses in `allowedCidrs` and nobody else, so
+  the list is the answer to the question a reader asks when a listener
+  answers a 403. The doctor prints the list, and it compares the
+  addresses of the host of the proxy's API with it: a proxy that is not
+  in the list is refused, and an installation that refuses its own proxy
+  is not broken. That is a warning with the way out, never a failure.
+
+## The address of the proxy's API
+
+The doctor has to know where the proxy is: the addresses the proxy
+connects from are the addresses the trust list has to hold. It takes
+them from the address of the proxy's API — it resolves the host of that
+address and uses the addresses it finds. The proxy itself is not asked.
+
+The address it takes is a URL to the API of the proxy — the base URL,
+the one the adapter appends its own paths to:
+
+```bash
+export GATEWARDEN_PROXY_API_URL="http://proxy.example.com:8080"
+```
+
+Without the variable the doctor uses the default of the adapter, and
+that default is the address of a proxy on this machine
+(`http://127.0.0.1:8080` for Traefik). The variable is needed when the
+proxy lives somewhere else: on another machine, in a container, or
+behind a name that is not the one it is reached by. The doctor needs
+the address to compare the trust list with the addresses the host of
+the API resolves to; the wizard is told the same address with its
+`--api-base-url` flag.
+
+The addresses the doctor compares are the ones the host of the API
+resolves to, and they are not always the address the proxy connects
+from: a proxy behind NAT connects from the address of the NAT, and the
+trust list has to hold that one.
+
+The variable is read by the doctor alone. Nothing else in the package
+reads it.
 
 ## `gatewarden status`
 
@@ -118,7 +170,7 @@ The wizard writes the next steps in clear text, in every mode.
 
 ## What the other documents say
 
-`README.md` and `docs/setup.md` describe the doctor as it was before
-this change: they name the checks and say that the exit code is 1 when a
-check fails. Both are written for the installation on a machine that has
+`README.md` and `docs/setup.md` name the doctor and say that the exit
+code is 1 when a check fails; `docs/setup.md` lists the same checks as
+this file. Both are written for the installation on a machine that has
 one; this file is the description of the healthcheck itself.
