@@ -31,7 +31,7 @@ fs.mkdirSync(stateDir, { recursive: true });
 fs.writeFileSync(
   `${stateDir}/config.json`,
   JSON.stringify(
-    { registryPort: port, relayPort: 45001, advertisedHost: 'devbox', zone: 'home.malarstrom.com' },
+    { registryPort: port, relayPort: 45001, advertisedHost: 'gateway', zone: 'example.com' },
     null,
     2,
   ) + '\n',

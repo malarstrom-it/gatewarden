@@ -69,8 +69,8 @@ test('the catalog knows the Traefik adapter and nothing else', () => {
 });
 
 test('the zone is the longest common suffix of the host names', () => {
-  assert.equal(deriveZone(['feature-login.alpha.home.malarstrom.com', 'main.beta.home.malarstrom.com']), 'home.malarstrom.com');
-  assert.equal(deriveZone(['index.home.malarstrom.com']), 'home.malarstrom.com');
+  assert.equal(deriveZone(['feature-login.alpha.example.com', 'main.beta.example.com']), 'example.com');
+  assert.equal(deriveZone(['index.example.com']), 'example.com');
   assert.equal(deriveZone(['a.example.com', 'b.example.com']), 'example.com');
   assert.equal(deriveZone([]), undefined);
   assert.equal(deriveZone(['localhost']), undefined);
@@ -79,13 +79,13 @@ test('the zone is the longest common suffix of the host names', () => {
 test('discover reads the version and derives the values from the routers', async (t) => {
   const traefik = await fakeTraefik([
     {
-      rule: 'Host(`feature-login.alpha.home.malarstrom.com`)',
+      rule: 'Host(`feature-login.alpha.example.com`)',
       entryPoints: ['websecure'],
       middlewares: ['devhdr-alpha', 'default-security-headers@file'],
       tls: { certResolver: 'cloudflare' },
     },
     {
-      rule: 'Host(`main.beta.home.malarstrom.com`)',
+      rule: 'Host(`main.beta.example.com`)',
       entryPoints: ['websecure'],
       middlewares: ['devhdr-beta'],
       tls: { certResolver: 'cloudflare' },
@@ -98,7 +98,7 @@ test('discover reads the version and derives the values from the routers', async
   assert.ok(info);
   assert.equal(info.id, 'traefik');
   assert.equal(info.version, '3.7.16');
-  assert.equal(info.derived.zone, 'home.malarstrom.com');
+  assert.equal(info.derived.zone, 'example.com');
   assert.deepEqual(info.derived.entryPoints, ['websecure']);
   assert.equal(info.derived.certResolver, 'cloudflare');
   assert.equal(info.derived.middlewareProvider, 'file');
@@ -120,7 +120,7 @@ test("the routers of Traefik itself do not say what the user's routes look like"
       provider: 'internal',
     },
     {
-      rule: 'Host(`feature-login.alpha.home.malarstrom.com`)',
+      rule: 'Host(`feature-login.alpha.example.com`)',
       entryPoints: ['websecure'],
       middlewares: ['default-security-headers@file'],
       tls: { certResolver: 'cloudflare' },
@@ -144,14 +144,14 @@ test('the dispatch middleware of the gateway does not decide the middleware prov
   // for a middleware that does not exist.
   const traefik = await fakeTraefik([
     {
-      rule: 'Host(`main.demo.home.malarstrom.com`)',
+      rule: 'Host(`main.demo.example.com`)',
       entryPoints: ['websecure'],
       service: 'dev-demo-main',
       middlewares: ['devhdr-demo-main@http'],
       provider: 'http',
     },
     {
-      rule: 'Host(`app.home.malarstrom.com`)',
+      rule: 'Host(`app.example.com`)',
       entryPoints: ['websecure'],
       service: 'app',
       middlewares: ['compress@file'],
@@ -169,7 +169,7 @@ test('the dispatch middleware of the gateway does not decide the middleware prov
 test('a proxy that serves only the routes of the gateway decides nothing about the middlewares', async (t) => {
   const traefik = await fakeTraefik([
     {
-      rule: 'Host(`main.demo.home.malarstrom.com`)',
+      rule: 'Host(`main.demo.example.com`)',
       entryPoints: ['websecure'],
       service: 'dev-demo-main',
       middlewares: ['devhdr-demo-main@http'],
@@ -186,7 +186,7 @@ test('a proxy that serves only the routes of the gateway decides nothing about t
 
 test('the port of every entry point is read from the API', async (t) => {
   const traefik = await fakeTraefik(
-    [{ rule: 'Host(`app.home.malarstrom.com`)', entryPoints: ['testweb'], provider: 'file' }],
+    [{ rule: 'Host(`app.example.com`)', entryPoints: ['testweb'], provider: 'file' }],
     '3.7.16',
     [
       { name: 'testweb', address: ':8443' },
@@ -208,7 +208,7 @@ test('discover answers undefined when no proxy answers', async () => {
 
 test('the wiring snippet names the endpoint the proxy has to poll', () => {
   const config = makeConfig({
-    advertisedHost: 'devbox',
+    advertisedHost: 'gateway',
     registryPort: 45002,
     relayPort: 45001,
     entryPoints: ['websecure'],
@@ -217,7 +217,7 @@ test('the wiring snippet names the endpoint the proxy has to poll', () => {
 
   const snippet = traefikWiringSnippet(config);
 
-  assert.match(snippet, /endpoint: "http:\/\/devbox:45002\/traefik"/);
+  assert.match(snippet, /endpoint: "http:\/\/gateway:45002\/traefik"/);
   assert.match(snippet, /pollInterval/);
   assert.match(snippet, /cloudflare/);
 });

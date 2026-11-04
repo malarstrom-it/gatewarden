@@ -57,7 +57,7 @@ def fake_registration(state="down"):
         "branch": FAKE_BRANCH,
         "projectSlug": "probe",
         "branchSlug": FAKE_BRANCH,
-        "fqdn": f"{FAKE_BRANCH}.probe.home.malarstrom.com",
+        "fqdn": f"{FAKE_BRANCH}.probe.example.com",
         "devPort": 5203,
         "createdAt": now,
         "updatedAt": now,

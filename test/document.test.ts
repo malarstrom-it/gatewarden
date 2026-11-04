@@ -14,7 +14,7 @@ function tempStore(): { store: RegistrationStore; dir: string } {
   return { store: new RegistrationStore(dir), dir };
 }
 
-const ZONE = 'home.malarstrom.com';
+const ZONE = 'example.com';
 
 /**
  * The HTTP section of a document.
@@ -40,7 +40,7 @@ test('a registration produces exactly one router, one service and one middleware
   assert.ok(httpOf(doc).middlewares[middlewareName(registration)]);
 
   const router = httpOf(doc).routers[names[0]] as Record<string, unknown>;
-  assert.equal(router['rule'], 'Host(`feature-login.alpha.home.malarstrom.com`)');
+  assert.equal(router['rule'], 'Host(`feature-login.alpha.example.com`)');
   assert.equal(router['service'], names[0]);
   assert.deepEqual(router['middlewares'], [middlewareName(registration)]);
 
@@ -116,7 +116,7 @@ test('every router rule is an exact Host rule', () => {
   const doc = buildDynamicConfig(store.list(), config);
   for (const router of Object.values(httpOf(doc).routers)) {
     const rule = (router as { rule: string }).rule;
-    assert.match(rule, /^Host\(`[^`*]+\.[^`*]+\.home\.malarstrom\.com`\)$/);
+    assert.match(rule, /^Host\(`[^`*]+\.[^`*]+\.example\.com`\)$/);
   }
 });
 
@@ -128,7 +128,7 @@ test('a certificate resolver adds a per-project wildcard tls block', () => {
   const router = Object.values(httpOf(doc).routers).find((r) => (r as { rule: string }).rule.includes('alpha'));
   assert.deepEqual((router as { tls: unknown }).tls, {
     certResolver: 'cloudflare',
-    domains: [{ main: '*.alpha.home.malarstrom.com' }],
+    domains: [{ main: '*.alpha.example.com' }],
   });
 });
 
@@ -226,14 +226,14 @@ test('the service URL uses the advertised host', () => {
   store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: ZONE });
   const doc = buildDynamicConfig(
     store.list(),
-    makeConfig({ zone: ZONE, advertisedHost: 'devbox', relayPort: 45001, registryPort: 45002 }),
+    makeConfig({ zone: ZONE, advertisedHost: 'gateway', relayPort: 45001, registryPort: 45002 }),
   );
   const urls = Object.values(httpOf(doc).services).flatMap((service) =>
     (service as { loadBalancer: { servers: Array<{ url: string }> } }).loadBalancer.servers.map((server) => server.url),
   );
-  assert.ok(urls.includes('http://devbox:45001'), 'the relay service must use the advertised host');
+  assert.ok(urls.includes('http://gateway:45001'), 'the relay service must use the advertised host');
   // The index router is gone (D8): nothing points at the registry any more.
-  assert.ok(!urls.includes('http://devbox:45002'), 'nothing may point at the registry port');
+  assert.ok(!urls.includes('http://gateway:45002'), 'nothing may point at the registry port');
 });
 
 test('object names are prefixed so they cannot collide with other providers', () => {

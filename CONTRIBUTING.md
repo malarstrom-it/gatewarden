@@ -273,13 +273,11 @@ renamed.
 **2. The repository is private while the migration runs.** The reason is
 the repository itself: it still holds the data of the installation — the
 zone of the installation, the private addresses, the names of the
-machines and the containers — in `.impeccable/`, in `PRODUCT.md`, in
-`memory/`, in `specs/`, in `test/`, in `tools/`, and in the history of
-the branch. The zone of the installation is in 144 lines of the tip of
-the branch — 127 of them in the folders named here and 17 in `tools/` —
-and in 279 more lines in the history of the branch itself. The count
-grows with every commit, and the maintainer counts it again before the
-repository goes public:
+machines and the containers — in `memory/`, in `specs/`, and in the
+history of the branch. The zone of the installation is in 67 lines of the
+tip of the branch — all of them in `memory/` and in `specs/` — and in 279
+more lines in the history of the branch itself. The count is recounted
+before the repository goes public:
 
 ```bash
 git grep -c -F '<the zone>' feat/npm-package -- . | awk -F: '{s += $NF} END {print s}'

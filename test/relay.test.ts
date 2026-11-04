@@ -41,8 +41,8 @@ test('the relay dispatches to the right dev server', async () => {
       res.end('second');
     });
     try {
-      const one = store.upsert({ project: 'alpha', branch: 'main', devPort: first.port, zone: 'home.malarstrom.com' });
-      const two = store.upsert({ project: 'beta', branch: 'main', devPort: second.port, zone: 'home.malarstrom.com' });
+      const one = store.upsert({ project: 'alpha', branch: 'main', devPort: first.port, zone: 'example.com' });
+      const two = store.upsert({ project: 'beta', branch: 'main', devPort: second.port, zone: 'example.com' });
 
       const responseOne = await fetch(`${url}/some/path?x=1`, { headers: { [DISPATCH_HEADER]: one.id } });
       assert.equal(await responseOne.text(), 'first');
@@ -69,7 +69,7 @@ test('the relay forwards the method, path and body', async () => {
       });
     });
     try {
-      const registration = store.upsert({ project: 'alpha', branch: 'main', devPort: dev.port, zone: 'home.malarstrom.com' });
+      const registration = store.upsert({ project: 'alpha', branch: 'main', devPort: dev.port, zone: 'example.com' });
       const response = await fetch(`${url}/api/items?a=b`, {
         method: 'POST',
         headers: { [DISPATCH_HEADER]: registration.id, 'content-type': 'application/json' },
@@ -101,7 +101,7 @@ test('a missing dispatch header is answered with 404', async () => {
 
 test('a source address outside the allowed CIDRs is answered with 403', async () => {
   await withRelay({ allowedCidrs: ['10.99.0.0/16'] }, async ({ url, store }) => {
-    const registration = store.upsert({ project: 'alpha', branch: 'main', devPort: 9999, zone: 'home.malarstrom.com' });
+    const registration = store.upsert({ project: 'alpha', branch: 'main', devPort: 9999, zone: 'example.com' });
     const response = await fetch(`${url}/`, { headers: { [DISPATCH_HEADER]: registration.id } });
     assert.equal(response.status, 403);
     assert.match(await response.text(), /forbidden/);
@@ -112,7 +112,7 @@ test('a wrong relay secret is answered with 403, the right one passes', async ()
   await withRelay({ secret: 's3cret' }, async ({ url, store }) => {
     const dev = await startDevServer((_req, res) => res.end('ok'));
     try {
-      const registration = store.upsert({ project: 'alpha', branch: 'main', devPort: dev.port, zone: 'home.malarstrom.com' });
+      const registration = store.upsert({ project: 'alpha', branch: 'main', devPort: dev.port, zone: 'example.com' });
       const denied = await fetch(`${url}/`, { headers: { [DISPATCH_HEADER]: registration.id } });
       assert.equal(denied.status, 403);
 
@@ -135,13 +135,13 @@ test('X-Forwarded-* headers pass through untouched', async () => {
       res.end('ok');
     });
     try {
-      const registration = store.upsert({ project: 'alpha', branch: 'main', devPort: dev.port, zone: 'home.malarstrom.com' });
+      const registration = store.upsert({ project: 'alpha', branch: 'main', devPort: dev.port, zone: 'example.com' });
       await fetch(`${url}/`, {
         headers: {
           [DISPATCH_HEADER]: registration.id,
           'x-forwarded-for': '10.10.1.77',
           'x-real-ip': '10.10.1.77',
-          'x-forwarded-host': 'feature-login.alpha.home.malarstrom.com',
+          'x-forwarded-host': 'feature-login.alpha.example.com',
           'x-forwarded-port': '443',
           'x-forwarded-proto': 'https',
           'x-forwarded-server': 'traefik',
@@ -151,7 +151,7 @@ test('X-Forwarded-* headers pass through untouched', async () => {
       const received = headers as http.IncomingHttpHeaders;
       assert.equal(received['x-forwarded-for'], '10.10.1.77');
       assert.equal(received['x-real-ip'], '10.10.1.77');
-      assert.equal(received['x-forwarded-host'], 'feature-login.alpha.home.malarstrom.com');
+      assert.equal(received['x-forwarded-host'], 'feature-login.alpha.example.com');
       assert.equal(received['x-forwarded-port'], '443');
       assert.equal(received['x-forwarded-proto'], 'https');
       assert.equal(received['x-forwarded-server'], 'traefik');
@@ -170,7 +170,7 @@ test('the relay also answers over IPv6', async () => {
   try {
     const dev = await startDevServer((_req, res) => res.end('over-ipv6'));
     try {
-      const registration = store.upsert({ project: 'alpha', branch: 'main', devPort: dev.port, zone: 'home.malarstrom.com' });
+      const registration = store.upsert({ project: 'alpha', branch: 'main', devPort: dev.port, zone: 'example.com' });
       const response = await fetch(`http://[::1]:${port}/`, { headers: { [DISPATCH_HEADER]: registration.id } });
       assert.equal(response.status, 200);
       assert.equal(await response.text(), 'over-ipv6');
@@ -184,7 +184,7 @@ test('the relay also answers over IPv6', async () => {
 
 test('a dev server that is not listening is answered with 502 and a clear message', async () => {
   await withRelay({}, async ({ url, store }) => {
-    const registration = store.upsert({ project: 'alpha', branch: 'main', devPort: 9, zone: 'home.malarstrom.com' });
+    const registration = store.upsert({ project: 'alpha', branch: 'main', devPort: 9, zone: 'example.com' });
     const response = await fetch(`${url}/`, { headers: { [DISPATCH_HEADER]: registration.id } });
     assert.equal(response.status, 502);
     assert.match(await response.text(), /not reachable/);
@@ -202,7 +202,7 @@ test('large bodies are streamed, not buffered', async () => {
       });
     });
     try {
-      const registration = store.upsert({ project: 'alpha', branch: 'main', devPort: dev.port, zone: 'home.malarstrom.com' });
+      const registration = store.upsert({ project: 'alpha', branch: 'main', devPort: dev.port, zone: 'example.com' });
       const response = await fetch(`${url}/big`, {
         method: 'POST',
         headers: { [DISPATCH_HEADER]: registration.id },
@@ -224,7 +224,7 @@ test('server sent events arrive as they are produced', async () => {
       setTimeout(() => res.write('data: two\n\n'), 120);
     });
     try {
-      const registration = store.upsert({ project: 'alpha', branch: 'main', devPort: dev.port, zone: 'home.malarstrom.com' });
+      const registration = store.upsert({ project: 'alpha', branch: 'main', devPort: dev.port, zone: 'example.com' });
       const response = await fetch(`${url}/events`, { headers: { [DISPATCH_HEADER]: registration.id } });
       assert.equal(response.headers.get('content-type'), 'text/event-stream');
       const reader = (response.body as ReadableStream<Uint8Array>).getReader();

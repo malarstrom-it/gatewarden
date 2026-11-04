@@ -59,7 +59,7 @@ test('a route from a file without a zone gets the zone of its name', (t) => {
           branch: 'main',
           projectSlug: 'alpha',
           branchSlug: 'main',
-          fqdn: 'main.alpha.home.malarstrom.com',
+          fqdn: 'main.alpha.example.com',
           devPort: 3000,
           createdAt: '2024-01-01T00:00:00.000Z',
           updatedAt: '2024-01-01T00:00:00.000Z',
@@ -70,7 +70,7 @@ test('a route from a file without a zone gets the zone of its name', (t) => {
 
   const store = new RegistrationStore(dir);
 
-  assert.equal(store.list()[0].zone, 'home.malarstrom.com');
+  assert.equal(store.list()[0].zone, 'example.com');
 });
 
 test('a state directory that still holds the old file name is read from it', (t) => {

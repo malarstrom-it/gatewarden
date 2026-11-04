@@ -42,7 +42,9 @@ test('the settings of the test environment are not the ones of the live system',
   const settings = testEnvSettings({});
   assert.notEqual(settings.registryPort, 45002);
   assert.notEqual(settings.relayPort, 45001);
-  assert.notEqual(settings.domain, 'home.malarstrom.com');
+  // The test environment has a domain of its own. It is not the zone of
+  // the example of the repository.
+  assert.notEqual(settings.domain, 'example.com');
   // The live ports are the ones the test must not bind.
   assert.deepEqual(settings.livePorts, [45001, 45002]);
 });
@@ -159,7 +161,7 @@ test('a leftover of an earlier run is recognised, and nobody else is', () => {
   const settings = testEnvSettings({});
   const proxy = `${binaryPath(settings.cacheDir, settings.traefikVersion)} --configFile /tmp/x/traefik.yml`;
   const daemon = `node /src/daemon.ts --config ${settings.root}/config.json`;
-  const other = 'node /opt/devbox-traefik-api/bin/some-other-tool.js';
+  const other = 'node /opt/example-project/bin/some-other-tool.js';
   assert.equal(classifyCmdline(proxy, settings), 'proxy');
   assert.equal(classifyCmdline(daemon, settings), 'daemon');
   assert.equal(classifyCmdline(other, settings), 'unknown');

@@ -25,7 +25,7 @@ again.
 | --- | --- | --- |
 | the registry | port 45002 | port 46002 |
 | the relay | port 45001 | port 46001 |
-| the domain | `home.malarstrom.com` | `gwtest.local` |
+| the domain | `example.com` | `gwtest.local` |
 | the state directory | `~/.local/state/gatewarden/` | `/tmp/gatewarden-test/` |
 | the proxy | the Traefik of the user | a Traefik the test downloads and starts |
 | the certificates | the ACME certificates of the user | a CA and a certificate the test makes |

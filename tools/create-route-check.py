@@ -106,7 +106,7 @@ with sync_playwright() as p:
     message = page.locator("#message").inner_text()
     check("Created" in message, f"the page-level line says what happened ({message!r})")
     check(
-        "made-by-hand.probe.home.malarstrom.com" in message,
+        "made-by-hand.probe.example.com" in message,
         f"the page-level line names the route ({message!r})",
     )
     page.screenshot(path=str(OUT / "created.png"))

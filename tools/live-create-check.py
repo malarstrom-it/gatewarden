@@ -19,13 +19,13 @@ import urllib.request
 
 from playwright.sync_api import sync_playwright
 
-PAGE = sys.argv[1] if len(sys.argv) > 1 else "https://index.home.malarstrom.com/"
-TRAEFIK = sys.argv[2] if len(sys.argv) > 2 else "https://traefik.home.malarstrom.com/api/http/routers"
+PAGE = sys.argv[1] if len(sys.argv) > 1 else "https://index.example.com/"
+TRAEFIK = sys.argv[2] if len(sys.argv) > 2 else "https://traefik.example.com/api/http/routers"
 
 PROJECT = "probe"
 BRANCH = "live-check"
 PORT = "4599"
-FQDN = f"{BRANCH}.{PROJECT}.home.malarstrom.com"
+FQDN = f"{BRANCH}.{PROJECT}.example.com"
 
 problems = []
 notes = []
