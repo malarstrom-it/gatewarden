@@ -7,6 +7,14 @@
   "author": {
     "name": "malarstrom"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/malarstrom-it/gatewarden.git"
+  },
+  "homepage": "https://github.com/malarstrom-it/gatewarden",
+  "bugs": {
+    "url": "https://github.com/malarstrom-it/gatewarden/issues"
+  },
   "main": "./dist/core/index.js",
   "types": "./dist/core/index.d.ts",
   "exports": {

@@ -58,7 +58,9 @@ Static `traefik.yml`:
 - `api.dashboard: true`; `api.insecure` **not** set (dashboard only via the `traefik` router →
   `api@internal` at `traefik.home.malarstrom.com`).
 - entryPoints: `web` `:80` (**redirects** to `websecure`, scheme https), `websecure` `:443`,
-  `gitea-ssh` `:2222`, `herdr-ssh` `:2223`.
+  `herdr-ssh` `:2223`, and the ssh entrypoint of the private git server at `:2222`
+  (the repository lives on GitHub now; the entrypoint keeps its old name in the live
+  config).
 - providers: `docker` (network **`private`**, `unix:///var/run/docker.sock`, `exposedByDefault: false`)
   and `file` (`/etc/traefik/config/config.yml`, `watch: true`). **No `http` provider yet.**
 - `certificatesResolvers.cloudflare`: acme, email mikael@malarstrom.se, storage

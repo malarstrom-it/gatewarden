@@ -427,15 +427,20 @@ describe('the published package', () => {
     // page searches for the word the package answers to.
     assert.ok(MANIFEST.keywords.includes('gatewarden'));
 
-    // The npm page of the package names no repository (S31). The source
-    // of the package is not published with it, and the manifest does not
-    // point a reader at the private host of the installation the package
-    // was written for: `repository`, `homepage`, `bugs` and `funding` are
-    // gone. The author stays — the name of the scope the package lives in
-    // is public, and it is the name the package is published under.
-    assert.equal(MANIFEST.repository, undefined);
-    assert.equal(MANIFEST.homepage, undefined);
-    assert.equal(MANIFEST.bugs, undefined);
+    // The npm page of the package names the public repository (S23). The
+    // source of the package lives on GitHub, and the manifest points a
+    // reader at it: `repository`, `homepage` and `bugs` name the public
+    // repository. The private host of the installation the package was
+    // written for is named by none of them, and `funding` is gone: the
+    // package needs no money. The author stays — the name of the scope
+    // the package lives in is public, and it is the name the package is
+    // published under.
+    assert.deepEqual(MANIFEST.repository, {
+      type: 'git',
+      url: 'git+https://github.com/malarstrom-it/gatewarden.git',
+    });
+    assert.equal(MANIFEST.homepage, 'https://github.com/malarstrom-it/gatewarden');
+    assert.deepEqual(MANIFEST.bugs, { url: 'https://github.com/malarstrom-it/gatewarden/issues' });
     assert.equal(MANIFEST.funding, undefined);
     assert.equal(MANIFEST.author.name, 'malarstrom');
   });
