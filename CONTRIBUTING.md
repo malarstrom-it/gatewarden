@@ -311,15 +311,28 @@ token. It does not work with the actions of the server the repository
 left — it works for GitHub Actions and for GitLab CI — and that is the
 reason why the publication goes through GitHub.
 
-npmjs.com asks for three things that no command can do, and a person
-does them by hand:
+npmjs.com asks for three things, and a person does them. Two of them can
+be done from the command line as well, with npm CLI 11.15.0 or later:
 
-1. **Create the scope `@malarstrom`.** The scope is the namespace the
-   packages live under on the registry, and it is created once for the
-   account.
-2. **Create the package `@malarstrom/gatewarden`.** The package is
-   created empty; the first version is published by the workflow, and
-   not by hand.
+1. **The scope `@malarstrom`.** The scope is the namespace the packages
+   live under on the registry, and it is there already: the version
+   `0.1.0` was published under it, and a scope that has been published
+   under stays on the registry. A scope that is not there is an
+   organisation, and an organisation is created on npmjs.com, on the page
+   that creates one (`https://www.npmjs.com/org/create`). There is no
+   command for that: `npm org` adds and removes the members of an
+   organisation and does nothing else.
+2. **The package `@malarstrom/gatewarden`.** The package comes into being
+   with its first publish, and npm accepts a trusted publisher only for a
+   package that is already on the registry — the package has to exist
+   before the publisher can be connected to it. npm's staged publishing
+   creates a package: `npm stage publish` puts a version in the staging
+   queue of a package that does not exist yet, and the package is there
+   from that moment. It needs npm CLI 11.15.0 or later, and it does not
+   ask for the two-factor authentication — that comes with the approval.
+   The staged version is not published: the workflow publishes `0.1.1`
+   from the tag, so the staged version is rejected (`npm stage reject`)
+   and its number is free again.
 3. **Connect the package to the repository.** The package page, its
    settings, the trusted publisher for GitHub Actions. The fields are:
    - **Organization or user** — the organisation that owns the
@@ -336,6 +349,17 @@ does them by hand:
      off, npm refuses the publish and the run fails in its last step;
    - **Environment name** — empty. The project uses no GitHub
      environment, and the workflow names none.
+
+   The same connection can be made from the command line, with npm CLI
+   11.15.0 or later:
+
+   ```bash
+   npm trust github @malarstrom/gatewarden \
+     --file publish.yml \
+     --repository malarstrom-it/gatewarden \
+     --allow-publish \
+     --allow-stage-publish
+   ```
 
 Only somebody with write access to the package can do this, and npm
 asks for the two-factor authentication of that account.
@@ -387,11 +411,14 @@ tests have run.
 
 ### The steps that are left
 
-1. Create the scope `@malarstrom` and the package `@malarstrom/gatewarden`
-   on npmjs.com, and connect the package to the repository as the
-   trusted publisher for GitHub Actions. npm does not check the
-   connection when it is saved: a wrong owner, a wrong repository name or
-   a missing permission shows up in the first publish, and not before.
+1. Make the package `@malarstrom/gatewarden` exist on the registry, and
+   connect it to the repository as the trusted publisher for GitHub
+   Actions. The scope `@malarstrom` is there already. The package comes
+   into being with npm's staged publishing (`npm stage publish`), because
+   npm accepts a trusted publisher only for a package that is already
+   there. npm does not check the connection when it is saved: a wrong
+   owner, a wrong repository name or a missing permission shows up in the
+   first publish, and not before.
 2. Set the base branch of the worktrees explicitly to
    `feat/npm-package`. The setting `workspace.from` of the repository
    stands for `here` today, and `here` resolves the base from the

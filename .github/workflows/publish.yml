@@ -40,6 +40,11 @@
 #        npm refuses the publish and the run fails in its last step;
 #      * the environment name is empty: the project uses no GitHub
 #        environment, and this workflow names none;
+#      * the package has to be on the registry before this workflow can
+#        publish anything: npm accepts a trusted publisher only for a
+#        package that is already there, and a package comes into being
+#        with its first publish. `CONTRIBUTING.md` says how the package
+#        is made to exist;
 #      * the `repository` field of `package.json` has to name the same
 #        repository — npm checks it, because a credential for one
 #        repository must not publish another one. The manifest names
