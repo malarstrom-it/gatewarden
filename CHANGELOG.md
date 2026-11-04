@@ -108,6 +108,13 @@ stays on the registry, and the one to install.
   the README has a section that names it too. A reader on npmjs.org
   reaches the source from the page of the package now, and the page of
   the package no longer asks a question it could not answer.
+
+- **The package names one address everywhere.** The security policy named
+  another address than the readme, and the package names one address now:
+  the support address, which the readme named already. A report that goes
+  to the address of the package reaches the maintainer of the package, and
+  the guard reads the documents of the repository too.
+
 - **The message about a missing build names one command.** A launcher
   without a build told the reader to reinstall the package the way it
   was installed, and named the command of a project install and the
