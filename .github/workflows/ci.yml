@@ -84,6 +84,7 @@ jobs:
         file:
           - adapters.test.ts
           - build.test.ts
+          - ci-matrix.test.ts
           - cli-lifecycle.test.ts
           - cli-setup.test.ts
           - cli.test.ts
