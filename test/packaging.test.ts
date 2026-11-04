@@ -13,7 +13,10 @@
  *   - the message about a missing build is one text that holds for
  *     every installation, and it names the launcher that wrote it (S79);
  *   - the message about a missing build names the command of the
- *     installation the launcher is in (S95).
+ *     installation the launcher is in (S95);
+ *   - a launcher names the compiled module it runs, and the source is
+ *     derived from that name: the published package names no path of
+ *     the source (S97).
  *
  * The install is hermetic, and it needs no network: the packaging layer
  * is layer L3 of §11.3, and L3 needs no network. The tarball is
@@ -157,6 +160,31 @@ async function tarballContents(tarball: string): Promise<string[]> {
     .filter((line) => line.length > 0 && !line.endsWith('/'))
     .map((line) => (line.startsWith('package/') ? line.slice('package/'.length) : line))
     .sort();
+}
+
+/**
+ * Every file under a directory, with the text it holds.
+ *
+ * @param directory the directory to walk
+ * @returns the files, with the path of each of them relative to the
+ *   directory
+ */
+function textsUnder(directory: string): Array<{ file: string; text: string }> {
+  const found: Array<{ file: string; text: string }> = [];
+  const walk = (current: string): void => {
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else {
+        found.push({
+          file: path.relative(directory, full).split(path.sep).join('/'),
+          text: fs.readFileSync(full, 'utf8'),
+        });
+      }
+    }
+  };
+  walk(directory);
+  return found;
 }
 
 /**
@@ -674,12 +702,75 @@ describe('the published package', () => {
   test('a launcher in a checkout runs the source', () => {
     // The repository runs the launchers from the working tree, so the
     // source is the first candidate there and the compiled output the
-    // fallback (S55).
+    // fallback (S55). The launcher names the compiled module, and the
+    // source is derived from that name.
     const launcher = pathToFileURL(path.join(REPO_ROOT, 'bin', 'gatewarden.js')).href;
-    const entry = resolveEntry(launcher, '../src/cli/index.ts', '../dist/cli/index.js');
+    const entry = resolveEntry(launcher, '../dist/cli/index.js');
 
     assert.ok(entry, 'a launcher in a checkout finds no entry');
     assert.match(decodeURIComponent(entry.pathname), /src\/cli\/index\.ts$/);
+  });
+
+  test('the source of a launcher is derived from the compiled module', () => {
+    // The three launchers name the compiled module they run, and none
+    // of them names a path of the source: the source is derived from
+    // the name of the compiled module, and the derivation has to hold
+    // for the three modules the launchers run.
+    const launcher = pathToFileURL(path.join(REPO_ROOT, 'bin', 'gatewarden.js')).href;
+    const modules: Array<[string, RegExp]> = [
+      ['../dist/cli/index.js', /src\/cli\/index\.ts$/],
+      ['../dist/daemon.js', /src\/daemon\.ts$/],
+      ['../dist/integrations/mcp/server.js', /src\/integrations\/mcp\/server\.ts$/],
+    ];
+
+    for (const [compiled, source] of modules) {
+      const entry = resolveEntry(launcher, compiled);
+
+      assert.ok(entry, `a launcher in a checkout finds no entry for "${compiled}"`);
+      assert.match(decodeURIComponent(entry.pathname), source, `the source of "${compiled}" is not the source of the launcher`);
+    }
+  });
+
+  test('a launcher in an installation runs the compiled output', () => {
+    // An installed package ships the compiled output and no source, so
+    // the launcher of an installation runs the compiled output and
+    // looks for no source at all.
+    const launcher = pathToFileURL(path.join(packageDir, 'bin', 'gatewarden.js')).href;
+    const entry = resolveEntry(launcher, '../dist/cli/index.js');
+
+    assert.ok(entry, 'a launcher in an installation finds no entry');
+    assert.match(decodeURIComponent(entry.pathname), /dist\/cli\/index\.js$/);
+  });
+
+  test('a checkout without the source runs the compiled output', (t) => {
+    // A checkout without the sources is a checkout all the same: the
+    // compiled output is the fallback of the source, and the launcher
+    // runs it.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-checkout-'));
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    fs.mkdirSync(path.join(root, 'bin'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'dist', 'cli'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'dist', 'cli', 'index.js'), 'export const run = () => undefined;\n');
+
+    const launcher = pathToFileURL(path.join(root, 'bin', 'gatewarden.js')).href;
+    const entry = resolveEntry(launcher, '../dist/cli/index.js');
+
+    assert.ok(entry, 'a checkout without a source finds no entry');
+    assert.match(decodeURIComponent(entry.pathname), /dist\/cli\/index\.js$/);
+  });
+
+  test('the published package names no path of the source', () => {
+    // The package ships the compiled output and no source, so a path of
+    // the source in the package points at a file the reader of the
+    // package does not have. The launchers name the module they run,
+    // and the source is derived from that name.
+    const hits: string[] = [];
+
+    for (const { file, text } of textsUnder(packageDir)) {
+      if (text.includes('../src/')) hits.push(file);
+    }
+
+    assert.deepEqual(hits, [], `the published package names a path of the source:\n${hits.join('\n')}`);
   });
 
   test('the installed binary registers a route', async () => {

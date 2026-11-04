@@ -140,10 +140,10 @@
  * them as what they are: the names of the methods of the MCP protocol
  * (`tools/list` is a method, not a path into the `tools/` directory of
  * the repository), and the files of a checkout that the code looks for on
- * purpose (the source the launchers run in a checkout, the marker that
- * says that the package sits in a checkout). They are listed in
- * `PROTOCOL_METHOD_NAMES` and `CHECKOUT_NAMES` below, and the reason is
- * written there.
+ * purpose (the marker that says that the package sits in a checkout, and
+ * the name of the file of the daemon that a sentence names). They are
+ * listed in `PROTOCOL_METHOD_NAMES`, `CHECKOUT_NAMES` and
+ * `CHECKOUT_FILE_NAMES` below, and the reason is written there.
  *
  * The rule that reads the code was sharpened in S83. It had four gaps,
  * and they are closed:
@@ -409,24 +409,29 @@ const PROTOCOL_METHOD_NAMES = ['tools/call', 'tools/list'];
 /**
  * The files of the repository the code of the package names on purpose.
  *
- * Two kinds of name, and both of them are names the code uses rather
- * than pointers a reader follows:
+ * The names are names the code uses rather than pointers a reader
+ * follows:
  *
- *   - the source the launchers run when the package sits in a checkout
- *     (`src/cli/index.ts` and its two sisters). An installed package
- *     runs the compiled output; a checkout runs the source. The launcher
- *     names both, and the reader of the installed package follows
- *     neither: the source is not there to follow;
  *   - `tsconfig.build.json`, the marker the code looks for to know that
  *     it sits in a checkout. The code probes for the file; it does not
  *     read it.
+ *
+ * The source the launchers run in a checkout is not on the list: a
+ * launcher names the compiled module it runs, and the source is derived
+ * from that name. A path of the source in the package is a path the
+ * reader of the package cannot follow, and the rule catches it.
  */
-const CHECKOUT_NAMES = [
-  'src/cli/index.ts',
-  'src/daemon.ts',
-  'src/integrations/mcp/server.ts',
-  'tsconfig.build.json',
-];
+const CHECKOUT_NAMES = ['tsconfig.build.json'];
+
+/**
+ * The names of the files of a checkout that the code names on its own.
+ *
+ * A name without a directory part is a pointer at a file of the
+ * repository, and the reader of the package does not have the file. The
+ * code names `daemon.ts` in a sentence about the launcher of the daemon,
+ * so the name is allowed here.
+ */
+const CHECKOUT_FILE_NAMES = ['daemon.ts'];
 
 /**
  * The numbers of the internal specification.
@@ -1158,7 +1163,10 @@ function allRepositoryFiles(): string[] {
  * about the launcher of the daemon).
  */
 function unshippedRepositoryNames(shipped: string[]): Set<string> {
-  const allowed = new Set(CHECKOUT_NAMES.map((name) => path.posix.basename(name)));
+  const allowed = new Set([
+    ...CHECKOUT_NAMES.map((name) => path.posix.basename(name)),
+    ...CHECKOUT_FILE_NAMES,
+  ]);
   const names = new Set<string>();
 
   for (const file of allRepositoryFiles()) {
@@ -1199,11 +1207,10 @@ function unshippedRepositoryNames(shipped: string[]): Set<string> {
  * The two lists of exceptions are read the way they are written. A
  * method of the protocol is a name the code uses when the whole of the
  * path is that name (`tools/list`); a file of a checkout is a file the
- * code names when the path it points at is that file
- * (`../src/cli/index.ts` in `bin/` points at `src/cli/index.ts`). An
- * exception is never a word that happens to be in a path, and it never
- * silences a path that points into a directory the package does not
- * ship.
+ * code names when the path it points at is that file, or when it names
+ * the file on its own (`tsconfig.build.json`). An exception is never a
+ * word that happens to be in a path, and it never silences a path that
+ * points into a directory the package does not ship.
  */
 function codePathTraps(
   file: string,
@@ -1569,6 +1576,10 @@ describe('the published package', () => {
     for (const name of CHECKOUT_NAMES) {
       const used = pointed.has(name) || names.has(path.posix.basename(name));
       assert.ok(used, `the shipped code does not name the file "${name}" — the name has to leave the list`);
+    }
+
+    for (const name of CHECKOUT_FILE_NAMES) {
+      assert.ok(names.has(name), `the shipped code does not name the file "${name}" — the name has to leave the list`);
     }
   });
 
