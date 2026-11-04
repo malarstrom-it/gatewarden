@@ -6,6 +6,11 @@
 # The trigger is a tag: `v1.2.3` publishes version 1.2.3. The tag and the
 # version in package.json must agree, or the run stops.
 #
+# The tag is pushed to the branch the package is developed on,
+# `feat/npm-package`, and the run uses the workflow file that the tag
+# names. No push of a branch publishes anything: this workflow has one
+# trigger and it is the tag.
+#
 # The publish goes through npm's trusted publishing. The run hands npm an
 # OpenID Connect token — the `id-token: write` permission below is what
 # makes GitHub give one — and npm exchanges it for a short-lived
@@ -21,6 +26,9 @@
 #      the repository, the name of the workflow file and the allowed
 #      actions are filled in:
 #
+#      * the owner is the organisation that owns the repository on GitHub,
+#        `malarstrom-it`;
+#      * the repository is `gatewarden`;
 #      * the workflow file is `publish.yml`, and it has to live in
 #        `.github/workflows/`. npm checks the path, and a workflow
 #        somewhere else is not the workflow that was connected;
@@ -30,13 +38,20 @@
 #        default. This workflow publishes directly — `npm publish
 #        --provenance` — so that permission has to be on. With it off,
 #        npm refuses the publish and the run fails in its last step;
+#      * the environment name is empty: the project uses no GitHub
+#        environment, and this workflow names none;
 #      * the `repository` field of `package.json` has to name the same
 #        repository — npm checks it, because a credential for one
-#        repository must not publish another one.
+#        repository must not publish another one. The manifest names
+#        `github.com/malarstrom-it/gatewarden`, and it does.
 #
 #      npm does not check the configuration when it is saved: a wrong
 #      owner, a wrong repository name or a missing permission shows up in
 #      the first publish, and not before.
+#
+#      A connection that is made and then not used expires: npm wants the
+#      first successful publish within two days of the connection, and a
+#      connection that is not used in that time has to be made again.
 #
 #   2. **The workflow has to be the one that is connected.** The
 #      workflow file is `publish.yml`, and it has to live in
