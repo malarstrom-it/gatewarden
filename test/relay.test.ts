@@ -139,8 +139,8 @@ test('X-Forwarded-* headers pass through untouched', async () => {
       await fetch(`${url}/`, {
         headers: {
           [DISPATCH_HEADER]: registration.id,
-          'x-forwarded-for': '10.10.1.77',
-          'x-real-ip': '10.10.1.77',
+          'x-forwarded-for': '198.51.100.7',
+          'x-real-ip': '198.51.100.7',
           'x-forwarded-host': 'feature-login.alpha.example.com',
           'x-forwarded-port': '443',
           'x-forwarded-proto': 'https',
@@ -149,8 +149,8 @@ test('X-Forwarded-* headers pass through untouched', async () => {
       });
       assert.ok(headers);
       const received = headers as http.IncomingHttpHeaders;
-      assert.equal(received['x-forwarded-for'], '10.10.1.77');
-      assert.equal(received['x-real-ip'], '10.10.1.77');
+      assert.equal(received['x-forwarded-for'], '198.51.100.7');
+      assert.equal(received['x-real-ip'], '198.51.100.7');
       assert.equal(received['x-forwarded-host'], 'feature-login.alpha.example.com');
       assert.equal(received['x-forwarded-port'], '443');
       assert.equal(received['x-forwarded-proto'], 'https');

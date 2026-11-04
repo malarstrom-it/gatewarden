@@ -76,7 +76,7 @@ Target: `src/index-page.ts` (the live page at https://index.example.com/)
 - **Evidence**: the only live region on the page is the message line; the
   Up/Down badge and the masthead counts change without announcement.
 - **Fix**: mark the counts as `aria-live="polite"` and announce the change
-  ("orkr/main is no longer answering") through the message region.
+  ("my-app/main is no longer answering") through the message region.
 
 ### [P2] On a phone the two actions are stranded on a line of their own
 
@@ -98,7 +98,7 @@ Target: `src/index-page.ts` (the live page at https://index.example.com/)
 
 ### [P3] The icon buttons have very long accessible names
 
-- **Evidence**: "Copy the address of hp-orkr-t-0029-e16s02-e16s03-…" is
+- **Evidence**: "Copy the address of feature/very-long-branch-name…" is
   verbose in a screen reader's list of buttons.
 - **Fix**: "Copy address" / "Remove"; the row already carries the context.
 

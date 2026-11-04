@@ -42,11 +42,11 @@ const config = loadConfig({ stateDir, overrides: { registryPort: port } });
 const store = new RegistrationStore(stateDir);
 
 const routes: Array<{ project: string; branch: string; port: number; label?: string }> = [
-  { project: 'traefik-api', branch: 'main', port: 45101 },
-  { project: 'traefik-api', branch: 'feat/index-polish', port: 45102, label: 'polish the index page' },
-  { project: 'orkr', branch: 'hp-orkr-t-0029-e16s02-e16s03-the-design-tokens-and-the', port: 45103 },
-  { project: 'skill-probe', branch: 'feature-probe', port: 45999 },
-  { project: 'docs', branch: 'main', port: 45998 },
+  { project: 'my-app', branch: 'main', port: 45101 },
+  { project: 'my-app', branch: 'feat/index-polish', port: 45102, label: 'polish the index page' },
+  { project: 'other-app', branch: 'feature/work', port: 45103 },
+  { project: 'probe', branch: 'feature-probe', port: 45999 },
+  { project: 'site', branch: 'main', port: 45998 },
 ];
 
 const listeners: net.Server[] = [];

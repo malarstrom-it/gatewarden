@@ -34,7 +34,7 @@ shell or in the agent's answer. (confirmed)
 
 The gatewarden: a registry and a relay inside the container that let agents
 publish dev servers, which the client's own Traefik then serves on the LAN as
-`https://<branch>.<project>.example.com`, each project covered by one
+`https://<branch>.<project>.<zone>`, each project covered by one
 wildcard certificate. (confirmed)
 
 The route list is the client's overview of that: what the agents are running
@@ -88,7 +88,7 @@ each one has after the web interface was removed (S3, §10.3):
 ## Brand Commitments
 
 - The product is called "Gatewarden", and the client's own zone and the
-  wildcard naming `<branch>.<project>.example.com` are facts of the
+  wildcard naming `<branch>.<project>.<zone>` are facts of the
   product. (confirmed)
 - The visual world of the index page — the Daylight world, the Up/Down
   badge, the typefaces — ended with the page (D8). Nothing of it is a
