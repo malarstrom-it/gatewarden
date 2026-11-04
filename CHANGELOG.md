@@ -15,6 +15,12 @@ names. Every release gets a section, newest first.
 
 ### Changed
 
+- **The package names one address everywhere.** The security policy named
+  another address than the readme, and the package names one address now:
+  the support address, which the readme named already. A report that goes
+  to the address of the package reaches the maintainer of the package, and
+  the guard reads the documents of the repository too.
+
 - **The package says where its source lives.** The manifest names the
   repository of the project in `repository`, `homepage` and `bugs`, and
   the README has a section that names it too. A reader on npmjs.org
