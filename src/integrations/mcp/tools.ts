@@ -13,9 +13,9 @@
  *   dev_gateway_status.
  */
 
-import { discoverProxyStatus } from '../../adapters/index.ts';
+import { discoverProxyStatus, unknownProxyReason } from '../../adapters/index.ts';
 import { loadConfigWithReport, requireZone } from '../../core/config.ts';
-import { gatewayStatus, routeJson } from '../../core/status.ts';
+import { gatewayStatus, routeJson, withProxyReason } from '../../core/status.ts';
 import { RegistrationStore } from '../../core/state.ts';
 import { withRouteLock } from '../../core/lock.ts';
 import { isPortListening } from '../../core/util/net.ts';
@@ -58,6 +58,35 @@ export interface ToolDefinition {
   outputSchema: JsonSchema;
   /** What the tool does. */
   handler: (args: Record<string, unknown>, context: ToolContext) => Promise<unknown>;
+  /**
+   * Does the tool report the mistake of an unknown proxy id?
+   *
+   * The daemon stops when the configuration file names a proxy id the
+   * package does not know, and a daemon that did not start is a
+   * failure of the call — for every tool. The status tool is the one
+   * exception: it reports where the installation stands, and that
+   * mistake is what it reports.
+   */
+  reportsUnknownProxy?: boolean;
+}
+
+/**
+ * Does the tool answer the failure the daemon stopped with?
+ *
+ * The status tool answers when the daemon could not start because the
+ * configuration file names a proxy id the package does not know: that
+ * mistake is what the report is about. Every other failure of the
+ * daemon is a failure of the call, for every tool, as it was before.
+ */
+export function answersUnknownProxy(
+  tool: ToolDefinition,
+  config: Pick<Config, 'proxy'>,
+  error: string,
+): boolean {
+  if (tool.reportsUnknownProxy !== true) return false;
+  // The reason the daemon stopped with is the wording of the catalog,
+  // whole: the id that was asked for and the ids that exist.
+  return error === unknownProxyReason(config.proxy);
 }
 
 /**
@@ -132,6 +161,7 @@ const proxySchema: JsonSchema = {
     id: { type: 'string' },
     reachable: { type: 'boolean' },
     version: { type: 'string' },
+    reason: { type: 'string' },
   },
   required: ['id', 'reachable'],
   additionalProperties: false,
@@ -330,7 +360,8 @@ const gatewardenStatus: ToolDefinition = {
   name: 'dev_gateway_status',
   title: 'Report the state of the gateway',
   description:
-    'Report the state of the gateway: the daemon, the proxy, the configuration, and whether the gateway is reachable.',
+    'Report the state of the gateway: the daemon, the proxy, the configuration, and whether the gateway is reachable. ' +
+    'When the proxy does not answer, the reason says why: the configuration file names a proxy id the package does not know.',
   inputSchema: {
     type: 'object',
     properties: {},
@@ -343,18 +374,34 @@ const gatewardenStatus: ToolDefinition = {
       proxy: proxySchema,
       config: configSchema,
       reachable: { type: 'boolean' },
+      reason: { type: 'string' },
     },
     required: ['daemon', 'proxy', 'config', 'reachable'],
     additionalProperties: false,
   },
+  // The tool reports, so it answers the daemon that could not start
+  // because of the mistake it reports: the configuration file names a
+  // proxy id the package does not know.
+  reportsUnknownProxy: true,
   async handler(_args, context) {
-    const proxy = await discoverProxyStatus(context.config.proxy);
+    // The reason the proxy does not answer, when the cause is known:
+    // the configuration file names a proxy id the package does not
+    // know. The status says why, and it does not fail because of it.
+    const proxy = withProxyReason(
+      await discoverProxyStatus(context.config.proxy),
+      unknownProxyReason(context.config.proxy),
+    );
     const status = await gatewayStatus(context.config, context.configPath, context.paths, proxy);
     return {
       daemon: status.daemon,
       proxy: status.proxy,
       config: status.config,
       reachable: status.reachable,
+      // The reason the proxy does not answer, in one sentence. It is
+      // the sentence the proxy carries, so that a reader sees why
+      // without looking into the proxy. It is there when there is one:
+      // the answer stays inside the schema the tool declares.
+      ...(status.proxy.reason ? { reason: status.proxy.reason } : {}),
     };
   },
 };

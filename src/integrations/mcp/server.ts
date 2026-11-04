@@ -17,7 +17,7 @@ import process from 'node:process';
 import { ensureDaemon } from '../../core/daemonControl.ts';
 import { deprecatedEnvNotices } from '../../core/paths.ts';
 import { packageVersion } from '../../core/util/module.ts';
-import { createToolContext, TOOLS, type ToolDefinition } from './tools.ts';
+import { answersUnknownProxy, createToolContext, TOOLS, type ToolDefinition } from './tools.ts';
 
 /** The JSON-RPC version every message carries. */
 export const JSONRPC_VERSION = '2.0';
@@ -239,7 +239,14 @@ export class McpServer {
       // The server does not start it when it starts — the first tool
       // call does.
       const started = await ensureDaemon(context.config, { configPath: context.configPath });
-      if (started.error) throw new Error(started.error);
+      // A daemon that did not start is a failure of the call, for every
+      // tool. The status tool is the one exception, and only for the
+      // mistake it exists to report: the configuration file names a
+      // proxy id the package does not know. The status carries that
+      // reason, so the call answers instead of failing.
+      if (started.error && !answersUnknownProxy(tool, context.config, started.error)) {
+        throw new Error(started.error);
+      }
 
       const result = await tool.handler(args, context);
       if (!isRecord(result)) {

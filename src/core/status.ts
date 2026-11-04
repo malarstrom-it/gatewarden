@@ -46,6 +46,43 @@ export interface ProxyStatus {
   reachable: boolean;
   /** The version the proxy reported, when it reported one. */
   version?: string;
+  /**
+   * Why the proxy does not answer, in one sentence.
+   *
+   * It is there when the cause is known: when the configuration file
+   * names a proxy id the package does not know, for instance. The
+   * status reports, so a reason is never an error.
+   */
+  reason?: string;
+}
+
+/**
+ * The sentence the status carries about a proxy id that is not known.
+ *
+ * The core knows no proxy: the adapter catalog owns the wording of an
+ * id it does not know, and the caller hands that wording over. The
+ * status puts it in a sentence, so that a reader — a human at the
+ * terminal, an agent reading the tool — learns why the proxy does not
+ * answer, and not only that it does not.
+ */
+export function unknownProxyReasonSentence(catalogReason: string): string {
+  return `The configuration file names a proxy the package does not know: ${catalogReason}.`;
+}
+
+/**
+ * The status of the proxy, with the reason it does not answer.
+ *
+ * The caller asks the proxy, through the adapter catalog, and hands
+ * the answer over. When the configuration file names an id the
+ * catalog does not know, the caller hands over the reason the catalog
+ * gave, and the status carries it.
+ *
+ * The reason is a report, never an error: the status says where the
+ * installation stands, and it does not fail because of it.
+ */
+export function withProxyReason(status: ProxyStatus, catalogReason: string | null): ProxyStatus {
+  if (!catalogReason) return status;
+  return { ...status, reason: unknownProxyReasonSentence(catalogReason) };
 }
 
 /** The daemon, in the shape the tools return. */
