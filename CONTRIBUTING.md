@@ -378,6 +378,10 @@ tests have run.
   names the host of the repository on GitHub and nothing else.
 - The workflows of the private server are gone: the directory with them
   is removed, and there is one CI and one publish workflow.
+- The CI runs on a push to `feat/npm-package`. The work of the project
+  happens on that branch, and a push to it starts the CI, so that a merge
+  into it is checked on its own. `master` and `main` stay in the list,
+  because the history of the server the repository left came with them.
 
 ### The steps that are left
 
@@ -391,12 +395,9 @@ tests have run.
    stands for `here` today, and `here` resolves the base from the
    checkout: it works as long as the checkout stays where it is, and it
    is not the same thing as naming the branch.
-3. Add `feat/npm-package` to the trigger of the CI, or let the runs come
-   from the pull requests: the CI runs on a push to `master` or `main`
-   today, and the work of the project happens on `feat/npm-package`.
-4. Publish the first version from GitHub: tag `vX.Y.Z`, and let the
+3. Publish the first version from GitHub: tag `vX.Y.Z`, and let the
    workflow publish it.
-5. Check the tarball before the publish and after it:
+4. Check the tarball before the publish and after it:
 
     ```bash
     npm pack --dry-run
