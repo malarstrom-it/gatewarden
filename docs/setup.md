@@ -277,8 +277,7 @@ The other commands of the lifecycle:
 The service stays stopped after `gatewarden stop`, on macOS and on Linux.
 The daemon ends with the exit code 0 when it is stopped, and the unit of
 the platform leaves it alone: `SuccessfulExit=false` in the launchd agent
-on macOS, `Restart=on-failure` in the systemd unit on Linux. The daemon
-starts again when `gatewarden start` says so, or after a reboot.
+on macOS, `Restart=on-failure` in the systemd unit on Linux.
 
 Nothing is deleted by the migration: the old files stay where they were, and
 the new layout holds the configuration and the route store in its own files.
