@@ -44,7 +44,9 @@ interface Fixture {
  *
  * The server is started as a child process, the way a harness starts it.
  */
-async function makeMcpFixture(options: { connect?: boolean; zone?: string } = {}): Promise<Fixture> {
+async function makeMcpFixture(
+  options: { connect?: boolean; zone?: string; proxy?: string } = {},
+): Promise<Fixture> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-mcp-'));
   const registryPort = await freePort();
   const relayPort = await freePort();
@@ -53,7 +55,7 @@ async function makeMcpFixture(options: { connect?: boolean; zone?: string } = {}
     path.join(dir, 'config.json'),
     JSON.stringify(
       {
-        proxy: 'traefik',
+        proxy: options.proxy ?? 'traefik',
         registryPort,
         relayPort,
         advertisedIp: '127.0.0.1',
@@ -320,4 +322,58 @@ test('the status of the gateway is reported', async (t) => {
   assert.equal(status.config.zone, 'gwtest.local');
   assert.equal(status.config.path, path.join(fixture.dir, 'config.json'));
   assert.equal(status.reachable, true);
+});
+
+test('a tool that needs the daemon still fails when the daemon cannot start', async (t) => {
+  // The configuration file names a proxy id the package does not know,
+  // so the daemon cannot start.
+  const fixture = await makeMcpFixture({ proxy: 'caddy' });
+  t.after(() => fixture.cleanup());
+
+  // That is a failure of the call, for every tool that needs a daemon
+  // that runs. Only the status tool answers it.
+  const result = await fixture.client.callTool({
+    name: 'publish_dev_server',
+    arguments: { port: 3999, project: 'probe', branch: 'main' },
+  });
+  assert.equal(result.isError, true, JSON.stringify(result.content));
+  const text = (result.content as Array<{ type: string; text: string }>)
+    .map((entry) => entry.text)
+    .join('\n');
+  assert.match(text, /unknown proxy "caddy" \(known: traefik\)/);
+});
+
+test('the status tool says why the proxy does not answer, and a client accepts the answer', async (t) => {
+  // The configuration file names a proxy id the package does not know.
+  const fixture = await makeMcpFixture({ proxy: 'caddy' });
+  t.after(() => fixture.cleanup());
+
+  // The client validates the answer of a tool against the schema the
+  // tool declares. It learns the schemas from the tool list, so the
+  // list is asked for first: without it, the answer is not checked and
+  // a broken answer would pass unnoticed.
+  await fixture.client.listTools();
+
+  // The tool answers instead of failing: the mistake in the
+  // configuration file is what the status reports.
+  const result = await fixture.client.callTool({ name: 'dev_gateway_status', arguments: {} });
+  assert.equal(result.isError, false, JSON.stringify(result.content));
+
+  const status = result.structuredContent as {
+    daemon: { running: boolean; healthy: boolean };
+    proxy: { id: string; reachable: boolean; reason?: string };
+    reachable: boolean;
+    reason?: string;
+  };
+  assert.equal(status.proxy.id, 'caddy');
+  // The proxy does not answer, and the status says why.
+  assert.equal(status.proxy.reachable, false);
+  assert.equal(
+    status.proxy.reason,
+    'The configuration file names a proxy the package does not know: unknown proxy "caddy" (known: traefik).',
+  );
+  // The reason is at the top of the answer too, so that an agent reads
+  // why without looking into the proxy.
+  assert.equal(status.reason, status.proxy.reason);
+  assert.equal(status.reachable, false);
 });
