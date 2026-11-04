@@ -36,6 +36,7 @@ import {
   resolveStateDir,
   zoneOf,
   CONFIG_KEYS,
+  type LoadedConfig,
 } from '../core/config.ts';
 import {
   deprecatedEnvNotices,
@@ -216,7 +217,38 @@ function resolveConfig(
     stateDir: flagString(flags, 'state-dir'),
     migrate: opts.migrate,
   });
+  warnAboutLeftBehindLayouts(loaded);
   return { config: loaded.config, configPath: loaded.configPath, paths: loaded.paths };
+}
+
+/**
+ * Say what the first run left behind.
+ *
+ * The first run migrates the newer of the two old layouts and leaves the
+ * older one where it is: the routes of the older layout do not come over.
+ * The user has to hear about it, even if they never run "gatewarden
+ * migrate". The warning goes to the standard error, so that a command that
+ * writes JSON still writes JSON to the standard output.
+ */
+function warnAboutLeftBehindLayouts(loaded: LoadedConfig): void {
+  const layouts: Array<{ name: string; report: LayoutMigrationReport | undefined }> = [
+    { name: 'old name layout', report: loaded.oldNameMigration },
+    { name: 'old layout', report: loaded.migration },
+  ];
+
+  for (const { name, report } of layouts) {
+    if (report === undefined) continue;
+    for (const file of report.skipped) {
+      if (file.what === 'route store' && report.next !== undefined) {
+        process.stderr.write(`warning: the ${name} was not migrated: ${report.next}\n`);
+        continue;
+      }
+      const routes = file.count === undefined ? '' : ` (${file.count} routes)`;
+      process.stderr.write(
+        `warning: the ${name} was not migrated: its ${file.what} is still at ${file.from}${routes}\n`,
+      );
+    }
+  }
 }
 
 /**
@@ -569,11 +601,22 @@ function migrationLines(
           : `the ${name} was not migrated: the newer layout was migrated instead`,
       );
     } else {
-      const why = `the new layout already holds its own ${notMigrated.join(' and ')}`;
+      // The reasons are per file: a file that was already there and a file
+      // that the newer layout took are two different things, and the
+      // summary has to say which is which.
+      const why: string[] = [];
+      const existed = report.skipped.filter((file) => !file.byNewerLayout).map((file) => file.what);
+      const taken = report.skipped.filter((file) => file.byNewerLayout).map((file) => file.what);
+      if (existed.length > 0) {
+        why.push(`the new layout already had its own ${existed.join(' and ')}`);
+      }
+      if (taken.length > 0) {
+        why.push(`the newer layout took the ${taken.join(' and the ')}`);
+      }
       lines.push(
         dryRun
-          ? `dry run: the ${name} would not be migrated: ${why}`
-          : `the ${name} was not migrated: ${why}`,
+          ? `dry run: the ${name} would not be migrated: ${why.join(', ')}`
+          : `the ${name} was not migrated: ${why.join(', ')}`,
       );
     }
   } else {
@@ -635,8 +678,12 @@ function commandMigrate(flags: Record<string, string | boolean>): number {
   // The way forward is a line of its own, at the end of the report: it
   // names the file that holds the routes that did not come over, and says
   // what to do with it.
-  for (const advice of [oldNameReport.next, report.next]) {
-    if (advice !== undefined) lines.push(`next:  ${advice}`);
+  const advices: Array<{ name: string; advice: string | undefined }> = [
+    { name: 'old name layout', advice: oldNameReport.next },
+    { name: 'old layout', advice: report.next },
+  ];
+  for (const { name, advice } of advices) {
+    if (advice !== undefined) lines.push(`next:  to use the routes of the ${name}: ${advice}`);
   }
 
   process.stdout.write(lines.join('\n') + '\n');

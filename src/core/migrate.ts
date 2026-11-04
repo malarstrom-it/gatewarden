@@ -32,6 +32,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { GatewayPaths, LegacyAppPaths } from './paths.ts';
 import { LEGACY_ROUTES_FILE, ROUTES_FILE } from './state.ts';
+import { zoneOfFqdn } from './util/slug.ts';
 
 /** The configuration file of the old layout. */
 export const LEGACY_CONFIG_FILE = 'config.json';
@@ -179,20 +180,48 @@ export function countRoutes(file: string): number {
   }
 }
 
-/** The ids of the routes a route store holds. */
-function routeIds(file: string): string[] {
+/**
+ * A route of a route store, with the fields that say which route it is.
+ */
+interface StoreRoute {
+  /** The identity of the route: the same route has the same identity. */
+  identity: string;
+  /** The route as a reader names it: the host name and the port. */
+  label: string;
+}
+
+/**
+ * The routes of a route store.
+ *
+ * The identity of a route is the host name, the port and the zone. The id
+ * is not enough: two old layouts can hold a route with the same id and a
+ * different host name and port, and then only one of them came over. The
+ * zone is the one of the route, or the one its host name carries, so that a
+ * store that was written before the route kept its zone is not a different
+ * route.
+ */
+function routesOf(file: string): StoreRoute[] {
+  let registrations: unknown;
   try {
     const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as { registrations?: unknown };
-    if (!Array.isArray(raw.registrations)) return [];
-    const ids: string[] = [];
-    for (const registration of raw.registrations) {
-      const id = (registration as { id?: unknown })?.id;
-      if (typeof id === 'string' && id.length > 0) ids.push(id);
-    }
-    return ids;
+    registrations = raw.registrations;
   } catch {
     return [];
   }
+  if (!Array.isArray(registrations)) return [];
+
+  const routes: StoreRoute[] = [];
+  for (const registration of registrations) {
+    const route = (registration ?? {}) as { fqdn?: unknown; zone?: unknown; devPort?: unknown };
+    const fqdn = typeof route.fqdn === 'string' ? route.fqdn : '';
+    const zone = typeof route.zone === 'string' && route.zone.length > 0 ? route.zone : zoneOfFqdn(fqdn);
+    const port = typeof route.devPort === 'number' ? route.devPort : '';
+    routes.push({
+      identity: `${fqdn}|${port}|${zone}`,
+      label: port === '' ? fqdn : `${fqdn}:${port}`,
+    });
+  }
+  return routes;
 }
 
 /**
@@ -211,25 +240,30 @@ function skipReason(reason: string, from: string, count?: number): string {
  * The way forward for a route store that was left behind.
  *
  * The route store of the new layout holds the routes of the layout that was
- * migrated. When the routes of the old layout are not in it, the advice
- * says which file holds them and what to do with it.
+ * migrated. The advice compares the routes themselves, not their ids: two
+ * old layouts can hold a route with the same id and a different host name
+ * and port, and then the route of the older layout did not come over. The
+ * advice says which file holds the routes that are not in the store, and
+ * what to do with them.
  */
-function routeAdvice(from: string, to: string, label: string): string {
-  const oldIds = routeIds(from);
-  if (oldIds.length === 0) {
+function routeAdvice(from: string, to: string): string {
+  const oldRoutes = routesOf(from);
+  if (oldRoutes.length === 0) {
     return `the route store ${from} holds no routes: there is nothing to add to the route store ${to}`;
   }
-  const newIds = new Set(routeIds(to));
-  const missing = oldIds.filter((id) => !newIds.has(id));
+  const newRoutes = new Set(routesOf(to).map((route) => route.identity));
+  const missing = oldRoutes.filter((route) => !newRoutes.has(route.identity));
   if (missing.length === 0) {
     return (
       `the routes of ${from} are already in the route store ${to}: ` +
       'the old file can be left in place or removed by you'
     );
   }
+  const names = missing.map((route) => route.label).join(', ');
+  const them = missing.length === 1 ? 'it' : 'them';
   return (
-    `to use the routes of the ${label}: ` +
-    `add the entries of the registrations array of ${from} to the route store ${to}`
+    `the route store ${to} does not hold ${names} (from ${from}): ` +
+    `add ${them} to the route store`
   );
 }
 
@@ -298,7 +332,7 @@ export function migrateLegacyLayout(opts: MigrationOptions): MigrationReport {
         reason: skipReason(taken.reason, legacy.routesFile, count),
         count,
       });
-      report.next = routeAdvice(legacy.routesFile, routesTarget, 'old layout');
+      report.next = routeAdvice(legacy.routesFile, routesTarget);
     } else {
       report.routes = { from: legacy.routesFile, to: routesTarget, count: countRoutes(legacy.routesFile) };
       report.migrated = true;
@@ -429,7 +463,7 @@ export function migrateLegacyAppLayout(opts: LegacyAppMigrationOptions): LegacyA
         reason: skipReason(taken.reason, legacy.routesFile, count),
         count,
       });
-      report.next = routeAdvice(legacy.routesFile, routesTarget, 'old name layout');
+      report.next = routeAdvice(legacy.routesFile, routesTarget);
     } else {
       report.routes = { from: legacy.routesFile, to: routesTarget, count: countRoutes(legacy.routesFile) };
       report.migrated = true;

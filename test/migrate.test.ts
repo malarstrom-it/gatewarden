@@ -674,3 +674,153 @@ test('migrate --json says what happened to the older layout too', async () => {
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
+
+/**
+ * A home that holds both old layouts, where both hold a route with the
+ * same id.
+ *
+ * The id is the key of the route store, so both routes want the same place
+ * in it. They are two different routes: the host names and the ports are
+ * not the same. Only one of them can be in the store.
+ */
+function makeBothLayoutsWithTheSameRoute(): { home: string } {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-same-route-'));
+  const shared = (fqdn: string, port: number): Record<string, unknown> => ({
+    id: 'shared/main',
+    project: 'shared',
+    branch: 'main',
+    projectSlug: 'shared',
+    branchSlug: 'main',
+    fqdn,
+    devPort: port,
+    createdAt: '2024-01-01T00:00:00.000Z',
+    updatedAt: '2024-01-01T00:00:00.000Z',
+  });
+
+  const legacy = path.join(home, '.traefik-dev');
+  fs.mkdirSync(legacy, { recursive: true });
+  fs.writeFileSync(
+    path.join(legacy, 'config.json'),
+    JSON.stringify({ zone: 'older.example', stateDir: legacy, registryPort: 45002, relayPort: 45001 }, null, 2),
+  );
+  fs.writeFileSync(
+    path.join(legacy, 'registrations.json'),
+    JSON.stringify({ version: 1, registrations: [shared('main.shared.legacy.example', 3997)] }, null, 2),
+  );
+
+  const configDir = path.join(home, '.config', 'dev-gateway');
+  const stateDir = path.join(home, '.local', 'state', 'dev-gateway');
+  fs.mkdirSync(configDir, { recursive: true });
+  fs.mkdirSync(stateDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(configDir, 'config.json'),
+    JSON.stringify({ zone: 'newer.example', stateDir, registryPort: 45002, relayPort: 45001 }, null, 2),
+  );
+  fs.writeFileSync(
+    path.join(stateDir, 'routes.json'),
+    JSON.stringify({ version: 1, registrations: [shared('main.shared.oldname.example', 3998)] }, null, 2),
+  );
+
+  return { home };
+}
+
+test('the advice does not call a route with the same id the same route', async () => {
+  // Both old layouts hold a route with the id "shared/main", but they are
+  // two different routes: the host names and the ports are not the same.
+  // Only the newer one came over, so the advice has to say that the older
+  // route is not in the store: it must not invite the user to remove the
+  // file that holds it.
+  const { home } = makeBothLayoutsWithTheSameRoute();
+  try {
+    const { stdout } = await execFileAsync(process.execPath, [CLI, 'migrate'], {
+      env: cliEnv(home),
+      cwd: REPO_ROOT,
+    });
+
+    const next = stdout.trim().split('\n').filter((line) => line.startsWith('next:'));
+    assert.equal(next.length, 1, `the report has no way forward:\n${stdout}`);
+    assert.doesNotMatch(
+      next[0] ?? '',
+      /already in the route store/,
+      'the advice calls a route that did not come over the same route',
+    );
+    assert.doesNotMatch(
+      next[0] ?? '',
+      /removed by you/,
+      'the advice invites the user to remove a file that holds a route that did not come over',
+    );
+    assert.match(next[0] ?? '', /main\.shared\.legacy\.example:3997/);
+    assert.match(next[0] ?? '', /add it to the route store/);
+
+    // The store holds the route of the newer layout, and only that one.
+    const routes = path.join(home, '.local', 'state', 'gatewarden', 'routes.json');
+    const store = JSON.parse(fs.readFileSync(routes, 'utf8')) as {
+      registrations: Array<{ fqdn: string }>;
+    };
+    assert.equal(store.registrations.length, 1);
+    assert.equal(store.registrations[0]?.fqdn, 'main.shared.oldname.example');
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('the summary says which file the new layout had and which the newer layout took', async () => {
+  // The new layout has a configuration file of its own already, and the
+  // newer layout takes the route store during the run. The summary has to
+  // say which is which: the new layout did not hold the route store
+  // before the run.
+  const { home } = makeBothLayouts();
+  try {
+    const configDir = path.join(home, '.config', 'gatewarden');
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(configDir, 'config.json'),
+      JSON.stringify({ zone: 'current.example' }, null, 2),
+    );
+
+    const { stdout } = await execFileAsync(process.execPath, [CLI, 'migrate'], {
+      env: cliEnv(home),
+      cwd: REPO_ROOT,
+    });
+
+    assert.match(stdout, /the new layout already had its own configuration file/);
+    assert.match(stdout, /the newer layout took the route store/);
+    assert.doesNotMatch(
+      stdout,
+      /the new layout already had its own configuration file and route store/,
+      `the summary says the new layout held the route store before the run:\n${stdout}`,
+    );
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('the first run says that the older layout was left behind', async () => {
+  // The first run migrates the newer layout and leaves the older one where
+  // it is. The user has to hear about it, even if they never run
+  // "gatewarden migrate".
+  const { home } = makeBothLayouts();
+  try {
+    const { stdout, stderr } = await execFileAsync(process.execPath, [CLI, 'list', '--json'], {
+      env: cliEnv(home),
+      cwd: REPO_ROOT,
+    });
+
+    assert.match(stderr, /the old layout was not migrated/);
+    assert.match(stderr, /registrations\.json/);
+
+    // The output of a command that writes JSON is JSON, and nothing else.
+    const parsed = JSON.parse(stdout) as { registrations: unknown[] };
+    assert.ok(Array.isArray(parsed.registrations));
+
+    // The routes of the older layout did not come over.
+    const routes = path.join(home, '.local', 'state', 'gatewarden', 'routes.json');
+    const store = JSON.parse(fs.readFileSync(routes, 'utf8')) as {
+      registrations: Array<{ project: string }>;
+    };
+    assert.equal(store.registrations.length, 1);
+    assert.equal(store.registrations[0]?.project, 'newer-project');
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
