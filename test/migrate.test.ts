@@ -557,3 +557,270 @@ test('the dry run of a home with both old layouts says the same thing twice', as
     fs.rmSync(home, { recursive: true, force: true });
   }
 });
+
+/** A path as a pattern: the dots of a file name are not wildcards. */
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+test('a home with both old layouts says what happened to the older one', async () => {
+  // The older layout is left behind when the newer one has already taken
+  // the files of the new layout. The report has to say that, and where the
+  // routes of the older layout are: "nothing to migrate" would hide it.
+  const { home } = makeBothLayouts();
+  try {
+    const { stdout } = await execFileAsync(process.execPath, [CLI, 'migrate'], {
+      env: cliEnv(home),
+      cwd: REPO_ROOT,
+    });
+
+    // The newer layout was migrated, the older one was not.
+    assert.match(stdout, /the old name layout was migrated/);
+    assert.match(stdout, /the old layout was not migrated/);
+    assert.doesNotMatch(
+      stdout,
+      /nothing to migrate in the legacy layout/,
+      `the report calls the skipped layout empty:\n${stdout}`,
+    );
+
+    // The files of the older layout are named, with the routes they hold.
+    const oldRoutes = path.join(home, '.traefik-dev', 'registrations.json');
+    assert.match(stdout, new RegExp(escapeRegExp(oldRoutes)));
+    assert.match(stdout, /not migrated:.*route store/);
+    assert.match(stdout, /1 routes/);
+
+    // The way forward is a line of its own, and it names the file that
+    // holds the routes that did not come over.
+    const next = stdout.trim().split('\n').filter((line) => line.startsWith('next:'));
+    assert.equal(next.length, 1, `the report has no way forward:\n${stdout}`);
+    assert.match(next[0] ?? '', /registrations\.json/);
+
+    // Nothing was deleted: the old files are still where they were.
+    assert.ok(fs.existsSync(oldRoutes), 'the old route store was deleted');
+    assert.ok(fs.existsSync(path.join(home, '.traefik-dev', 'config.json')));
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('the report says what happened to every layout, in every home', async () => {
+  // Three homes: only the pre-package layout, only the layout of the old
+  // name, and both of them. Every layout of every home has a line of its
+  // own that says what happened to it.
+  const legacy = makeLegacy();
+  const oldName = makeOldName();
+  const both = makeBothLayouts();
+  const homes = [
+    { home: legacy.home, legacy: 'migrated', oldName: 'empty' },
+    { home: oldName.home, legacy: 'empty', oldName: 'migrated' },
+    { home: both.home, legacy: 'not migrated', oldName: 'migrated' },
+  ];
+  try {
+    for (const { home, legacy: what, oldName } of homes) {
+      const { stdout } = await execFileAsync(process.execPath, [CLI, 'migrate'], {
+        env: cliEnv(home),
+        cwd: REPO_ROOT,
+      });
+
+      // Both layouts are in the report.
+      assert.match(stdout, /old name layout:/);
+      assert.match(stdout, /legacy layout:/);
+
+      // The layout of the old name.
+      if (oldName === 'migrated') {
+        assert.match(stdout, /the old name layout was migrated/);
+      } else {
+        assert.match(stdout, /nothing to migrate in the old name layout/);
+      }
+
+      // The pre-package layout.
+      if (what === 'migrated') {
+        assert.match(stdout, /the old layout was migrated/);
+      } else if (what === 'empty') {
+        assert.match(stdout, /nothing to migrate in the legacy layout/);
+      } else {
+        assert.match(stdout, /the old layout was (not migrated|partly migrated)/);
+      }
+    }
+  } finally {
+    for (const home of [legacy.home, oldName.home, both.home]) {
+      fs.rmSync(home, { recursive: true, force: true });
+    }
+  }
+});
+
+test('migrate --json says what happened to the older layout too', async () => {
+  const { home } = makeBothLayouts();
+  try {
+    const { stdout } = await execFileAsync(process.execPath, [CLI, 'migrate', '--json'], {
+      env: cliEnv(home),
+      cwd: REPO_ROOT,
+    });
+    const parsed = JSON.parse(stdout) as {
+      migrated: boolean;
+      skipped: Array<{ what: string; from: string; count?: number }>;
+      next?: string;
+      oldName: { migrated: boolean; skipped: unknown[] };
+    };
+
+    assert.equal(parsed.oldName.migrated, true, 'the newer layout was not migrated');
+    assert.equal(parsed.migrated, false, 'the older layout was migrated');
+    assert.ok(parsed.skipped.length > 0, 'the report does not say what was skipped');
+    assert.equal(parsed.skipped[0]?.what, 'configuration file');
+    assert.match(parsed.skipped[1]?.from ?? '', /registrations\.json/);
+    assert.equal(parsed.skipped[1]?.count, 1);
+    assert.match(parsed.next ?? '', /registrations\.json/);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+/**
+ * A home that holds both old layouts, where both hold a route with the
+ * same id.
+ *
+ * The id is the key of the route store, so both routes want the same place
+ * in it. They are two different routes: the host names and the ports are
+ * not the same. Only one of them can be in the store.
+ */
+function makeBothLayoutsWithTheSameRoute(): { home: string } {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-same-route-'));
+  const shared = (fqdn: string, port: number): Record<string, unknown> => ({
+    id: 'shared/main',
+    project: 'shared',
+    branch: 'main',
+    projectSlug: 'shared',
+    branchSlug: 'main',
+    fqdn,
+    devPort: port,
+    createdAt: '2024-01-01T00:00:00.000Z',
+    updatedAt: '2024-01-01T00:00:00.000Z',
+  });
+
+  const legacy = path.join(home, '.traefik-dev');
+  fs.mkdirSync(legacy, { recursive: true });
+  fs.writeFileSync(
+    path.join(legacy, 'config.json'),
+    JSON.stringify({ zone: 'older.example', stateDir: legacy, registryPort: 45002, relayPort: 45001 }, null, 2),
+  );
+  fs.writeFileSync(
+    path.join(legacy, 'registrations.json'),
+    JSON.stringify({ version: 1, registrations: [shared('main.shared.legacy.example', 3997)] }, null, 2),
+  );
+
+  const configDir = path.join(home, '.config', 'dev-gateway');
+  const stateDir = path.join(home, '.local', 'state', 'dev-gateway');
+  fs.mkdirSync(configDir, { recursive: true });
+  fs.mkdirSync(stateDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(configDir, 'config.json'),
+    JSON.stringify({ zone: 'newer.example', stateDir, registryPort: 45002, relayPort: 45001 }, null, 2),
+  );
+  fs.writeFileSync(
+    path.join(stateDir, 'routes.json'),
+    JSON.stringify({ version: 1, registrations: [shared('main.shared.oldname.example', 3998)] }, null, 2),
+  );
+
+  return { home };
+}
+
+test('the advice does not call a route with the same id the same route', async () => {
+  // Both old layouts hold a route with the id "shared/main", but they are
+  // two different routes: the host names and the ports are not the same.
+  // Only the newer one came over, so the advice has to say that the older
+  // route is not in the store: it must not invite the user to remove the
+  // file that holds it.
+  const { home } = makeBothLayoutsWithTheSameRoute();
+  try {
+    const { stdout } = await execFileAsync(process.execPath, [CLI, 'migrate'], {
+      env: cliEnv(home),
+      cwd: REPO_ROOT,
+    });
+
+    const next = stdout.trim().split('\n').filter((line) => line.startsWith('next:'));
+    assert.equal(next.length, 1, `the report has no way forward:\n${stdout}`);
+    assert.doesNotMatch(
+      next[0] ?? '',
+      /already in the route store/,
+      'the advice calls a route that did not come over the same route',
+    );
+    assert.doesNotMatch(
+      next[0] ?? '',
+      /removed by you/,
+      'the advice invites the user to remove a file that holds a route that did not come over',
+    );
+    assert.match(next[0] ?? '', /main\.shared\.legacy\.example:3997/);
+    assert.match(next[0] ?? '', /add it to the route store/);
+
+    // The store holds the route of the newer layout, and only that one.
+    const routes = path.join(home, '.local', 'state', 'gatewarden', 'routes.json');
+    const store = JSON.parse(fs.readFileSync(routes, 'utf8')) as {
+      registrations: Array<{ fqdn: string }>;
+    };
+    assert.equal(store.registrations.length, 1);
+    assert.equal(store.registrations[0]?.fqdn, 'main.shared.oldname.example');
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('the summary says which file the new layout had and which the newer layout took', async () => {
+  // The new layout has a configuration file of its own already, and the
+  // newer layout takes the route store during the run. The summary has to
+  // say which is which: the new layout did not hold the route store
+  // before the run.
+  const { home } = makeBothLayouts();
+  try {
+    const configDir = path.join(home, '.config', 'gatewarden');
+    fs.mkdirSync(configDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(configDir, 'config.json'),
+      JSON.stringify({ zone: 'current.example' }, null, 2),
+    );
+
+    const { stdout } = await execFileAsync(process.execPath, [CLI, 'migrate'], {
+      env: cliEnv(home),
+      cwd: REPO_ROOT,
+    });
+
+    assert.match(stdout, /the new layout already had its own configuration file/);
+    assert.match(stdout, /the newer layout took the route store/);
+    assert.doesNotMatch(
+      stdout,
+      /the new layout already had its own configuration file and route store/,
+      `the summary says the new layout held the route store before the run:\n${stdout}`,
+    );
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('the first run says that the older layout was left behind', async () => {
+  // The first run migrates the newer layout and leaves the older one where
+  // it is. The user has to hear about it, even if they never run
+  // "gatewarden migrate".
+  const { home } = makeBothLayouts();
+  try {
+    const { stdout, stderr } = await execFileAsync(process.execPath, [CLI, 'list', '--json'], {
+      env: cliEnv(home),
+      cwd: REPO_ROOT,
+    });
+
+    assert.match(stderr, /the old layout was not migrated/);
+    assert.match(stderr, /registrations\.json/);
+
+    // The output of a command that writes JSON is JSON, and nothing else.
+    const parsed = JSON.parse(stdout) as { registrations: unknown[] };
+    assert.ok(Array.isArray(parsed.registrations));
+
+    // The routes of the older layout did not come over.
+    const routes = path.join(home, '.local', 'state', 'gatewarden', 'routes.json');
+    const store = JSON.parse(fs.readFileSync(routes, 'utf8')) as {
+      registrations: Array<{ project: string }>;
+    };
+    assert.equal(store.registrations.length, 1);
+    assert.equal(store.registrations[0]?.project, 'newer-project');
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});

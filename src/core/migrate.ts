@@ -14,6 +14,13 @@
  * are left in place, so a user can go back to the old installation with the
  * files still there.
  *
+ * The report says what happened to every layout: what was moved, what was
+ * not moved and why, and where the files that were not moved are. A layout
+ * that was left behind because another layout of the same run had already
+ * claimed the target is not "nothing to migrate": it is a layout that was
+ * not migrated, and the report says where its routes are and what to do
+ * with them.
+ *
  * The migration runs in two ways:
  *
  * - on the first run, when the new configuration file does not exist and an
@@ -25,6 +32,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { GatewayPaths, LegacyAppPaths } from './paths.ts';
 import { LEGACY_ROUTES_FILE, ROUTES_FILE } from './state.ts';
+import { zoneOfFqdn } from './util/slug.ts';
 
 /** The configuration file of the old layout. */
 export const LEGACY_CONFIG_FILE = 'config.json';
@@ -56,7 +64,7 @@ export function legacyLayout(dir: string): LegacyLayout {
   };
 }
 
-/** A file the migration moved. */
+/** A file a migration moved. */
 export interface MovedFile {
   /** Where the file was. */
   from: string;
@@ -65,6 +73,52 @@ export interface MovedFile {
   /** How many routes the file holds, when it is the route store. */
   count?: number;
 }
+
+/**
+ * A file of an old layout that was not migrated.
+ *
+ * The file is still where it was. The reason says why it was not moved,
+ * and where it stays.
+ */
+export interface SkippedFile {
+  /** What the file is: the configuration file or the route store. */
+  what: 'configuration file' | 'route store';
+  /** Where the file is. It stayed there. */
+  from: string;
+  /** The file it would have gone to. */
+  to: string;
+  /** Whether the newer layout of the same run claimed the target. */
+  byNewerLayout: boolean;
+  /** Why the file was not migrated, in a sentence. */
+  reason: string;
+  /** How many routes the file holds, when it is the route store. */
+  count?: number;
+}
+
+/** What the migration of one old layout reports. */
+export interface LayoutMigrationReport {
+  /** The directory of the old layout. */
+  legacyDir: string;
+  /** Whether the report describes a dry run. */
+  dryRun: boolean;
+  /** Whether anything was moved. */
+  migrated: boolean;
+  /** The configuration file, when it was moved. */
+  config?: MovedFile;
+  /** The route store, when it was moved. */
+  routes?: MovedFile;
+  /** The files of the old layout that were left where they were. */
+  leftInPlace: string[];
+  /** The files of the old layout that were not migrated, and why. */
+  skipped: SkippedFile[];
+  /** What the migration did, in words. */
+  notes: string[];
+  /** The way forward, when a route store was left behind. */
+  next?: string;
+}
+
+/** The report of the migration of the pre-package layout. */
+export type MigrationReport = LayoutMigrationReport;
 
 export interface MigrationOptions {
   /** Where the files go. */
@@ -86,23 +140,6 @@ export interface MigrationOptions {
   claimed?: string[];
 }
 
-export interface MigrationReport {
-  /** The directory of the old layout. */
-  legacyDir: string;
-  /** Whether the report describes a dry run. */
-  dryRun: boolean;
-  /** Whether anything was moved. */
-  migrated: boolean;
-  /** The configuration file, when it was moved. */
-  config?: MovedFile;
-  /** The route store, when it was moved. */
-  routes?: MovedFile;
-  /** The files of the old layout that were left where they were. */
-  leftInPlace: string[];
-  /** What the migration did, in words. */
-  notes: string[];
-}
-
 function exists(file: string): boolean {
   try {
     fs.accessSync(file);
@@ -115,14 +152,21 @@ function exists(file: string): boolean {
 /**
  * Why a target file is not moved into.
  *
- * It is not moved into when it is there, and when another layout of the
- * same run has claimed it: a dry run moves nothing, so the claim is the
- * only thing that says that the file is spoken for. The reason says
- * which of the two it is.
+ * It is not moved into when another layout of the same run has claimed it,
+ * and when it is there already: a dry run moves nothing, so the claim is
+ * the only thing that says that the file is spoken for. The reason says
+ * which of the two it is, and the claim is remembered: the report has to
+ * be able to say that the newer layout of the run is the one that won.
  */
-function takenBy(file: string, claimed: string[] | undefined, what: string): string | undefined {
-  if (exists(file)) return `the ${what} exists already: ${file}`;
-  if ((claimed ?? []).includes(file)) return `the ${what} is taken by the newer layout: ${file}`;
+function targetTaken(
+  file: string,
+  claimed: string[] | undefined,
+  what: string,
+): { byNewerLayout: boolean; reason: string } | undefined {
+  if ((claimed ?? []).includes(file)) {
+    return { byNewerLayout: true, reason: `the ${what} is taken by the newer layout: ${file}` };
+  }
+  if (exists(file)) return { byNewerLayout: false, reason: `the ${what} exists already: ${file}` };
   return undefined;
 }
 
@@ -137,6 +181,93 @@ export function countRoutes(file: string): number {
 }
 
 /**
+ * A route of a route store, with the fields that say which route it is.
+ */
+interface StoreRoute {
+  /** The identity of the route: the same route has the same identity. */
+  identity: string;
+  /** The route as a reader names it: the host name and the port. */
+  label: string;
+}
+
+/**
+ * The routes of a route store.
+ *
+ * The identity of a route is the host name, the port and the zone. The id
+ * is not enough: two old layouts can hold a route with the same id and a
+ * different host name and port, and then only one of them came over. The
+ * zone is the one of the route, or the one its host name carries, so that a
+ * store that was written before the route kept its zone is not a different
+ * route.
+ */
+function routesOf(file: string): StoreRoute[] {
+  let registrations: unknown;
+  try {
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as { registrations?: unknown };
+    registrations = raw.registrations;
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(registrations)) return [];
+
+  const routes: StoreRoute[] = [];
+  for (const registration of registrations) {
+    const route = (registration ?? {}) as { fqdn?: unknown; zone?: unknown; devPort?: unknown };
+    const fqdn = typeof route.fqdn === 'string' ? route.fqdn : '';
+    const zone = typeof route.zone === 'string' && route.zone.length > 0 ? route.zone : zoneOfFqdn(fqdn);
+    const port = typeof route.devPort === 'number' ? route.devPort : '';
+    routes.push({
+      identity: `${fqdn}|${port}|${zone}`,
+      label: port === '' ? fqdn : `${fqdn}:${port}`,
+    });
+  }
+  return routes;
+}
+
+/**
+ * The sentence that says why a file was not migrated.
+ *
+ * The sentence says two things: why the file was not moved, and where it
+ * stayed. The number of routes is in it, so that the report says how much
+ * is left behind.
+ */
+function skipReason(reason: string, from: string, count?: number): string {
+  const routes = count === undefined ? '' : ` (${count} routes)`;
+  return `${reason}; the old file stays at ${from}${routes}`;
+}
+
+/**
+ * The way forward for a route store that was left behind.
+ *
+ * The route store of the new layout holds the routes of the layout that was
+ * migrated. The advice compares the routes themselves, not their ids: two
+ * old layouts can hold a route with the same id and a different host name
+ * and port, and then the route of the older layout did not come over. The
+ * advice says which file holds the routes that are not in the store, and
+ * what to do with them.
+ */
+function routeAdvice(from: string, to: string): string {
+  const oldRoutes = routesOf(from);
+  if (oldRoutes.length === 0) {
+    return `the route store ${from} holds no routes: there is nothing to add to the route store ${to}`;
+  }
+  const newRoutes = new Set(routesOf(to).map((route) => route.identity));
+  const missing = oldRoutes.filter((route) => !newRoutes.has(route.identity));
+  if (missing.length === 0) {
+    return (
+      `the routes of ${from} are already in the route store ${to}: ` +
+      'the old file can be left in place or removed by you'
+    );
+  }
+  const names = missing.map((route) => route.label).join(', ');
+  const them = missing.length === 1 ? 'it' : 'them';
+  return (
+    `the route store ${to} does not hold ${names} (from ${from}): ` +
+    `add ${them} to the route store`
+  );
+}
+
+/**
  * Move the old layout to the new one.
  *
  * The configuration file is written with the content the caller provides
@@ -145,7 +276,8 @@ export function countRoutes(file: string): number {
  *
  * The old directory is never deleted: the pidfile and the log of a running
  * daemon stay with the process that owns them, and the rest is there for the
- * user to look at.
+ * user to look at. A file that was not migrated is reported as such, with
+ * the reason and with the place it stayed in.
  */
 export function migrateLegacyLayout(opts: MigrationOptions): MigrationReport {
   const legacy = legacyLayout(opts.legacyDir);
@@ -154,6 +286,7 @@ export function migrateLegacyLayout(opts: MigrationOptions): MigrationReport {
     dryRun: opts.dryRun === true,
     migrated: false,
     leftInPlace: [],
+    skipped: [],
     notes: [],
   };
 
@@ -166,9 +299,15 @@ export function migrateLegacyLayout(opts: MigrationOptions): MigrationReport {
   }
 
   if (hasConfig) {
-    const reason = takenBy(opts.paths.configFile, opts.claimed, 'configuration file');
-    if (reason !== undefined) {
-      report.notes.push(reason);
+    const taken = targetTaken(opts.paths.configFile, opts.claimed, 'configuration file');
+    if (taken !== undefined) {
+      report.skipped.push({
+        what: 'configuration file',
+        from: legacy.configFile,
+        to: opts.paths.configFile,
+        byNewerLayout: taken.byNewerLayout,
+        reason: skipReason(taken.reason, legacy.configFile),
+      });
     } else {
       report.config = { from: legacy.configFile, to: opts.paths.configFile };
       report.migrated = true;
@@ -182,9 +321,18 @@ export function migrateLegacyLayout(opts: MigrationOptions): MigrationReport {
 
   const routesTarget = path.join(opts.paths.stateDir, ROUTES_FILE);
   if (hasRoutes) {
-    const reason = takenBy(routesTarget, opts.claimed, 'route store');
-    if (reason !== undefined) {
-      report.notes.push(reason);
+    const taken = targetTaken(routesTarget, opts.claimed, 'route store');
+    if (taken !== undefined) {
+      const count = countRoutes(legacy.routesFile);
+      report.skipped.push({
+        what: 'route store',
+        from: legacy.routesFile,
+        to: routesTarget,
+        byNewerLayout: taken.byNewerLayout,
+        reason: skipReason(taken.reason, legacy.routesFile, count),
+        count,
+      });
+      report.next = routeAdvice(legacy.routesFile, routesTarget);
     } else {
       report.routes = { from: legacy.routesFile, to: routesTarget, count: countRoutes(legacy.routesFile) };
       report.migrated = true;
@@ -195,7 +343,7 @@ export function migrateLegacyLayout(opts: MigrationOptions): MigrationReport {
     }
   }
 
-  for (const file of [legacy.pidFile, legacy.logFile]) {
+  for (const file of [legacy.configFile, legacy.routesFile, legacy.pidFile, legacy.logFile]) {
     if (exists(file)) report.leftInPlace.push(file);
   }
   report.notes.push(`${legacy.dir} was left in place; nothing was deleted`);
@@ -245,23 +393,9 @@ export interface LegacyAppMigrationOptions {
   claimed?: string[];
 }
 
-export interface LegacyAppMigrationReport {
-  /** The configuration directory of the old name. */
-  legacyDir: string;
+export interface LegacyAppMigrationReport extends LayoutMigrationReport {
   /** The state directory of the old name. */
   legacyStateDir: string;
-  /** Whether the report describes a dry run. */
-  dryRun: boolean;
-  /** Whether anything was moved. */
-  migrated: boolean;
-  /** The configuration file, when it was moved. */
-  config?: MovedFile;
-  /** The route store, when it was moved. */
-  routes?: MovedFile;
-  /** The files of the old name that were left where they were. */
-  leftInPlace: string[];
-  /** What the migration did, in words. */
-  notes: string[];
 }
 
 /**
@@ -272,7 +406,8 @@ export interface LegacyAppMigrationReport {
  * store is copied as it is.
  *
  * Nothing is ever deleted: the old directories stay where they are, with
- * the files in them.
+ * the files in them. A file that was not migrated is reported as such, with
+ * the reason and with the place it stayed in.
  */
 export function migrateLegacyAppLayout(opts: LegacyAppMigrationOptions): LegacyAppMigrationReport {
   const legacy = opts.legacy;
@@ -282,6 +417,7 @@ export function migrateLegacyAppLayout(opts: LegacyAppMigrationOptions): LegacyA
     dryRun: opts.dryRun === true,
     migrated: false,
     leftInPlace: [],
+    skipped: [],
     notes: [],
   };
 
@@ -294,9 +430,15 @@ export function migrateLegacyAppLayout(opts: LegacyAppMigrationOptions): LegacyA
   }
 
   if (hasConfig) {
-    const reason = takenBy(opts.paths.configFile, opts.claimed, 'configuration file');
-    if (reason !== undefined) {
-      report.notes.push(reason);
+    const taken = targetTaken(opts.paths.configFile, opts.claimed, 'configuration file');
+    if (taken !== undefined) {
+      report.skipped.push({
+        what: 'configuration file',
+        from: legacy.configFile,
+        to: opts.paths.configFile,
+        byNewerLayout: taken.byNewerLayout,
+        reason: skipReason(taken.reason, legacy.configFile),
+      });
     } else {
       report.config = { from: legacy.configFile, to: opts.paths.configFile };
       report.migrated = true;
@@ -310,9 +452,18 @@ export function migrateLegacyAppLayout(opts: LegacyAppMigrationOptions): LegacyA
 
   const routesTarget = path.join(opts.paths.stateDir, ROUTES_FILE);
   if (hasRoutes) {
-    const reason = takenBy(routesTarget, opts.claimed, 'route store');
-    if (reason !== undefined) {
-      report.notes.push(reason);
+    const taken = targetTaken(routesTarget, opts.claimed, 'route store');
+    if (taken !== undefined) {
+      const count = countRoutes(legacy.routesFile);
+      report.skipped.push({
+        what: 'route store',
+        from: legacy.routesFile,
+        to: routesTarget,
+        byNewerLayout: taken.byNewerLayout,
+        reason: skipReason(taken.reason, legacy.routesFile, count),
+        count,
+      });
+      report.next = routeAdvice(legacy.routesFile, routesTarget);
     } else {
       report.routes = { from: legacy.routesFile, to: routesTarget, count: countRoutes(legacy.routesFile) };
       report.migrated = true;
