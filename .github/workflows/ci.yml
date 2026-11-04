@@ -24,9 +24,17 @@
 
 name: ci
 
+# The work of the project happens on `feat/npm-package`: it is the branch
+# the package is developed on and the default branch of the repository on
+# GitHub. A push to it starts the CI, so that a merge into it is checked
+# on its own and not only as a pull request.
+#
+# `master` and `main` stay in the list, because the history of the server
+# the repository left came with them, and a push to one of them is a push
+# to this repository.
 on:
   push:
-    branches: [master, main]
+    branches: [master, main, feat/npm-package]
   pull_request:
 
 # The CI only reads the repository. It publishes nothing and writes

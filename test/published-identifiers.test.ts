@@ -22,7 +22,10 @@
  *      reserved for examples (RFC 2606 and RFC 6761). The one address the
  *      package may carry is the support address of the package, which is
  *      public by the decision of its maintainer (see
- *      `PUBLIC_CONTACT_ADDRESSES` below);
+ *      `PUBLIC_CONTACT_ADDRESSES` below). The rule reads the documents of
+ *      the repository as well: the security policy and the contributing
+ *      guide are not in the tarball, and they name the same address as
+ *      the readme;
  *   3. **no number of the internal numbering**: the number of a paragraph,
  *      a story or a decision points into a text the reader of the package
  *      does not have;
@@ -274,6 +277,18 @@ const GIT_SERVER_HOSTS = [/\bgitea\.[a-z0-9-]+(?:\.[a-z0-9-]+)+/gi];
  * reserved domains, like every other address of an account.
  */
 const PUBLIC_CONTACT_ADDRESSES: string[] = ['npm@malarstrom.se'];
+
+/**
+ * The documents of the repository that name an address to write to.
+ *
+ * The rule of the addresses above reads the tarball. Two of the documents
+ * that name an address are not in the tarball: the security policy and
+ * the contributing guide. They are read by the people who write to the
+ * package, and they are part of the repository that goes public. They name
+ * the same address as the readme — the support address of the package —
+ * and the rule reads them too.
+ */
+const CONTACT_DOCUMENTS = ['README.md', 'SECURITY.md', 'CONTRIBUTING.md'];
 
 /**
  * The directories the published package ships.
@@ -1423,6 +1438,40 @@ describe('the published package', () => {
     // The allowance is not a hole that may go quiet: the package has to
     // name the support address, or a reader has nowhere to write.
     assert.ok(support > 0, 'the published package names no support address');
+  });
+
+  test('the documents of the repository name the support address and no other address', () => {
+    // The security policy and the contributing guide are not in the
+    // tarball, and the rule of the tarball does not read them. They name
+    // the address a reader writes to, and they name the same one as the
+    // readme: the support address of the package.
+    const hits: string[] = [];
+
+    for (const file of CONTACT_DOCUMENTS) {
+      const text = fs.readFileSync(path.join(REPO_ROOT, file), 'utf8');
+      hits.push(...accountAddressTraps(file, text));
+    }
+
+    assert.deepEqual(
+      hits,
+      [],
+      'a document of the repository names the address of an account; the documents of the project name the support address:\n' +
+        hits.join('\n'),
+    );
+
+    // The security policy is the place a report goes to. It has to name
+    // the support address, or a report has nowhere to go.
+    const policy = fs.readFileSync(path.join(REPO_ROOT, 'SECURITY.md'), 'utf8');
+    assert.ok(supportAddressCount(policy) > 0, 'the security policy names no support address');
+
+    // The rule has to fire: a document that names another address is
+    // caught. The value is the value of the standard and names nothing of
+    // this installation.
+    const planted = `${policy}\nWrite to operator@acme-account.org.\n`;
+    assert.ok(
+      accountAddressTraps('SECURITY.md', planted).length > 0,
+      'the rule did not catch the address of an account in a document of the repository',
+    );
   });
 
   test('the published documentation points at no file the package does not ship', () => {

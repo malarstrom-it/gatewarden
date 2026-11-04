@@ -31,11 +31,12 @@ Two private ways to report, and both are fine:
    GitHub, go to the "Security" tab, and use "Report a vulnerability". The
    report stays in the repository's private advisory area until it is
    published.
-2. **Email to the maintainer**: `mikael@malarstrom.se`, with the subject
+2. **Email to the maintainer**: `npm@malarstrom.se`, with the subject
    `security: @malarstrom/gatewarden`. Plain text is fine; an encrypted
    message is not needed. Use the email when the advisory form is
    unavailable, or when you want to talk about the flaw before you have
-   written it up.
+   written it up. It is the support address of the package, and the
+   README names the same one.
 
 ### What to report
 
