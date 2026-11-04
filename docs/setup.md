@@ -274,6 +274,12 @@ The other commands of the lifecycle:
 | `gatewarden install-service` | writes the unit of the platform and enables it, so the daemon survives a reboot (`--no-enable` writes the unit without enabling it) |
 | `gatewarden migrate` | writes the configuration and the route store of the old layouts into the new one — the layout of the old name first; the old files stay where they are (`--dry-run` only reports) |
 
+The service stays stopped after `gatewarden stop`, on macOS and on Linux.
+The daemon ends with the exit code 0 when it is stopped, and the unit of
+the platform leaves it alone: `SuccessfulExit=false` in the launchd agent
+on macOS, `Restart=on-failure` in the systemd unit on Linux. The daemon
+starts again when `gatewarden start` says so, or after a reboot.
+
 Nothing is deleted by the migration: the old files stay where they were, and
 the new layout holds the configuration and the route store in its own files.
 The layout of the old name is migrated first. A home that holds both old
