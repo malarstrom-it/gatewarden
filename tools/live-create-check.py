@@ -4,7 +4,7 @@
 A review tool, not part of the gateway: it lives in tools/ and the runtime
 path of the daemon never touches it.
 
-    python3 tools/live-create-check.py [page-url] [traefik-api-url]
+    python3 tools/live-create-check.py [page-url] [traefik-url]
 
 It creates one throwaway route through the page the client uses, waits for
 the router to appear in the running Traefik, removes the route through the
@@ -13,19 +13,26 @@ as it was found.
 """
 
 import json
+import os
 import sys
 import time
 import urllib.request
 
 from playwright.sync_api import sync_playwright
 
-PAGE = sys.argv[1] if len(sys.argv) > 1 else "https://index.home.malarstrom.com/"
-TRAEFIK = sys.argv[2] if len(sys.argv) > 2 else "https://traefik.home.malarstrom.com/api/http/routers"
+PAGE = sys.argv[1] if len(sys.argv) > 1 else "https://index.example.com/"
+TRAEFIK = sys.argv[2] if len(sys.argv) > 2 else "https://traefik.example.com/api/http/routers"
 
 PROJECT = "probe"
 BRANCH = "live-check"
 PORT = "4599"
-FQDN = f"{BRANCH}.{PROJECT}.home.malarstrom.com"
+FQDN = f"{BRANCH}.{PROJECT}.example.com"
+
+# The project of a live route of the installation that has to survive the
+# check. It is a parameter and not a value of the repository: the names of
+# the live routes belong to the installation, and the repository does not
+# name them.
+LIVE_PROJECT = os.environ.get("GATEWARDEN_LIVE_PROJECT", "")
 
 problems = []
 notes = []
@@ -60,7 +67,10 @@ with sync_playwright() as p:
     page.evaluate("document.fonts.ready")
 
     before = json.dumps(routers())
-    check("orkr" in before, "the live Traefik is serving the existing routes")
+    if LIVE_PROJECT:
+        check(LIVE_PROJECT in before, "the live Traefik is serving the existing routes")
+    else:
+        notes.append("skip the existing routes: set GATEWARDEN_LIVE_PROJECT to the name of a live route")
 
     # --- create it through the page -----------------------------------------
     page.click("#new-route-toggle")
@@ -90,7 +100,8 @@ with sync_playwright() as p:
     check(not has_router(), "the router is gone from Traefik")
 
     after = json.dumps(routers())
-    check("orkr" in after, "the orkr route survived untouched")
+    if LIVE_PROJECT:
+        check(LIVE_PROJECT in after, "the existing route survived untouched")
     check("probe/live-check" not in after, "nothing of the throwaway route is left")
     browser.close()
 

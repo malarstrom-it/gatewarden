@@ -120,7 +120,7 @@ async function setup(): Promise<{ dir: string; configPath: string; config: Confi
     relayPort,
     advertisedIp: '127.0.0.1',
     advertisedHost: '127.0.0.1',
-    zone: 'home.malarstrom.com',
+    zone: 'example.com',
     entryPoints: ['websecure'],
     certResolver: 'cloudflare',
     tlsMode: 'wildcard',
@@ -202,7 +202,7 @@ test('the daemon serves the registrations written by the CLI', async (t) => {
   store.upsert({ project: 'alpha', branch: 'feature/login', devPort: 5173, zone: config.zone });
 
   const body = await (await fetch(`http://127.0.0.1:${config.registryPort}/traefik`)).text();
-  assert.match(body, /Host\(`feature-login\.alpha\.home\.malarstrom\.com`\)/);
+  assert.match(body, /Host\(`feature-login\.alpha\.example\.com`\)/);
 });
 
 test('the daemon restarts after it was killed', async (t) => {

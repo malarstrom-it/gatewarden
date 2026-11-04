@@ -6,15 +6,15 @@ na_heuristics:
 p0_count: 0
 p1_count: 2
 p2_count: 3
-target_identity: "file:/home/node/projects/traefik-api/src/index-page.ts"
+target_identity: "file:src/index-page.ts"
 target_fingerprint: "sha256:325f8316499b0f431037589e9e72a2d3661c27d878da3a9f73540430c394d6af"
-target_path: /home/node/projects/traefik-api/src/index-page.ts
+target_path: src/index-page.ts
 timestamp: 2026-10-23T13-38-59Z
 slug: src-index-page-ts
 ---
 # Critique — the gateway index page
 
-Target: `src/index-page.ts` (the live page at https://index.home.malarstrom.com/)
+Target: `src/index-page.ts` (the live page at https://index.example.com/)
 
 ## Design Health Score
 
@@ -76,7 +76,7 @@ Target: `src/index-page.ts` (the live page at https://index.home.malarstrom.com/
 - **Evidence**: the only live region on the page is the message line; the
   Up/Down badge and the masthead counts change without announcement.
 - **Fix**: mark the counts as `aria-live="polite"` and announce the change
-  ("orkr/main is no longer answering") through the message region.
+  ("my-app/main is no longer answering") through the message region.
 
 ### [P2] On a phone the two actions are stranded on a line of their own
 
@@ -98,7 +98,7 @@ Target: `src/index-page.ts` (the live page at https://index.home.malarstrom.com/
 
 ### [P3] The icon buttons have very long accessible names
 
-- **Evidence**: "Copy the address of hp-orkr-t-0029-e16s02-e16s03-…" is
+- **Evidence**: "Copy the address of feature/very-long-branch-name…" is
   verbose in a screen reader's list of buttons.
 - **Fix**: "Copy address" / "Remove"; the row already carries the context.
 

@@ -11,7 +11,7 @@ import sys
 
 from playwright.sync_api import sync_playwright
 
-URL = sys.argv[1] if len(sys.argv) > 1 else "https://index.home.malarstrom.com/"
+URL = sys.argv[1] if len(sys.argv) > 1 else "https://index.example.com/"
 LONG = "--long" in sys.argv
 
 with sync_playwright() as p:

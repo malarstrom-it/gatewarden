@@ -2,7 +2,7 @@
   "http": {
     "routers": {
       "dev-alpha-feature-login-6e282c": {
-        "rule": "Host(`feature-login.alpha.home.malarstrom.com`)",
+        "rule": "Host(`feature-login.alpha.example.com`)",
         "entryPoints": [
           "websecure"
         ],
@@ -14,13 +14,13 @@
           "certResolver": "cloudflare",
           "domains": [
             {
-              "main": "*.alpha.home.malarstrom.com"
+              "main": "*.alpha.example.com"
             }
           ]
         }
       },
       "dev-beta-main-f6c585": {
-        "rule": "Host(`main.beta.home.malarstrom.com`)",
+        "rule": "Host(`main.beta.example.com`)",
         "entryPoints": [
           "websecure"
         ],
@@ -32,7 +32,7 @@
           "certResolver": "cloudflare",
           "domains": [
             {
-              "main": "*.beta.home.malarstrom.com"
+              "main": "*.beta.example.com"
             }
           ]
         }
@@ -43,7 +43,7 @@
         "loadBalancer": {
           "servers": [
             {
-              "url": "http://devbox:45001"
+              "url": "http://gateway:45001"
             }
           ]
         }
@@ -52,7 +52,7 @@
         "loadBalancer": {
           "servers": [
             {
-              "url": "http://devbox:45001"
+              "url": "http://gateway:45001"
             }
           ]
         }

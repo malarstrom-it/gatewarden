@@ -10,6 +10,12 @@
  * The configuration objects are written out in full instead of being derived
  * from `DEFAULT_CONFIG`, so that the fixtures do not move when the defaults
  * move.
+ *
+ * S81 changed the values of the fixtures once: the zone and the host name
+ * of the installation became the example values of the repository. The
+ * golden files were changed in the same commit, so the documents they hold
+ * are the documents of before, with the example values in them. The shape
+ * of the documents did not move.
  */
 
 import type { Config, Registration } from '../../src/core/types.ts';
@@ -29,8 +35,8 @@ const BASE_CONFIG: Config = {
   registryPort: 45002,
   relayPort: 45001,
   advertisedIp: '10.0.0.5',
-  advertisedHost: 'devbox',
-  zone: 'home.malarstrom.com',
+  advertisedHost: 'gateway',
+  zone: 'example.com',
   entryPoints: ['websecure'],
   certResolver: 'cloudflare',
   tlsMode: 'wildcard',
@@ -51,8 +57,8 @@ function route(overrides: Partial<Registration> & Pick<Registration, 'id' | 'pro
   return {
     projectSlug: overrides.project.toLowerCase(),
     branchSlug: overrides.branch.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-    fqdn: 'example.home.malarstrom.com',
-    zone: 'home.malarstrom.com',
+    fqdn: 'example.example.com',
+    zone: 'example.com',
     devPort: 3000,
     createdAt: '2024-01-01T00:00:00.000Z',
     updatedAt: '2024-01-02T00:00:00.000Z',
@@ -66,7 +72,7 @@ const ALPHA = route({
   branch: 'feature/login',
   projectSlug: 'alpha',
   branchSlug: 'feature-login',
-  fqdn: 'feature-login.alpha.home.malarstrom.com',
+  fqdn: 'feature-login.alpha.example.com',
   devPort: 5173,
 });
 
@@ -76,7 +82,7 @@ const BETA = route({
   branch: 'main',
   projectSlug: 'beta',
   branchSlug: 'main',
-  fqdn: 'main.beta.home.malarstrom.com',
+  fqdn: 'main.beta.example.com',
   devPort: 4000,
   label: 'the beta preview',
 });

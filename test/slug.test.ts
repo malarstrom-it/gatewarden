@@ -47,5 +47,5 @@ test('isValidLabel rejects empty and malformed labels', () => {
 });
 
 test('buildFqdn places the branch first', () => {
-  assert.equal(buildFqdn('alpha', 'feature/login', 'home.malarstrom.com'), 'feature-login.alpha.home.malarstrom.com');
+  assert.equal(buildFqdn('alpha', 'feature/login', 'example.com'), 'feature-login.alpha.example.com');
 });

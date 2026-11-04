@@ -48,11 +48,11 @@ test('the registry answers the health probe', async () => {
 
 test('the dynamic configuration document is served on /traefik', async () => {
   await withRegistry({}, async ({ url, store }) => {
-    store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
+    store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'example.com' });
     const response = await fetch(`${url}/traefik`);
     assert.equal(response.status, 200);
     const body = await response.text();
-    assert.match(body, /Host\(`main\.alpha\.home\.malarstrom\.com`\)/);
+    assert.match(body, /Host\(`main\.alpha\.example\.com`\)/);
   });
 });
 
@@ -70,7 +70,7 @@ test('the health probe answers the machine itself, whatever the trust list says'
 
 test('the dynamic configuration document is protected by the registry secret', async () => {
   await withRegistry({ secret: 'topsecret' }, async ({ url, store }) => {
-    store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
+    store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'example.com' });
     const denied = await fetch(`${url}/traefik`);
     assert.equal(denied.status, 403);
 
@@ -90,7 +90,7 @@ test('a source address outside the trust list is refused with 403, an address in
   // The refused one: the trust list holds the network of the proxy, and
   // the caller is on the loopback.
   await withRegistry({ allowedCidrs: ['10.99.0.0/16'] }, async ({ url, store }) => {
-    store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
+    store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'example.com' });
     const refused = await fetch(`${url}/traefik`);
     assert.equal(refused.status, 403);
 
@@ -110,10 +110,10 @@ test('a source address outside the trust list is refused with 403, an address in
 
   // The allowed one: the loopback is in the trust list.
   await withRegistry({ allowedCidrs: ['127.0.0.1/32', '::1/128'] }, async ({ url, store }) => {
-    store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
+    store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'example.com' });
     const allowed = await fetch(`${url}/traefik`);
     assert.equal(allowed.status, 200);
-    assert.match(await allowed.text(), /Host\(`main\.alpha\.home\.malarstrom\.com`\)/);
+    assert.match(await allowed.text(), /Host\(`main\.alpha\.example\.com`\)/);
   });
 });
 
@@ -123,10 +123,10 @@ test('the list of the registry widens the list of the relay', async () => {
   await withRegistry(
     { allowedCidrs: ['10.99.0.0/16'], registryAllowedCidrs: ['127.0.0.1/32', '::1/128'] },
     async ({ url, store }) => {
-      store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
+      store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'example.com' });
       const response = await fetch(`${url}/traefik`);
       assert.equal(response.status, 200);
-      assert.match(await response.text(), /Host\(`main\.alpha\.home\.malarstrom\.com`\)/);
+      assert.match(await response.text(), /Host\(`main\.alpha\.example\.com`\)/);
     },
   );
 });
@@ -153,7 +153,7 @@ test('the registry answers only the configuration path and the health probe', as
 
 test('the registry refuses methods other than GET and HEAD', async () => {
   await withRegistry({}, async ({ url, store }) => {
-    store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'home.malarstrom.com' });
+    store.upsert({ project: 'alpha', branch: 'main', devPort: 3000, zone: 'example.com' });
 
     const posted = await fetch(`${url}/api/registrations`, {
       method: 'POST',

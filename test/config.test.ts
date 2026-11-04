@@ -177,10 +177,12 @@ test('the built-in defaults carry no value of one installation', () => {
   assert.deepEqual(DEFAULT_CONFIG.registryAllowedCidrs, []);
 
   // Nothing in the defaults names a host, a zone or a network that is
-  // not the loopback of every machine.
+  // not the loopback of every machine. The rule is about the shape of the
+  // value and not about the values of one installation: a name of the
+  // maintainer, a name of a vendor and any address of an IPv4 network.
   for (const value of Object.values(DEFAULT_CONFIG)) {
     if (typeof value !== 'string') continue;
-    assert.doesNotMatch(value, /malarstrom|devbox|cloudflare|172\.16\./, `${value} is a value of one installation`);
+    assert.doesNotMatch(value, /malarstrom|cloudflare|\d+\.\d+\.\d+/, `${value} is a value of one installation`);
   }
 });
 
