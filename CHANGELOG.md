@@ -63,8 +63,7 @@ names. Every release gets a section, newest first.
   says now, on macOS and on Linux, that the daemon ends with the exit code 0
   and that the unit of the platform leaves it alone: `SuccessfulExit=false`
   in the launchd agent on macOS, `Restart=on-failure` in the systemd unit on
-  Linux. The claim that the daemon comes back after a reboot is gone, because
-  it does not hold with `--no-enable`.
+  Linux.
 
 ### Fixed
 
@@ -81,14 +80,6 @@ names. Every release gets a section, newest first.
   of a configuration file one by one. What did not come over is named, the
   old directory is not to be removed, and the advice says what to do by
   hand.
-
-- **The documentation says what the autostart variable turns off.** The
-  install scripts write the configuration file and create the three
-  directories the gateway uses, and `GATEWARDEN_AUTOSTART=0` stops the whole
-  `postinstall` before both: no configuration file is written, none of the
-  three directories is created and no daemon is started. An installation
-  made with the variable set has no configuration file of its own, and the
-  setup wizard writes one.
 
 - **The doctor transcript of the setup guide is the output of the CLI.** The
   transcript had drifted from what `gatewarden doctor` prints: the name
