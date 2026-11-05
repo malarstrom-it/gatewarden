@@ -216,9 +216,9 @@ two commits.
   request, not explained in it.
 - **New behaviour gets a test.** A bug fix gets a test that fails before the
   fix and passes after it.
-- **A change a consumer can see gets a changelog entry**, under the
-  heading in `CHANGELOG.md` that the change belongs to: Added, Changed,
-  Deprecated, Removed, Fixed or Security.
+- **A change a consumer can see gets a changelog entry.** The entry goes in
+  the `## Unreleased` section of `CHANGELOG.md`, under the heading that fits
+  the change: Added, Changed, Deprecated, Fixed or Security.
 - The specification is changed first, if the change needs it (see above).
 
 ## Security
