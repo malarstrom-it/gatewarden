@@ -272,7 +272,7 @@ The other commands of the lifecycle:
 | `gatewarden stop` | stops the daemon; it removes its own pid file |
 | `gatewarden status` | the daemon, the ports, the files and the values of the configuration |
 | `gatewarden install-service` | writes the unit of the platform and enables it, so the daemon survives a reboot (`--no-enable` writes the unit without enabling it) |
-| `gatewarden migrate` | writes the configuration and the route store of the old layouts into the new one — the layout of the old name first; the old files stay where they are (`--dry-run` only reports) |
+| `gatewarden migrate` | writes the configuration and the route store of an old layout into the new one — the layout of the old name first; in a home that holds both old layouts only that one comes over, and the older one is reported as not migrated; the old files stay where they are (`--dry-run` only reports) |
 
 The service stays stopped after `gatewarden stop`, on macOS and on Linux.
 The daemon ends with the exit code 0 when it is stopped, and the unit of
@@ -281,10 +281,16 @@ on macOS, `Restart=on-failure` in the systemd unit on Linux.
 
 Nothing is deleted by the migration: the old files stay where they were, and
 the new layout holds the configuration and the route store in its own files.
-The layout of the old name is migrated first. A home that holds both old
-layouts therefore ends up with the configuration and the routes of the old
-name, and the files of `~/.traefik-dev/` are left alone — the new layout
-already holds what they hold.
+A home that holds one old layout gets the configuration and the route store
+of that layout in the new one. A home that holds both old layouts gets them
+from the layout of the old name, which is migrated first: it takes the
+configuration file and the route store, and the older layout, the old
+directory `~/.traefik-dev/`, is not migrated. The report says so in plain
+words: a `not migrated:` line for each file of the older layout that did not
+come over, with the place it stayed in, and a `next:` line that says what to
+do with the routes of the older layout. The routes that the route store of
+the new layout does not hold stay in the file of the older layout, until
+they are added to it by hand.
 
 The log of the daemon is `daemon.log` in the state directory; the routes live
 in `routes.json` next to it. `gatewarden status` prints both paths.
