@@ -108,8 +108,8 @@ names. Every release gets a section, newest first.
   and leaves the directory where it is, so the warning could never be
   cleared, and the reader was told to run `gatewarden migrate` again, for
   ever. The check asks now what matters: is there anything in the old
-  layout that still has to be migrated? After a migration the doctor says
-  that the migration copied the files and that the old directory can be left
+  layout that still has to be migrated? When everything the old layout held
+  came over, the doctor says so and says that the old directory can be left
   in place or removed by the reader.
 
 ## 0.1.1 - 2026-11-01
