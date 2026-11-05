@@ -26,6 +26,7 @@ import test, { before } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { listenHost } from '../src/core/config.ts';
+import { isolate } from './helpers/isolation.ts';
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -214,8 +215,13 @@ test('the compiled daemon serves and forks the compiled worker', async (t) => {
     ),
   );
 
-  const daemon = spawn(process.execPath, [path.join(DIST, 'daemon.js')], {
-    env: { ...process.env, TRAEFIK_DEV_CONFIG: configPath, TRAEFIK_DEV_STATE_DIR: dir },
+  // The daemon of the test runs in the throwaway directory and in
+  // nothing else: the environment of the machine says where the
+  // installation of the machine is, and the daemon of a test must not
+  // read it nor write to it.
+  const isolation = isolate(dir);
+  const daemon = spawn(process.execPath, [path.join(DIST, 'daemon.js'), '--config', configPath], {
+    env: isolation.env,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';

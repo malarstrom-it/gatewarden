@@ -33,6 +33,7 @@ import { fatalReason, stopWorker } from '../src/core/daemon.ts';
 import { McpServer } from '../src/integrations/mcp/server.ts';
 import { answersUnknownProxy, TOOLS } from '../src/integrations/mcp/tools.ts';
 import { freePort, makeCliFixture, REPO_ROOT, type CliFixture } from './helpers/cli.ts';
+import { isolate } from './helpers/isolation.ts';
 
 /** The daemon of the package. */
 const DAEMON = path.join(REPO_ROOT, 'bin', 'gatewarden-daemon.js');
@@ -337,12 +338,19 @@ test('the MCP status tool says why the proxy does not answer, and does not fail'
   );
 
   const server = new McpServer({ configPath, stateDir: dir });
-  const response = await server.handleMessage({
-    jsonrpc: '2.0',
-    id: 1,
-    method: 'tools/call',
-    params: { name: 'dev_gateway_status', arguments: {} },
-  });
+  // The daemon that the tool starts runs in the throwaway directory and
+  // in nothing else: the environment of the machine says where the
+  // installation of the machine is, and the daemon of a test must not
+  // read it nor write to it.
+  const isolation = isolate(dir);
+  const response = await isolation.run(() =>
+    server.handleMessage({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/call',
+      params: { name: 'dev_gateway_status', arguments: {} },
+    }),
+  );
 
   assert.ok(response && 'result' in response);
   const result = response.result as {

@@ -35,6 +35,7 @@ import { removeInstallationFiles } from '../src/core/installation.ts';
 import { resolvePaths } from '../src/core/paths.ts';
 import type { Config } from '../src/core/types.ts';
 import { freePort } from './helpers/cli.ts';
+import { isolate } from './helpers/isolation.ts';
 import { resolveGatewayPaths } from '../scripts/paths.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -176,14 +177,23 @@ test('the preuninstall script stops the daemon of the installation', async (t) =
 
   // The daemon of the installation: it runs from the files of the
   // installation, so the script of the installation may stop it.
+  //
+  // The daemon runs in the throwaway directory of the test and in
+  // nothing else: the environment of the machine says where the
+  // installation of the machine is, and the daemon of a test must not
+  // read it nor write to it. The directories of this installation are
+  // apart — the home, the state and the cache — so `GATEWARDEN_HOME`,
+  // which says that everything lives in one directory, is not one of
+  // them.
+  const isolation = isolate(root, {
+    home,
+    stateDir,
+    configPath,
+    env: { GATEWARDEN_HOME: undefined },
+  });
   const child = spawn(process.execPath, [path.join(installed.dir, 'src', 'daemon.ts'), '--config', configPath], {
     cwd: installed.dir,
-    env: {
-      ...process.env,
-      HOME: home,
-      GATEWARDEN_CONFIG: configPath,
-      GATEWARDEN_STATE_DIR: stateDir,
-    },
+    env: isolation.env,
     stdio: 'ignore',
     detached: true,
   });
@@ -438,15 +448,24 @@ test('the daemon stops itself and cleans up when the installation is gone', asyn
 
   // The daemon of the fake installation: it runs from the sources of
   // the copy, and the copy is the installation.
+  //
+  // The daemon runs in the throwaway directory of the test and in
+  // nothing else: the environment of the machine says where the
+  // installation of the machine is, and the daemon of a test must not
+  // read it nor write to it. The directories of this installation are
+  // apart — the home, the state and the cache — so `GATEWARDEN_HOME`,
+  // which says that everything lives in one directory, is not one of
+  // them.
+  const isolation = isolate(root, {
+    home,
+    stateDir,
+    configPath,
+    cacheHome,
+    env: { GATEWARDEN_HOME: undefined },
+  });
   const child = spawn(process.execPath, [path.join(installed.dir, 'src', 'daemon.ts'), '--config', configPath], {
     cwd: installed.dir,
-    env: {
-      ...process.env,
-      HOME: home,
-      GATEWARDEN_CONFIG: configPath,
-      GATEWARDEN_STATE_DIR: stateDir,
-      XDG_CACHE_HOME: cacheHome,
-    },
+    env: isolation.env,
     stdio: 'ignore',
     detached: true,
   });
@@ -504,14 +523,22 @@ test('the daemon leaves the files alone when the tree of the installation is gon
   fs.mkdirSync(stateDir, { recursive: true });
   const { configPath, config } = await makeConfig(stateDir);
 
+  // The daemon runs in the throwaway directory of the test and in
+  // nothing else: the environment of the machine says where the
+  // installation of the machine is, and the daemon of a test must not
+  // read it nor write to it. The directories of this installation are
+  // apart — the home, the state and the cache — so `GATEWARDEN_HOME`,
+  // which says that everything lives in one directory, is not one of
+  // them.
+  const isolation = isolate(root, {
+    home,
+    stateDir,
+    configPath,
+    env: { GATEWARDEN_HOME: undefined },
+  });
   const child = spawn(process.execPath, [path.join(installed.dir, 'src', 'daemon.ts'), '--config', configPath], {
     cwd: installed.dir,
-    env: {
-      ...process.env,
-      HOME: home,
-      GATEWARDEN_CONFIG: configPath,
-      GATEWARDEN_STATE_DIR: stateDir,
-    },
+    env: isolation.env,
     stdio: 'ignore',
     detached: true,
   });
@@ -562,14 +589,22 @@ test('the daemon leaves the files alone when the checkout is gone', async (t) =>
   // configuration.
   fs.writeFileSync(path.join(installed.dir, 'tsconfig.build.json'), '{}');
 
+  // The daemon runs in the throwaway directory of the test and in
+  // nothing else: the environment of the machine says where the
+  // installation of the machine is, and the daemon of a test must not
+  // read it nor write to it. The directories of this installation are
+  // apart — the home, the state and the cache — so `GATEWARDEN_HOME`,
+  // which says that everything lives in one directory, is not one of
+  // them.
+  const isolation = isolate(root, {
+    home,
+    stateDir,
+    configPath,
+    env: { GATEWARDEN_HOME: undefined },
+  });
   const child = spawn(process.execPath, [path.join(installed.dir, 'src', 'daemon.ts'), '--config', configPath], {
     cwd: installed.dir,
-    env: {
-      ...process.env,
-      HOME: home,
-      GATEWARDEN_CONFIG: configPath,
-      GATEWARDEN_STATE_DIR: stateDir,
-    },
+    env: isolation.env,
     stdio: 'ignore',
     detached: true,
   });
