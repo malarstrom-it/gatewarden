@@ -1,6 +1,6 @@
 # Kontextpolicy (2026-10-24)
 
-Pekare till den globala policyn: `/home/node/projects/pi-setup/README.md` →
+Pekare till den globala policyn: README.md i projektet `pi-setup` →
 avsnittet **"Kontextpolicy (2026-10-24)"**. Dit gäller:
 
 - **pi komprimerar inte medvetet** (`compaction.enabled = false` i `~/.pi/agent/settings.json`,
@@ -33,9 +33,9 @@ avsnittet **"Kontextpolicy (2026-10-24)"**. Dit gäller:
 
 Trösklarna **40 % / 50 %** och regeltexterna ligger nu i pluginens policyfil:
 
-    /home/node/projects/context-ledger-plugin/policy.json
+    context-ledger-plugin/policy.json
 
-Extensionen laddas av **varje** pi-process (shim i `/.pi/agent/extensions/context-ledger/),
+Extensionen laddas av **varje** pi-process (shim i `~/.pi/agent/extensions/context-ledger/`),
 så reglerna injiceras i agentens egen prompt i stället för att behöva läsas härifrån.
 Se context-ledger-plugin/docs/context-policy-injection.md för mekanismen och begränsningarna.
 Den här filen är pekare - sanningskällan är policy.json.

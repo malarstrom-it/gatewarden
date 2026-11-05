@@ -3,15 +3,15 @@
 // Källa: pi sparar varje session som JSONL i ~/.pi/agent/sessions/<cwd-kodad>/,
 // varje assistant-rad bär usage.totalTokens; fönstret finns i ~/.pi/agent/models.json
 // och ~/.pi/agent/models-store.json.
-// Policy: /home/node/projects/pi-setup/README.md -> "Kontextpolicy (2026-10-24)"
+// Policy: README.md i projektet `pi-setup` -> "Kontextpolicy (2026-10-24)"
 // Användning: node memory/context-usage.mjs [projektfilter]
 
 import fs from 'node:fs';
 import path from 'node:path';
 
-const filter = process.argv[2] || 'bricktory-landing';
-// Två nivåer - se /home/node/projects/pi-setup/README.md "Kontextpolicy (2026-10-24)"
-// och /home/node/projects/context-ledger-plugin/policy.json (sanningskällan).
+const filter = process.argv[2] || 'traefik-api';
+// Två nivåer - se README.md i projektet `pi-setup` "Kontextpolicy (2026-10-24)"
+// och policy.json i pluginen `context-ledger-plugin` (sanningskällan).
 // PLAN = 40 %: agenten fortsätter den pågående uppgiften och förbereder överlämningen.
 // THRESHOLD = 50 %: riktmärke - samma regel, beläggningen redovisas i överlämningen.
 // Över 50 % är inte förbjudet, men ska aldrig bli en överraskning: överlämningen hålls
@@ -74,9 +74,9 @@ for (const dir of fs.readdirSync(root)) {
     const win = windows[model] || 0;
     const pct = win ? Math.round((100 * last.totalTokens) / win) : null;
     const label = dir.includes('worktrees')
-      ? dir.replace(/^--home-node-\.herdr-worktrees-/, '').replace(/--$/, '').replace(new RegExp(`^${filter}-`), '')
+      ? dir.replace(/^--home-[^.-]+-\.herdr-worktrees-/, '').replace(/--$/, '').replace(new RegExp(`^${filter}-`), '')
       : dir.includes('threads-')
-        ? dir.replace(/^--home-node-\.herdr-projects-.*-threads-/, '').replace(/--$/, '')
+        ? dir.replace(/^--home-[^.-]+-\.herdr-projects-.*-threads-/, '').replace(/--$/, '')
         : 'koordinator (projektfolder)';
     rows.push({
       label,

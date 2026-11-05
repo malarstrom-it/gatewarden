@@ -1191,14 +1191,14 @@ web interface (S3).
 ### 11.1 Isolation requirements
 
 The user's live gateway runs on ports 45001 and 45002 and serves
-`home.malarstrom.com`. The user's live Traefik terminates TLS for a wildcard
+`example.com`. The user's live Traefik terminates TLS for a wildcard
 certificate. **No test may touch either.**
 
 | | live | test |
 | --- | --- | --- |
 | registry port | 45002 | 46002 |
 | relay port | 45001 | 46001 |
-| domain | `home.malarstrom.com` | `gwtest.local` |
+| domain | `example.com` | `gwtest.local` |
 | state directory | `~/.local/state/gatewarden/` | `/tmp/gatewarden-test/` |
 | proxy | the user's Traefik | a Traefik started by the test |
 | certificates | the user's ACME certificates | a generated self-signed CA |

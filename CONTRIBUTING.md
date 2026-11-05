@@ -273,10 +273,11 @@ renamed.
 **2. The repository is private while the migration runs.** The reason is
 the repository itself: it still holds the data of the installation — the
 zone of the installation, the private addresses, the names of the
-machines and the containers — in `memory/`, in `specs/`, and in the
-history of the branch. The zone of the installation is in 67 lines of the
-tip of the branch — all of them in `memory/` and in `specs/` — and in 279
-more lines in the history of the branch itself. The count is recounted
+machines and the containers — in the history of the branch. The tip of
+the branch does not hold them any more: the working tree was scrubbed, so
+the values in `memory/` and in `specs/` are examples now, and the memory
+of the installation itself lives outside the repository. The history of
+the branch still carries the zone in 279 lines. The counts are recounted
 before the repository goes public:
 
 ```bash
@@ -285,8 +286,7 @@ git log feat/npm-package -p -U0 | grep -c '^+.*<the zone>'
 ```
 
 Making the repository public is a decision of its own and a work of its
-own: it has to scrub the working tree and the history. It is not part
-of this migration.
+own: it has to scrub the history. It is not part of this migration.
 
 **3. The default branch on GitHub is `feat/npm-package`.** That is
 where the development happens. `master` is pushed as well, so that the
