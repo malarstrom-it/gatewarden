@@ -122,6 +122,7 @@ jobs:
           - published-identifiers.test.ts
           - registry.test.ts
           - relay.test.ts
+          - service-daemon.test.ts
           - service.test.ts
           - shipped-code.test.ts
           - slug.test.ts

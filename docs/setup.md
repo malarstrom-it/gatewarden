@@ -347,7 +347,10 @@ the new layout does not hold stay in the file of the older layout, until
 they are added to it by hand.
 
 The log of the daemon is `daemon.log` in the state directory; the routes live
-in `routes.json` next to it. `gatewarden status` prints both paths.
+in `routes.json` next to it. `gatewarden status` prints both paths. The
+daemon of the service writes to that file as well: the journal of the
+platform keeps the log of the service, and the file holds the log whichever
+way the daemon was started.
 
 Removing the package takes the daemon with it, and the files of the
 installation with the daemon: the daemon watches its own installation and

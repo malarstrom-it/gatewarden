@@ -93,6 +93,13 @@ export interface ServiceUnit {
   path: string | null;
   /** The content of the unit file. */
   content: string;
+  /**
+   * The command that starts the daemon.
+   *
+   * The unit writes this command, and it is the command the unit runs:
+   * the tests can start the daemon the way the platform starts it.
+   */
+  command: ServiceCommand;
   /** The commands that enable the unit, in order. */
   enable: ServiceCommand[];
   /** The command that shows the state of the unit. */
@@ -102,6 +109,30 @@ export interface ServiceUnit {
 /** Quote a path for a systemd unit. */
 function systemdQuote(value: string): string {
   return `"${value.replace(/"/g, '\\"')}"`;
+}
+
+/**
+ * The arguments of a command, as a unit writes them.
+ *
+ * A flag is written as it is, and a path is quoted: a path may hold a
+ * space, and a flag may not.
+ */
+function unitArgs(args: string[]): string {
+  return args.map((arg) => (arg.startsWith('-') ? arg : systemdQuote(arg))).join(' ');
+}
+
+/**
+ * The command that starts the daemon.
+ *
+ * The unit runs the daemon directly, with the configuration file it was
+ * given and with the state directory of the installation.
+ */
+function daemonCommand(opts: {
+  nodePath: string;
+  daemonPath: string;
+  configPath: string;
+}): ServiceCommand {
+  return { command: opts.nodePath, args: [opts.daemonPath, '--config', opts.configPath] };
 }
 
 /** Quote a path for a launchd property list. */
@@ -123,6 +154,7 @@ function systemdUnit(opts: Required<Pick<ServiceUnitOptions, 'daemonPath' | 'con
   home: string;
 }): ServiceUnit {
   const unitPath = path.join(opts.home, '.config', 'systemd', 'user', SYSTEMD_UNIT_NAME);
+  const command = daemonCommand(opts);
   const content = [
     '[Unit]',
     'Description=gatewarden - the gateway of the dev servers (registry and relay)',
@@ -130,7 +162,7 @@ function systemdUnit(opts: Required<Pick<ServiceUnitOptions, 'daemonPath' | 'con
     '',
     '[Service]',
     'Type=simple',
-    `ExecStart=${systemdQuote(opts.nodePath)} ${systemdQuote(opts.daemonPath)} --config ${systemdQuote(opts.configPath)}`,
+    `ExecStart=${systemdQuote(command.command)} ${unitArgs(command.args)}`,
     `Environment=GATEWARDEN_CONFIG=${opts.configPath}`,
     `Environment=GATEWARDEN_STATE_DIR=${opts.stateDir}`,
     'Restart=on-failure',
@@ -148,6 +180,7 @@ function systemdUnit(opts: Required<Pick<ServiceUnitOptions, 'daemonPath' | 'con
     name: SYSTEMD_UNIT_NAME,
     path: unitPath,
     content,
+    command,
     enable: [
       { command: 'systemctl', args: ['--user', 'daemon-reload'] },
       { command: 'systemctl', args: ['--user', 'enable', '--now', SYSTEMD_UNIT_NAME] },
@@ -171,6 +204,7 @@ function launchdUnit(opts: Required<Pick<ServiceUnitOptions, 'daemonPath' | 'con
   home: string;
 }): ServiceUnit {
   const unitPath = path.join(opts.home, 'Library', 'LaunchAgents', `${LAUNCHD_LABEL}.plist`);
+  const command = daemonCommand(opts);
   const content = [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">',
@@ -180,10 +214,7 @@ function launchdUnit(opts: Required<Pick<ServiceUnitOptions, 'daemonPath' | 'con
     `  <string>${plistQuote(LAUNCHD_LABEL)}</string>`,
     '  <key>ProgramArguments</key>',
     '  <array>',
-    `    <string>${plistQuote(opts.nodePath)}</string>`,
-    `    <string>${plistQuote(opts.daemonPath)}</string>`,
-    '    <string>--config</string>',
-    `    <string>${plistQuote(opts.configPath)}</string>`,
+    ...[command.command, ...command.args].map((arg) => `    <string>${plistQuote(arg)}</string>`),
     '  </array>',
     '  <key>EnvironmentVariables</key>',
     '  <dict>',
@@ -209,6 +240,7 @@ function launchdUnit(opts: Required<Pick<ServiceUnitOptions, 'daemonPath' | 'con
     name: LAUNCHD_LABEL,
     path: unitPath,
     content,
+    command,
     enable: [{ command: 'launchctl', args: ['load', '-w', unitPath] }],
     status: { command: 'launchctl', args: ['list', LAUNCHD_LABEL] },
   };
@@ -219,13 +251,15 @@ function windowsTask(opts: Required<Pick<ServiceUnitOptions, 'daemonPath' | 'con
   nodePath: string;
   home: string;
 }): ServiceUnit {
-  const task = `${systemdQuote(opts.nodePath)} ${systemdQuote(opts.daemonPath)} --config ${systemdQuote(opts.configPath)}`;
+  const command = daemonCommand(opts);
+  const task = `${systemdQuote(command.command)} ${unitArgs(command.args)}`;
   return {
     platform: 'win32',
     name: WINDOWS_TASK_NAME,
     path: null,
     // The command line of the task. There is no unit file on Windows.
     content: task,
+    command,
     enable: [
       {
         command: 'schtasks',
