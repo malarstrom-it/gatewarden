@@ -186,9 +186,9 @@ project and the branch. Never compose it by hand.
 | `gatewarden config [--write]` | Show the configuration and every key. `--write` writes the file. |
 | `gatewarden setup` | Walk a new installation through the steps and write the configuration file. |
 | `gatewarden start` | Start the daemon and wait for it. |
-| `gatewarden stop` | Stop the daemon. |
+| `gatewarden stop` | Stop the daemon. The service does not start it again: the unit of the platform leaves it alone, on macOS and on Linux. A service that is enabled starts the daemon again at the next boot, or at the next login on macOS. |
 | `gatewarden doctor [--strict]` | Report what is broken. `--strict` turns the warnings into errors. |
-| `gatewarden install-service [--no-enable]` | Install the daemon as a service, so it starts again after a reboot. |
+| `gatewarden install-service [--no-enable]` | Install the daemon as a service, so it starts again after a reboot. `--no-enable` writes the unit of the platform without enabling it: on Linux the daemon does not start at a reboot then, on macOS the agent is written to `~/Library/LaunchAgents`, which launchd loads at every login, so the daemon starts at the next login. |
 | `gatewarden version` | Print the version of the package. |
 
 Global options: `--config <path>`, `--state-dir <path>`, `--json`, `--version`,
