@@ -196,6 +196,65 @@
  * numbering and the pointers at files the package does not ship — are
  * not read there: the specification is the internal numbering, and it
  * names the files of the repository by design.
+ *
+ * The guard grew a fourth half in S107. The third half reads the files
+ * the package does not ship; the fourth half reads the files it does
+ * ship. The tarball is the part of the repository that every user of the
+ * package downloads, and a value of the installation in it is a value of
+ * the installation in the world. The readme, the changelog, the
+ * documentation and the skill were read by nobody but the maintainer,
+ * and a zone or a host name in them was a leak that nothing caught.
+ *
+ * The values are the same values the third half reads: they are read
+ * from the installation itself, and they are never written down here.
+ * The same values are read over both sets of files, because the words of
+ * the package are words in the repository and in the tarball alike: a
+ * value the package publishes is a word of the package and not a value of
+ * the installation. An installation whose host name is `server` would
+ * otherwise make the guard report every `server` of the package, and the
+ * guard would hold the publishing of the package for a word.
+ *
+ * The rule over the tarball asks the package nothing. A value of the
+ * installation that stands in the tarball is a leak, and the package
+ * cannot excuse it: the tarball is the file the value may have leaked
+ * into, and a value the package publishes there is a value the package
+ * publishes by mistake. A rule that asks the package whether it
+ * publishes the value reads the very file it is about to scan, and the
+ * leak excuses itself.
+ *
+ * What the tarball is read against is a list of the values that are no
+ * values of the installation — a list the package does not decide:
+ *
+ *   - the names the package gives to the machines of its examples
+ *     (`PACKAGE_MACHINE_NAMES`), for the name of a machine is an
+ *     ordinary word and the package is full of ordinary words;
+ *   - the domains the package publishes on purpose (`PUBLIC_DOMAINS`),
+ *     the host of the public repository and the domain of the support
+ *     address among them;
+ *   - the names under the domains that RFC 2606 and RFC 6761 reserve,
+ *     for those belong to nobody;
+ *   - the addresses the documentation uses as examples, the ranges of
+ *     RFC 5737 and of RFC 3849;
+ *   - the paths in the home of the reader, for they are the paths of
+ *     every installation of the package.
+ *
+ * The zone of the DNS is caught wherever it stands, for the package
+ * publishes the zones of its examples in the domains that RFC 2606 and
+ * RFC 6761 reserve, and those belong to nobody — so the zone of an
+ * installation is never a word of the package.
+ *
+ * The files the package does not ship are read with the rule of S105,
+ * which asks the package whether it publishes the value. The repository
+ * is full of the words of the package, and the rule needs to know them.
+ * A value the package publishes is a word of the package and not a value
+ * of the installation: an installation whose host name is `build` would
+ * otherwise make the guard report every `build` of the repository, and
+ * the guard would hold the publishing of the package for a word.
+ *
+ * The message of the rule names the file and the line the value stands
+ * on, and not the value itself. A red run of the guard is a log on a
+ * public service, and a log that writes out the zone of the installation
+ * publishes the very value the guard keeps out of the package.
  */
 
 import assert from 'node:assert/strict';
@@ -313,6 +372,29 @@ const GIT_SERVER_HOSTS = [/\bgitea\.[a-z0-9-]+(?:\.[a-z0-9-]+)+/gi];
  * reserved domains, like every other address of an account.
  */
 const PUBLIC_CONTACT_ADDRESSES: string[] = ['npm@malarstrom.se'];
+
+/**
+ * The domains the package publishes on purpose (S107).
+ *
+ * The zone of the DNS is caught even when the package publishes it, for
+ * the package publishes it by mistake. The domains the package names on
+ * purpose are the exception: the host of the public repository, the
+ * domain of the support address, the registry the package is published
+ * on and the conventions the package follows. They are public by the
+ * decision of the maintainer, and they are the same for every reader of
+ * the package.
+ *
+ * The domains that RFC 2606 and RFC 6761 reserve are not on this list:
+ * they belong to nobody, and a name under them is not a value of an
+ * installation at all (see `isReservedExample`).
+ */
+const PUBLIC_DOMAINS: string[] = [
+  PUBLIC_GIT_HOST,
+  ...PUBLIC_CONTACT_ADDRESSES.map((address) => address.split('@')[1] ?? ''),
+  'npmjs.org',
+  'keepachangelog.com',
+  'semver.org',
+];
 
 /**
  * The documents of the repository that name an address to write to.
@@ -763,10 +845,17 @@ function gitServerTraps(file: string, text: string, publicHost: string = PUBLIC_
 interface InstallationOptions {
   /** The environment the paths of the installation are resolved in. */
   env?: NodeJS.ProcessEnv;
-  /** The directory of the unpacked package. */
-  packageDir?: string;
-  /** The files the package holds. */
-  packageFiles?: string[];
+  /**
+   * Does the rule ask the resolver of the machine about the zone?
+   *
+   * The values of the DNS of the zone are values of the installation,
+   * and the rule reads them for the installation that runs it. A probe
+   * installation asks no resolver: the zone of the probe names nobody,
+   * and the answer of the resolver would be the nameservers of a domain
+   * that is not the probe's - the proof would depend on the machine that
+   * runs it.
+   */
+  dns?: boolean;
 }
 
 /**
@@ -791,6 +880,12 @@ function escapeRegExp(value: string): string {
  * The test is the same everywhere: the value stands in the text of the
  * package as it stands in the text of the repository, and not as a part
  * of a longer name.
+ *
+ * The rule of the values of the installation does not ask this question
+ * about the file it is reading (see `wordOfThePackage`), for the file it
+ * is reading is the file the value may have leaked into. This function
+ * answers the question about the package as a whole, and the test of the
+ * allowance of the domains of the package uses it.
  */
 function packageUsesValue(value: string, packageDir: string, files: string[]): boolean {
   const pattern = new RegExp(`(?<![A-Za-z0-9_])${escapeRegExp(value)}(?![A-Za-z0-9_])`, 'i');
@@ -820,6 +915,120 @@ function packageUsesValue(value: string, packageDir: string, files: string[]): b
  *     name of the machine, which is an ordinary word.
  */
 type InstallationMatch = 'substring' | 'word' | 'machine';
+
+/**
+ * The names the package gives to the machines of its examples (S107).
+ *
+ * The name of a machine is an ordinary word, and the package is full of
+ * ordinary words: the guard cannot tell the name of the machine of an
+ * installation from the name of a machine in the documentation of the
+ * package. The names of the package are written down here, and the guard
+ * leaves them alone.
+ *
+ * The list is the names the package uses in its documentation where a
+ * name stands where the name of a machine stands: the host of a URL, the
+ * host of a port, a segment of a path and the first label of a host
+ * name. A test reads the documentation of the package and says that
+ * every name in it stands on the list — so the list cannot go quiet, and
+ * a new name in the documentation has to leave the guard alone as well.
+ */
+const PACKAGE_MACHINE_NAMES: string[] = [
+  '0',
+  '1',
+  '100',
+  '11',
+  '113',
+  '12',
+  '127',
+  '128',
+  '19',
+  '192',
+  '198',
+  '2',
+  '20',
+  '203',
+  '22',
+  '24',
+  '32',
+  '45001',
+  '45002',
+  '51',
+  '64',
+  '8080',
+  'application',
+  'caches',
+  'launchagents',
+  'library',
+  'logs',
+  'preferences',
+  'acme',
+  'api',
+  'com',
+  'config',
+  'daemon',
+  'db8',
+  'dev-gateway',
+  'docker',
+  'dynamic',
+  'en',
+  'entrypoints',
+  'etc',
+  'example',
+  'gatewarden',
+  'gateway',
+  'github',
+  'healthz',
+  'home',
+  'html',
+  'http',
+  'keepachangelog',
+  'main',
+  'malarstrom',
+  'malarstrom-it',
+  'my-app',
+  'npmjs',
+  'org',
+  'probe',
+  'proxy',
+  'references',
+  'routers',
+  'routes',
+  'run',
+  's',
+  'semver',
+  'server',
+  'services',
+  'skills',
+  'sock',
+  'spec',
+  'state',
+  'the',
+  'traefik',
+  'types-of-changes',
+  'user',
+  'v2',
+  'var',
+  'version',
+  'wiring',
+];
+
+/**
+ * What the zone of the installation is called.
+ *
+ * The zone is the one value the package never publishes on purpose, and
+ * the one value the guard reads even when the package publishes it.
+ */
+const THE_ZONE_OF_THE_INSTALLATION = 'the DNS zone of the installation';
+
+/**
+ * What the paths of the installation are called.
+ *
+ * The paths are the one kind of value the package publishes on purpose:
+ * the path of the configuration and the path of the state are the same
+ * for every installation of the package, and the documentation of the
+ * package names them.
+ */
+const PATH_OF_THE_INSTALLATION = 'the path of the installation';
 
 /**
  * A value that names the installation.
@@ -878,22 +1087,86 @@ function isLoopback(value: string): boolean {
  * installation whose zone is `example.com` names nothing that is not
  * published already. The rule of the values of the installation has
  * nothing private to catch in such a value.
+ *
+ * The names under a reserved domain belong to nobody as well: the
+ * package writes `my-app.example.com` as the address of its example,
+ * and the zone of an installation is never a name under a reserved
+ * domain. The rule reads the whole name and not only its last label,
+ * for the name under a reserved domain is a name of nobody.
  */
 function isReservedExample(value: string): boolean {
   if (value.includes('/')) return false;
-  const host = value.toLowerCase();
-  const last = host.split('.').pop() ?? '';
-  return EXAMPLE_DOMAINS.has(host) || EXAMPLE_DOMAINS.has(last);
+  const labels = value.toLowerCase().split('.');
+
+  for (let count = labels.length; count > 0; count -= 1) {
+    if (EXAMPLE_DOMAINS.has(labels.slice(labels.length - count).join('.'))) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Is the value a domain name?
+ *
+ * A domain name has more than one part: `home.example.org`. A name
+ * without a dot is an ordinary word, and the guard reads it as one: the
+ * word `server` names a server of the package and the machine of the
+ * reader, and the guard cannot tell the machine of an installation from
+ * the words of the package.
+ */
+function isDomainName(value: string): boolean {
+  return value.includes('.') && !isReservedExample(value);
+}
+
+/**
+ * The addresses the documentation of the package uses as examples.
+ *
+ * The ranges of RFC 5737 (`192.0.2.0/24`, `198.51.100.0/24`,
+ * `203.0.113.0/24`) and of RFC 3849 (`2001:db8::/32`) belong to nobody,
+ * and the documentation of the package uses them for its examples. An
+ * installation whose address is one of them names nothing that is not
+ * published already.
+ */
+const EXAMPLE_ADDRESSES = [
+  /^192\.0\.2\.\d{1,3}$/,
+  /^198\.51\.100\.\d{1,3}$/,
+  /^203\.0\.113\.\d{1,3}$/,
+  /^2001:db8:[0-9a-f]*$/i,
+];
+
+/**
+ * Is the value an address the documentation uses as an example?
+ */
+function isExampleAddress(value: string): boolean {
+  return EXAMPLE_ADDRESSES.some((pattern) => pattern.test(value));
+}
+
+/**
+ * Is the value a path of every reader?
+ *
+ * The path of the configuration and the path of the state are the same
+ * for every installation of the package, and the documentation of the
+ * package names them in the home of the reader. The path of the reader
+ * is not the path of this installation: it names no installation.
+ *
+ * The configuration file of an installation may name its paths in the
+ * short form (`~/.config/gatewarden/`), and the rule reads the value as
+ * it is written. The short form is the path of every reader, and the
+ * rule leaves it alone.
+ */
+function isPathOfEveryReader(value: string): boolean {
+  return value.startsWith('~/');
 }
 
 /**
  * Add a value to the list of the values of the installation.
  *
  * A value that is empty, that is too short to name anything, that names
- * the loopback, or that belongs to a reserved example domain is not a
- * value of an installation. A value that is already on the list is not
- * added twice: the guard says what a value names, not how often it
- * stands in a file.
+ * the loopback, that belongs to a reserved example domain, that is an
+ * example address of the documentation, or that is a path of every
+ * reader is not a value of an installation. A value that is already on
+ * the list is not added twice: the guard says what a value names, not how
+ * often it stands in a file.
  */
 function addInstallationValue(
   values: InstallationValue[],
@@ -906,6 +1179,8 @@ function addInstallationValue(
   if (text.length < 4) return;
   if (isLoopback(text)) return;
   if (isReservedExample(text)) return;
+  if (isExampleAddress(text)) return;
+  if (isPathOfEveryReader(text)) return;
   if (values.some((entry) => entry.value === text)) return;
   values.push({ value: text, what, match });
 }
@@ -941,10 +1216,9 @@ function addInstallationValue(
  * installation against the values of this installation, and there is
  * nothing of an installation to protect on a machine that has none.
  *
- * A value that the package publishes is not a value of the installation:
- * the words of the package are the package's own, and an installation
- * whose host name is `build` would otherwise make the guard report every
- * `build` of the repository.
+ * The values are read as they are, and the rule that reads them decides
+ * what a value is: a value the package publishes is a word of the
+ * package and not a value of the installation (see `publishedValue`).
  */
 async function installationValues(opts: InstallationOptions = {}): Promise<InstallationValue[]> {
   const values: InstallationValue[] = [];
@@ -964,8 +1238,14 @@ async function installationValues(opts: InstallationOptions = {}): Promise<Insta
   const zone = typeof config['zone'] === 'string' ? config['zone'] : '';
   const host = typeof config['advertisedHost'] === 'string' ? config['advertisedHost'] : '';
 
-  // The zone of the DNS.
-  addInstallationValue(values, zone, 'the DNS zone of the installation', 'substring');
+  // The zone of the DNS. The zone of a DNS is a domain name: a name
+  // under the zone carries the zone, and the guard catches the zone
+  // wherever it stands because of that. A zone that is not a domain name
+  // is not a zone of a DNS, and an ordinary word names nothing that the
+  // guard can keep out of the package.
+  if (isDomainName(zone)) {
+    addInstallationValue(values, zone, THE_ZONE_OF_THE_INSTALLATION, 'substring');
+  }
 
   // The host names of the installation: the name the proxy reaches the
   // machine under, and the name the machine has. The name of the machine
@@ -988,14 +1268,14 @@ async function installationValues(opts: InstallationOptions = {}): Promise<Insta
     }
   }
 
-  // The paths of the installation: the absolute form and the short form
-  // a document uses (`~/.config/gatewarden/`).
-  addInstallationValue(values, configPath, 'the path of the installation', 'substring');
-  addInstallationValue(values, path.dirname(configPath), 'the path of the installation', 'substring');
-  addInstallationValue(values, stateDir, 'the path of the installation', 'substring');
-  for (const value of [configPath, path.dirname(configPath), stateDir]) {
-    addInstallationValue(values, shortPath(value), 'the path of the installation', 'substring');
-  }
+  // The paths of the installation: the absolute form, which names the
+  // machine of the installation. The short form a document uses
+  // (`~/.config/gatewarden/`) is the path of every reader and names no
+  // installation - the package publishes it on purpose - and the rule
+  // leaves it alone (see `isPathOfEveryReader`).
+  addInstallationValue(values, configPath, PATH_OF_THE_INSTALLATION, 'substring');
+  addInstallationValue(values, path.dirname(configPath), PATH_OF_THE_INSTALLATION, 'substring');
+  addInstallationValue(values, stateDir, PATH_OF_THE_INSTALLATION, 'substring');
 
   // The names of the services the installation registered in the proxy.
   for (const registration of new RegistrationStore(stateDir).list()) {
@@ -1004,36 +1284,230 @@ async function installationValues(opts: InstallationOptions = {}): Promise<Insta
   }
 
   // The values of the DNS of the zone.
-  values.push(...(await zoneDnsValues(zone)));
-
-  // A value that the package publishes is public. The guard does not
-  // have to catch a value that every reader of the package has already:
-  // the words of the package are the package's own, and an installation
-  // whose host name is `build` would otherwise make the guard report
-  // every `build` of the repository.
-  if (opts.packageDir !== undefined && opts.packageFiles !== undefined) {
-    return values.filter(
-      (entry) => !packageUsesValue(entry.value, opts.packageDir as string, opts.packageFiles as string[]),
-    );
-  }
+  if (opts.dns !== false) values.push(...(await zoneDnsValues(zone)));
 
   return values;
 }
 
 /**
- * The short form of a path of the installation.
+ * An installation of the rule's own.
  *
- * A document of the repository writes the path of the installation in
- * the home of the reader (`~/.config/gatewarden/`) and not in the
- * absolute form. The short form is the path of the installation as
- * well, and the guard catches it — unless the package publishes it, for
- * the short form of the path of the configuration is the path of every
- * installation of the package.
+ * The rule of the values of the installation reads the values of the
+ * installation it runs on. A machine without an installation has no
+ * values at all, and the rule reads nothing there: there is nothing of
+ * an installation to keep out of the package, and a rule that catches
+ * what is not there catches words.
+ *
+ * A rule that cannot fail guards nothing, and the proof that the rule
+ * fires cannot wait for an installation to exist on the machine that
+ * runs it: the runner of the build has none, and a contributor without
+ * the package installed has none, and the guard of the package has to be
+ * green on them too. The rule is therefore given an installation of its
+ * own — a configuration file of its own, in a directory of its own, with
+ * a route store of its own — and the values of that installation are
+ * planted in the files the rule reads.
+ *
+ * The values of the probe installation name nothing of this project:
+ *
+ *   - the zone of the probe (`probe.installation`), a name no registry
+ *     serves;
+ *   - the host name of the probe (`probe-host`) and the name of the
+ *     machine that runs the test;
+ *   - the paths of the probe: the configuration file, the directory it
+ *     is in and the state directory;
+ *   - the name of a service of the probe and the host name of that
+ *     service (`probeapp.main.probe.installation`).
+ *
+ * The probe asks no resolver: the zone of the probe names nobody, and
+ * the answer of the resolver would be the nameservers of a domain that
+ * is not the probe's - the proof would depend on the machine that runs
+ * it. The probe writes no address: an address of the range of RFC 5737
+ * belongs to nobody, and the rule leaves such an address out on
+ * purpose. The values of the probe may be written down here in a public
+ * repository.
  */
-function shortPath(value: string): string | undefined {
-  const home = os.homedir();
-  if (!value.startsWith(home + path.sep)) return undefined;
-  return `~${value.slice(home.length)}`;
+interface ProbeInstallation {
+  /** The directory of the probe installation. */
+  home: string;
+  /** The environment that points at the probe installation. */
+  env: NodeJS.ProcessEnv;
+  /** The values of the probe installation. */
+  values: () => Promise<InstallationValue[]>;
+  /** The zone of the probe installation. */
+  zone: string;
+  /** The host name of the probe installation. */
+  host: string;
+  /** Remove the probe installation and everything in it. */
+  remove: () => void;
+}
+
+/**
+ * Build an installation of the rule's own.
+ *
+ * The installation lives in a directory of its own and is removed when
+ * the proof is done: nothing of it reaches the disk of the repository.
+ */
+function probeInstallation(): ProbeInstallation {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-probe-installation-'));
+  const configFile = path.join(home, 'config.json');
+  const stateDir = path.join(home, 'state');
+  const zone = 'probe.installation';
+  const host = 'probe-host';
+
+  fs.mkdirSync(stateDir, { recursive: true });
+  fs.writeFileSync(configFile, JSON.stringify({ zone, advertisedHost: host, stateDir }));
+  fs.writeFileSync(
+    path.join(stateDir, 'routes.json'),
+    JSON.stringify({
+      version: 1,
+      registrations: [
+        {
+          id: 'probe-app-main',
+          project: 'Probe App',
+          branch: 'main',
+          projectSlug: 'probeapp',
+          branchSlug: 'main',
+          fqdn: `probeapp.main.${zone}`,
+          zone,
+          devPort: 3000,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    }),
+  );
+
+  // The home of the installation wins over the configuration file, and
+  // the machine that runs the test may name one: the environment of the
+  // probe installation names the configuration file and nothing else.
+  const env: NodeJS.ProcessEnv = { ...process.env, GATEWARDEN_CONFIG: configFile };
+  delete env['GATEWARDEN_HOME'];
+  delete env['DEV_GATEWAY_HOME'];
+
+  return {
+    home,
+    env,
+    values: () => installationValues({ env, dns: false }),
+    zone,
+    host,
+    remove: () => fs.rmSync(home, { recursive: true, force: true }),
+  };
+}
+
+/**
+ * The files of the package that use each value of the installation as a
+ * word of the package (S105).
+ *
+ * The map serves the rule over the files the package does not ship: a
+ * value the package uses in another file is a word of the package and
+ * not a value of the installation. The rule never asks the map about the
+ * file it is reading — a value that stands in the file the rule reads is
+ * the value the rule is looking for.
+ *
+ * The rule over the tarball does not ask the map at all (S107): the
+ * tarball is the file the value may have leaked into, and the package
+ * cannot excuse the leak.
+ */
+function publishedIn(
+  values: InstallationValue[],
+  packageDir: string,
+  files: string[],
+): Map<string, Set<string>> {
+  const published = new Map<string, Set<string>>();
+  for (const entry of values) published.set(entry.value, new Set<string>());
+
+  for (const file of files) {
+    if (!/\.(?:md|json|js|mjs|ts|txt|yml|yaml)$/.test(file)) continue;
+
+    let text = '';
+    try {
+      text = fs.readFileSync(path.join(packageDir, file), 'utf8');
+    } catch {
+      continue;
+    }
+
+    for (const entry of values) {
+      const pattern = new RegExp(`(?<![A-Za-z0-9_])${escapeRegExp(entry.value)}(?![A-Za-z0-9_])`, 'gi');
+      for (const found of text.matchAll(pattern)) {
+        const index = found.index ?? 0;
+        if (entry.match === 'machine' && namesAMachine(text.slice(0, index), text.slice(index + entry.value.length))) {
+          continue;
+        }
+        published.get(entry.value)?.add(file);
+        break;
+      }
+    }
+  }
+
+  return published;
+}
+
+/**
+ * Does the rule read the value as a value of the installation in the file?
+ *
+ * A value that the rule leaves alone is a value the rule does not look
+ * for, and the probes of the rule must leave it alone as well.
+ *
+ *   - the domains the package publishes on purpose are published on
+ *     purpose: the zone of the DNS is caught even when the package
+ *     publishes it, and the domains of the package are the exception;
+ *   - a value the package publishes in another file is a word of the
+ *     package, and the rule over the files the package does not ship
+ *     leaves it alone;
+ *   - the name of a machine is read in the documentation of the package:
+ *     the code is the package's own, and the names in it are the names
+ *     of the package. A name the package gives to the machines of its
+ *     examples is the name of the package and not the name of the
+ *     machine of an installation.
+ */
+function ruleReadsValue(
+  entry: InstallationValue,
+  file: string,
+  published?: Map<string, Set<string>>,
+): boolean {
+  if (entry.what === THE_ZONE_OF_THE_INSTALLATION && PUBLIC_DOMAINS.includes(entry.value.toLowerCase())) {
+    return false;
+  }
+
+  if (published !== undefined && wordOfThePackage(entry, file, published)) return false;
+
+  if (entry.match === 'machine') {
+    if (!file.endsWith('.md')) return false;
+    if (PACKAGE_MACHINE_NAMES.includes(entry.value.toLowerCase())) return false;
+  }
+
+  return true;
+}
+
+/**
+ * Is the value a word of the package and not a value of the installation?
+ *
+ * A value the package publishes is public: the words of the package are
+ * the package's own, and an installation whose host name is `build` would
+ * otherwise make the guard report every `build` of the package — and the
+ * guard would report the words of the package as the values of an
+ * installation. The words of the package are the same for every
+ * installation, and the package publishes them on purpose.
+ *
+ * The package publishes a value in the file the rule reads and in the
+ * other files of the package. The other files are what tells the two
+ * apart: a value that the package uses in another file is a word of the
+ * package, and a value that stands in one file only is the value of the
+ * installation — the package publishes it there by mistake.
+ */
+function wordOfThePackage(
+  entry: InstallationValue,
+  file: string,
+  published: Map<string, Set<string>>,
+): boolean {
+  const files = published.get(entry.value);
+  if (files === undefined) return false;
+
+  for (const other of files) {
+    if (other !== file) return true;
+  }
+
+  return false;
 }
 
 /**
@@ -1146,11 +1620,22 @@ function withTimeout<T>(answer: Promise<T>, ms: number): Promise<T | undefined> 
  *
  * The case does not matter: the zone of the DNS does not care about it,
  * and a name that differs in its case is the same name.
+ *
+ * The message of the trap names the file and the line and not the value
+ * (S107): a red run of the guard is a log on a public service, and a log
+ * that writes out the value writes out the zone of the installation.
  */
-function installationValueTraps(file: string, text: string, values: InstallationValue[]): string[] {
+function installationValueTraps(
+  file: string,
+  text: string,
+  values: InstallationValue[],
+  published?: Map<string, Set<string>>,
+): string[] {
   const hits: string[] = [];
 
   for (const { value, what, match } of values) {
+    if (!ruleReadsValue({ value, what, match }, file, published)) continue;
+
     if (match === 'machine') {
       hits.push(...machineValueTraps(file, text, value, what));
       continue;
@@ -1162,7 +1647,7 @@ function installationValueTraps(file: string, text: string, values: Installation
         ? new RegExp(`(?<![A-Za-z0-9_])${escaped}(?![A-Za-z0-9_])`, 'gi')
         : new RegExp(escaped, 'gi');
     for (const found of text.matchAll(pattern)) {
-      hits.push(`${file}:${lineOf(text, found.index ?? 0)}: "${found[0]}" — ${what}`);
+      hits.push(`${file}:${lineOf(text, found.index ?? 0)}: ${what}`);
     }
   }
 
@@ -1183,6 +1668,9 @@ function installationValueTraps(file: string, text: string, values: Installation
  * The name in the prose of a sentence is not caught: `the machine is
  * called buildhost` names a word, and the guard would report every word of
  * the repository that is the name of the machine of some installation.
+ *
+ * The message of the trap names the file and the line and not the value,
+ * for the same reason as the message of the other traps of the rule.
  */
 function machineValueTraps(file: string, text: string, value: string, what: string): string[] {
   const hits: string[] = [];
@@ -1191,7 +1679,7 @@ function machineValueTraps(file: string, text: string, value: string, what: stri
   for (const found of text.matchAll(pattern)) {
     const index = found.index ?? 0;
     if (!namesAMachine(text.slice(0, index), text.slice(index + value.length))) continue;
-    hits.push(`${file}:${lineOf(text, index)}: "${found[0]}" — ${what}`);
+    hits.push(`${file}:${lineOf(text, index)}: ${what}`);
   }
 
   return hits;
@@ -1234,8 +1722,23 @@ function namesAMachine(before: string, after: string): boolean {
  * They are read when the package is packed: the rule has to know the
  * words of the package before it can tell a value of the installation
  * from a word of the package.
+ *
+ * The same values are read over the files the package does not ship and
+ * over the files it does (S105, S107): the values of the installation
+ * are the values of the installation, and the files that hold them are
+ * the ones that matter.
  */
 let INSTALLATION_VALUES: InstallationValue[] = [];
+
+/**
+ * The files of the package that use each value of the installation as a
+ * word of the package.
+ *
+ * The map is read for every file the rule scans, and the rule asks it
+ * about the file it is reading: a value the package uses in another file
+ * is a word of the package and not a value of the installation.
+ */
+let PUBLISHED_IN: Map<string, Set<string>> = new Map();
 
 /**
  * The fields of the manifest that point at a repository.
@@ -1369,37 +1872,61 @@ interface RuleProbe {
   find: (file: string, text: string, context: GuardContext) => string[];
   /** Is the value planted in a file of the repository instead of the tarball? */
   inRepository?: boolean;
+  /** Does the message of the rule leave the value out? */
+  hidesValue?: boolean;
 }
 
 /**
- * The probes of the rule of the values of the installation (S105).
+ * The probes of the rule of the values of the installation (S105, S107).
  *
  * The values are the values of the installation, read from the
  * installation itself. They are not written down here: the repository is
  * about to become public, and a value of the installation written down in
  * it is the very thing the rule keeps out of it.
  *
- * The values are planted in a file of the repository and not in a file of
- * the tarball: the rule of the values of the installation is a rule about
- * the files the package does not ship, and a probe that plants a value in
- * the tarball would prove a rule that is not the one that is used.
+ * The values are planted in the files the rule reads: a file of the
+ * repository for the rule that reads the repository, and a file of the
+ * tarball for the rule that reads the tarball. A probe that plants a
+ * value in a file the rule does not read would prove a rule that is not
+ * the one that is used.
  *
  * The name of a machine is planted where it names a machine: the rule
  * catches the name of the machine and not an ordinary word, and a probe
  * that planted the name in the prose of a sentence would prove nothing.
+ *
+ * The message of the rule leaves the value out, and the probe says so:
+ * a log of a red run must not write out the value it caught.
  *
  * A machine without an installation has no values to plant, and the list
  * is empty there. The rule of the values of the installation is proved on
  * every machine by the test that gives it an installation of its own.
  */
 function installationProbes(): RuleProbe[] {
-  return INSTALLATION_VALUES.map((entry) => ({
-    what: entry.what,
-    value: entry.match === 'machine' ? `${entry.value}:45002` : entry.value,
-    file: 'specs/tech-architecture/naming.md',
-    find: (file: string, text: string) => installationValueTraps(file, text, INSTALLATION_VALUES),
-    inRepository: true,
-  }));
+  const probes: RuleProbe[] = [];
+
+  for (const entry of INSTALLATION_VALUES) {
+    const value = entry.match === 'machine' ? `${entry.value}:45002` : entry.value;
+
+    for (const file of ['specs/tech-architecture/naming.md', 'README.md']) {
+      const inRepository = file.startsWith('specs/');
+      // A value that the rule leaves alone in that file is a value the
+      // rule does not look for there. The probe proves the rule that is
+      // used, and not a rule that is not.
+      if (!ruleReadsValue(entry, file, inRepository ? PUBLISHED_IN : undefined)) continue;
+
+      probes.push({
+        what: entry.what,
+        value,
+        file,
+        find: (file: string, text: string) =>
+          installationValueTraps(file, text, INSTALLATION_VALUES, inRepository ? PUBLISHED_IN : undefined),
+        inRepository,
+        hidesValue: true,
+      });
+    }
+  }
+
+  return probes;
 }
 
 /**
@@ -2016,7 +2543,8 @@ describe('the published package', () => {
     // The values of the installation are read now: the rule has to know
     // the words of the package before it can tell a value of the
     // installation from a word of the package.
-    INSTALLATION_VALUES = await installationValues({ packageDir, packageFiles: files });
+    INSTALLATION_VALUES = await installationValues();
+    PUBLISHED_IN = publishedIn(INSTALLATION_VALUES, packageDir, files);
   });
 
   after(async () => {
@@ -2046,6 +2574,30 @@ describe('the published package', () => {
     } finally {
       fs.rmSync(copy, { recursive: true, force: true });
     }
+  };
+
+  /**
+   * A copy of the tarball with a line planted in each of its files.
+   *
+   * A rule that cannot fail guards nothing, so the rule is run against a
+   * tarball that has been broken on purpose: a copy of the tarball with
+   * a line planted in one of its files. The copy is a copy — the tarball
+   * of the package is not written to, and the copy is removed when the
+   * rule has been run over it.
+   */
+  const plantInTarball = (plantings: Array<{ file: string; line: string }>): string => {
+    const copy = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-tarball-probe-'));
+    try {
+      fs.cpSync(packageDir, copy, { recursive: true });
+      for (const planting of plantings) {
+        fs.appendFileSync(path.join(copy, planting.file), `\n${planting.line}\n`);
+      }
+    } catch (error) {
+      fs.rmSync(copy, { recursive: true, force: true });
+      throw error;
+    }
+
+    return copy;
   };
 
   /**
@@ -2171,6 +2723,134 @@ describe('the published package', () => {
     // The allowance is not a hole that may go quiet: the package has to
     // name the support address, or a reader has nowhere to write.
     assert.ok(support > 0, 'the published package names no support address');
+  });
+
+  test('the published package holds no value of the installation', async () => {
+    // The tarball is what every user of the package downloads, and it is
+    // the part of the repository that was read by nobody but the
+    // maintainer until S107. A zone of the installation in the readme, in
+    // the changelog or in the documentation was a leak that nothing
+    // caught: the rule of the values of the installation read the files
+    // the package does not ship, and the tarball was not among them.
+    //
+    // The values of the installation are the values of the installation,
+    // and the files that hold them are the ones that matter: the rule
+    // reads them over the files the package does not ship (S105) and
+    // over the files it does ship (S107). A value the package publishes
+    // is a word of the package and not a value of the installation, and
+    // the zone of the DNS is the one exception (see `publishedValue`).
+    //
+    // The message of the rule names the file and the line and not the
+    // value: a log of a red run must not publish the value it caught.
+    const hits: string[] = [];
+
+    for (const file of files) {
+      const text = fs.readFileSync(path.join(packageDir, file), 'utf8');
+      hits.push(...installationValueTraps(file, text, INSTALLATION_VALUES));
+    }
+
+    assert.deepEqual(
+      hits,
+      [],
+      'the published package holds a value of the installation; the published package names no zone and no host name of an installation:\n' +
+        hits.join('\n'),
+    );
+
+    // The rule has to fire, and it has to fire on every machine.
+    //
+    // The values of the installation are read from the installation
+    // itself, and a machine without an installation has none: there is
+    // nothing of an installation to keep out of the package, and the
+    // rule reads nothing there. A proof that waits for an installation
+    // to exist is a proof that runs on some machines and not on others,
+    // and the guard of the package is red on the machines that have no
+    // installation — the runner of the build, a contributor without the
+    // package installed.
+    //
+    // The rule is therefore given an installation of its own: a probe
+    // installation, with a configuration file of its own, in a directory
+    // of its own, with a route store of its own. The values of that
+    // installation are planted in the tarball — the zone in the readme
+    // and the host name in the documentation — and the rule has to
+    // catch them there. A tarball that names them is caught, and the
+    // message of the trap names the file and the line and not the
+    // value.
+    const probe = probeInstallation();
+
+    try {
+      const values = await probe.values();
+      const copy = plantInTarball([
+        { file: 'README.md', line: `The zone of the installation is ${probe.zone}.` },
+        { file: 'docs/setup.md', line: `The machine of the installation is ${probe.host}:45002.` },
+      ]);
+
+      try {
+        const planted: string[] = [];
+
+        for (const file of filesUnder(copy)) {
+          const text = fs.readFileSync(path.join(copy, file), 'utf8');
+          planted.push(...installationValueTraps(file, text, values));
+        }
+
+        // The zone of the installation is caught in the readme and the
+        // host name of the installation in the documentation: a tarball
+        // that names them is a leak, and the rule of the leak is the
+        // rule that is used over the tarball.
+        assert.match(
+          planted.find((hit) => hit.startsWith('README.md:') && hit.endsWith('the DNS zone of the installation')) ?? '',
+          /^README\.md:\d+: the DNS zone of the installation$/,
+          'the rule did not catch the zone of the installation in the readme of the tarball',
+        );
+        assert.match(
+          planted.find(
+            (hit) => hit.startsWith('docs/setup.md:') && hit.endsWith('the host name of the installation'),
+          ) ?? '',
+          /^docs\/setup\.md:\d+: the host name of the installation$/,
+          'the rule did not catch the host name of the installation in the documentation of the tarball',
+        );
+
+        // The message of the rule names the file and the line and not
+        // the value: a log of a red run must not publish the value it
+        // caught.
+        for (const hit of planted) {
+          assert.ok(
+            !hit.includes(probe.zone) && !hit.includes(probe.host),
+            'the message of the rule wrote out the value of the installation',
+          );
+        }
+      } finally {
+        fs.rmSync(copy, { recursive: true, force: true });
+      }
+    } finally {
+      probe.remove();
+    }
+
+    // The values of the installation of the machine that runs the test
+    // are planted as well, when the machine has an installation: the
+    // rule has to catch those too, and the message of the trap has to
+    // leave them out.
+    for (const entry of INSTALLATION_VALUES) {
+      // A value the rule leaves alone in that file is a value the rule
+      // does not look for there.
+      if (!ruleReadsValue(entry, 'README.md')) continue;
+
+      // The name of a machine is caught where it names a machine, and not
+      // in the prose of a sentence.
+      const line =
+        entry.match === 'machine'
+          ? `The machine of the installation is ${entry.value}:45002.`
+          : `The installation of the package is ${entry.value}.`;
+      const plantedHits = installationValueTraps('README.md', plant('README.md', line), INSTALLATION_VALUES);
+
+      assert.ok(
+        plantedHits.length > 0,
+        `the rule did not catch a value of the installation in the readme of the tarball: ${entry.what}`,
+      );
+      assert.ok(
+        plantedHits.every((hit) => !hit.includes(entry.value)),
+        'the message of the rule wrote out the value of the installation',
+      );
+    }
   });
 
   test('the documents of the repository name the support address and no other address', () => {
@@ -2556,7 +3236,29 @@ describe('the published package', () => {
         : plant(probe.file, probe.value);
       const hits = probe.find(probe.file, text, context);
 
-      assert.ok(hits.length > 0, `the guard did not catch "${probe.value}" — ${probe.what}`);
+      // The message of a probe of the values of the installation names
+      // what was planted and not the value: a log of a red run must not
+      // publish the value it caught.
+      const planted = probe.hidesValue === true ? 'the value of the installation' : `"${probe.value}"`;
+      assert.ok(hits.length > 0, `the guard did not catch ${planted} — ${probe.what}`);
+
+      // The rule of the values of the installation leaves the value out
+      // of its message: a log of a red run must not publish the value it
+      // caught. The message names the file and the line all the same.
+      if (probe.hidesValue === true) {
+        assert.match(
+          hits[0],
+          new RegExp(`^${escapeRegExp(probe.file)}:\\d+: `),
+          `the message of the rule does not name the file and the line — ${probe.what}`,
+        );
+        for (const hit of hits) {
+          assert.ok(
+            !hit.includes(probe.value),
+            `the message of the rule wrote out the value it caught — ${probe.what}`,
+          );
+        }
+        continue;
+      }
 
       // The rule may catch the part of the value it knows: the number of
       // a paragraph is `§4` when the paragraph is `§4.2`.
@@ -2627,6 +3329,73 @@ describe('the published package', () => {
     );
   });
 
+  test('the names of the machines of the package are the ones the allowance names', () => {
+    // The name of a machine is an ordinary word, and the package is full
+    // of ordinary words. The names the package gives to the machines of
+    // its examples are written down in `PACKAGE_MACHINE_NAMES`, and the
+    // guard leaves them alone.
+    //
+    // The list cannot go quiet in the other direction either: a name that
+    // the package uses where a name of a machine stands is a name of the
+    // package, and it has to be on the list. A new name in the
+    // documentation of the package has to leave the guard alone as well,
+    // and this test says so.
+    const names = new Set<string>();
+    // The values of the installation are not names of the package: a
+    // value of the installation that stands in the documentation is a
+    // leak, and the rule of the values of the installation catches it.
+    const values = INSTALLATION_VALUES.map((entry) => entry.value.toLowerCase());
+    const partOfAValue = (word: string): boolean =>
+      values.some((value) => value.includes(word));
+
+    for (const file of files.filter((name) => name.endsWith('.md'))) {
+      const text = fs.readFileSync(path.join(packageDir, file), 'utf8');
+      for (const found of text.matchAll(/[A-Za-z0-9_][A-Za-z0-9_-]*/g)) {
+        const word = found[0];
+        const index = found.index ?? 0;
+        if (!namesAMachine(text.slice(0, index), text.slice(index + word.length))) continue;
+        names.add(word.toLowerCase());
+      }
+    }
+
+    const missing = [...names]
+      .filter((name) => !PACKAGE_MACHINE_NAMES.includes(name) && !partOfAValue(name))
+      .sort();
+    assert.deepEqual(
+      missing,
+      [],
+      'the package uses names where the name of a machine stands, and they are not on the list:\n' + missing.join('\n'),
+    );
+
+    // The list cannot name a name the package does not use: an allowance
+    // that nothing uses is a hole that may go quiet.
+    const unused = PACKAGE_MACHINE_NAMES.filter((name) => !names.has(name)).sort();
+    assert.deepEqual(
+      unused,
+      [],
+      'the list names names the package does not use — the names have to leave the list:\n' + unused.join('\n'),
+    );
+  });
+
+  test('the domains the package publishes on purpose are the ones the allowance names', () => {
+    // The zone of the DNS is caught even when the package publishes it,
+    // and the domains the package publishes on purpose are the
+    // exception: the host of the public repository, the domain of the
+    // support address, the registry and the conventions the package
+    // follows.
+    //
+    // An allowance that nothing uses is a hole that may go quiet: every
+    // domain on the list has to be a domain the package really
+    // publishes, and when the package stops publishing one, the domain
+    // has to leave the list.
+    for (const domain of PUBLIC_DOMAINS) {
+      assert.ok(
+        packageUsesValue(domain, packageDir, files),
+        `the package does not publish the domain "${domain}" — the domain has to leave the list`,
+      );
+    }
+  });
+
   test('the files the package does not ship hold no private value', () => {
     // The tarball is not the whole of the repository. The specification,
     // the memory of the project, the code of the project and the
@@ -2666,7 +3435,7 @@ describe('the published package', () => {
 
     for (const file of unshipped) {
       const text = fs.readFileSync(path.join(REPO_ROOT, file), 'utf8');
-      installationHits.push(...installationValueTraps(file, text, INSTALLATION_VALUES));
+      installationHits.push(...installationValueTraps(file, text, INSTALLATION_VALUES, PUBLISHED_IN));
     }
 
     for (const file of documents) {
@@ -2694,54 +3463,30 @@ describe('the published package', () => {
     // values of that installation are values of the standards: they name
     // nothing of this installation, and they may be written here in a
     // public repository.
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-installation-'));
+    //
+    // The installation of the probe is the same one the rule over the
+    // tarball is proved with (S107): one installation of the rule's own,
+    // used by both proofs.
+    const probe = probeInstallation();
 
     try {
-      const configFile = path.join(home, 'config.json');
-      const stateDir = path.join(home, 'state');
-      fs.mkdirSync(stateDir, { recursive: true });
-      fs.writeFileSync(
-        configFile,
-        JSON.stringify({
-          zone: 'probe.zone',
-          advertisedHost: 'probe-host',
-          advertisedIp: '192.0.2.13',
-          stateDir,
-        }),
-      );
-      fs.writeFileSync(
-        path.join(stateDir, 'routes.json'),
-        JSON.stringify({
-          version: 1,
-          registrations: [
-            {
-              id: 'probe-app-main',
-              project: 'Probe App',
-              branch: 'main',
-              projectSlug: 'probeapp',
-              branchSlug: 'main',
-              fqdn: 'probeapp.main.probe.zone',
-              zone: 'probe.zone',
-              devPort: 3000,
-              createdAt: '2026-01-01T00:00:00.000Z',
-              updatedAt: '2026-01-01T00:00:00.000Z',
-            },
-          ],
-        }),
-      );
-
-      const env: NodeJS.ProcessEnv = { ...process.env, GATEWARDEN_CONFIG: configFile };
-      delete env['GATEWARDEN_HOME'];
-      delete env['DEV_GATEWAY_HOME'];
-
-      const values = await installationValues({ env, packageDir, packageFiles: files });
+      const values = await probe.values();
 
       const zone = values.find((entry) => entry.what === 'the DNS zone of the installation');
       assert.ok(zone !== undefined, 'the rule did not read the zone of the installation');
       assert.deepEqual(
         installationValueTraps('specs/tech-architecture/naming.md', `The zone is ${zone.value}.`, values),
-        [`specs/tech-architecture/naming.md:1: "${zone.value}" — the DNS zone of the installation`],
+        ['specs/tech-architecture/naming.md:1: the DNS zone of the installation'],
         'the rule did not catch the zone of the installation',
+      );
+
+      // The message of the rule names the file and the line and not the
+      // value: a log of a red run must not publish the value it caught.
+      assert.ok(
+        !installationValueTraps('specs/tech-architecture/naming.md', `The zone is ${zone.value}.`, values)[0].includes(
+          zone.value,
+        ),
+        'the message of the rule wrote out the zone of the installation',
       );
 
       const host = values.find((entry) => entry.what === 'the host name of the installation');
@@ -2759,17 +3504,17 @@ describe('the published package', () => {
       // The name is caught where it names a machine.
       assert.deepEqual(
         installationValueTraps('memory/boarden.md', `The machine is ${host.value}:45002.`, values),
-        [`memory/boarden.md:1: "${host.value}" — the host name of the installation`],
+        ['memory/boarden.md:1: the host name of the installation'],
         'the rule did not catch the name of the machine',
       );
       assert.deepEqual(
         installationValueTraps('memory/boarden.md', `The installation lives in /opt/${host.value}-api.`, values),
-        [`memory/boarden.md:1: "${host.value}" — the host name of the installation`],
+        ['memory/boarden.md:1: the host name of the installation'],
         'the rule did not catch the name of the machine in a path',
       );
       assert.deepEqual(
         installationValueTraps('memory/boarden.md', `The proxy serves ${host.value}.private.`, values),
-        [`memory/boarden.md:1: "${host.value}" — the host name of the installation`],
+        ['memory/boarden.md:1: the host name of the installation'],
         'the rule did not catch the name of the machine in a host name',
       );
 
@@ -2796,7 +3541,10 @@ describe('the published package', () => {
 
       // A machine without an installation has no values of an
       // installation, and the rule reads nothing there.
-      const without: NodeJS.ProcessEnv = { ...process.env, GATEWARDEN_CONFIG: path.join(home, 'no-such-file.json') };
+      const without: NodeJS.ProcessEnv = {
+        ...process.env,
+        GATEWARDEN_CONFIG: path.join(probe.home, 'no-such-file.json'),
+      };
       delete without['GATEWARDEN_HOME'];
       delete without['DEV_GATEWAY_HOME'];
       assert.deepEqual(
@@ -2805,7 +3553,7 @@ describe('the published package', () => {
         'the rule read values without an installation',
       );
     } finally {
-      fs.rmSync(home, { recursive: true, force: true });
+      probe.remove();
     }
   });
 });
