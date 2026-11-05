@@ -16,7 +16,8 @@ The two install scripts:
   the three directories the gateway uses: the configuration directory, the
   state directory and the cache. It starts no daemon, opens no port and leaves
   no process behind. `GATEWARDEN_AUTOSTART=0` turns the whole script off: no
-  configuration file is written and no daemon is started.
+  configuration file is written, none of the three directories the gateway uses
+  is created and no daemon is started.
 - `prepare` builds the package from the TypeScript it holds. The build empties
   `dist/` on the way: it runs `npm run clean` first, which removes the directory,
   and the compiler writes it again. The published package ships the compiled
@@ -189,9 +190,10 @@ With `--ignore-scripts` npm sets `npm_config_ignore_scripts=true` and does not
 run the script. Nothing is written.
 
 The script can also turn itself off. `GATEWARDEN_AUTOSTART=0` stops the whole
-`postinstall`: no configuration file is written and no daemon is started. An
-installation made with the variable set has no configuration file of its own,
-and the setup wizard writes one.
+`postinstall`: no configuration file is written, none of the directories the
+gateway uses is created and no daemon is started. An installation made with the
+variable set has no configuration file of its own, and the setup wizard writes
+one.
 
 One setting turns the warning into a failed install:
 `strict-allow-scripts=true` makes npm stop with `ESTRICTALLOWSCRIPTS` and
