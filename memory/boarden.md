@@ -1,40 +1,39 @@
-# Boarden
+# The board
 
-Översikt över vad som flyttats från 0.2-projektet (som ligger utanför repot) in i repot, vad som
-finns kvar där, och var boardens backlogg för repot ligger.
+An overview of what has moved from the 0.2 project (which lives outside the repository) into the repository, what is still there, and where the board's backlog for the repository lives.
 
-## Nu i repot
+## Now in the repository
 
-- `MEMORY.md` — indexet över minnesfilerna.
-- `memory/context-policy.md` — pekare till den globala kontextpolicyn (uppgiften fortsätter,
-  överlämningen skrivs i slutnoten).
-- `memory/context-usage.mjs` — mätverktyget för kontextbeläggning (40 % / 50 %).
-- `memory/boarden.md` — den här filen.
+- `MEMORY.md` — the index of the memory files.
+- `memory/context-policy.md` — a pointer to the global context policy (the task continues,
+  the handover is written in the closing note).
+- `memory/context-usage.mjs` — the measuring tool for the context usage (40 % / 50 %).
+- `memory/boarden.md` — this file.
 
-## Finns kvar utanför repot
+## Still outside the repository
 
-Allt som finns kvar ligger i 0.2-projektet, utanför repot. Sökvägen dit står i boardens egna
-filer, inte i repot.
+Everything that is left lies in the 0.2 project, outside the repository. The path there is
+in the board's own files, not in the repository.
 
-- `AGENTS.md` (och `CLAUDE.md`, en symlänk dit) — projektets stående instruktioner. Det som
-  gäller dev-servern finns redan i repot: `skills/gatewarden/SKILL.md`, `README.md` och
-  `docs/traefik.md`.
-- `PROJECT.md` — projektets namn, mål och rollinställningar (goal, `[[repos]]`).
-- `TASKS.md` — 0.2-projektets backlogg. Den var tom.
-- `threads/` — sju trådar, `t-0001` till `t-0007`, med `.md`, `.task.md` och `.toml` per tråd.
-- `library/` — materialet trådarna producerade: `t-0002` sparade Traefik-konfigurationen som
-  json/yaml, `t-0007` sparade "daylight"-världen och kandidaterna.
-- `routines/pr-followup.md` — rutinen för att följa upp en PR.
-- `inbox/`, `scratch/`, `uploads/`, `.state/` — herdr-projects egen drift (ingång, lås, tickare,
-  coordinator-state). Inte material.
-- `memory/traefik-namespace.md` — de bekräftade faktorna om installationen (DNS-namnrymden,
-  FQDN-mallen, routingmodellen, containerfakta, TLS-reglerna) plus en kronologisk logg över
-  indexsidan och de beslut som följde efteråt. Filen lämnade repot här: repot ska bli publikt,
-  och de här värdena hör till installationen, inte till paketet.
+- `AGENTS.md` (and `CLAUDE.md`, a symlink to it) — the standing instructions of the project.
+  What concerns the dev server is already in the repository: `skills/gatewarden/SKILL.md`,
+  `README.md` and `docs/traefik.md`.
+- `PROJECT.md` — the name, the goal and the role settings of the project (goal, `[[repos]]`).
+- `TASKS.md` — the backlog of the 0.2 project. It was empty.
+- `threads/` — seven threads, `t-0001` to `t-0007`, with `.md`, `.task.md` and `.toml` per thread.
+- `library/` — the material the threads produced: `t-0002` saved the Traefik configuration as
+  json/yaml, `t-0007` saved the "daylight" world and the candidates.
+- `routines/pr-followup.md` — the routine for following up a PR.
+- `inbox/`, `scratch/`, `uploads/`, `.state/` — the own operation of herdr-projects
+  (inbox, locks, tickers, coordinator-state). Not material.
+- `memory/traefik-namespace.md` — the confirmed facts about the installation (the DNS namespace,
+  the FQDN template, the routing model, the container facts, the TLS rules) plus a chronological
+  log of the index page and the decisions that followed. The file left the repository here: the
+  repository is to become public, and these values belong to the installation, not to the package.
 
-## Var backloggen ligger
+## Where the backlog lives
 
-Uppgifterna för repot ligger på boarden, inte i repot. Boardens *to do*-lista visas av
-`herdr-projects list`, och uppgifterna för det här repot heter `traefik-api/<n>` (till exempel
-`traefik-api/1`, den här uppgiften). `TASKS.md` i 0.2-projektet var tom och stannar kvar som
-historia.
+The tasks for the repository live on the board, not in the repository. The board's *to do* list
+is shown by `herdr-projects list`, and the tasks for this repository are named `traefik-api/<n>`
+(for example `traefik-api/1`, this task). `TASKS.md` in the 0.2 project was empty and stays as
+history.

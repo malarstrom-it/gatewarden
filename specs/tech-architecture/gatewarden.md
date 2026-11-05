@@ -971,7 +971,7 @@ daemon, a missing zone, a proxy that does not answer and a service that
 is not installed are warnings. Only a broken thing is a failure.
 
 The three documents that carry this are the README (the section
-"Vad som krävs"), `docs/setup.md` (the same, with the commands and their
+"What you need"), `docs/setup.md` (the same, with the commands and their
 flags, and what every check of `gatewarden doctor` means) and
 `docs/traefik.md` (what the proxy side must have: the `http` provider, the
 file provider of the shared middlewares, the routers the gateway adds and
