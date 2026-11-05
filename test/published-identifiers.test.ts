@@ -810,6 +810,18 @@ function packageUsesValue(value: string, packageDir: string, files: string[]): b
 }
 
 /**
+ * How a value of the installation is read.
+ *
+ *   - `substring`: the value is caught wherever it stands, because it
+ *     is a part of a bigger name — the zone, a path, a network;
+ *   - `word`: the value has to stand as a word, and not as a part of a
+ *     longer name — an address, the name of a service, a nameserver;
+ *   - `machine`: the value is caught only where it names a machine — the
+ *     name of the machine, which is an ordinary word.
+ */
+type InstallationMatch = 'substring' | 'word' | 'machine';
+
+/**
  * A value that names the installation.
  *
  * The value is read from the installation itself and is never written
@@ -822,8 +834,8 @@ interface InstallationValue {
   value: string;
   /** What the value names of the installation. */
   what: string;
-  /** Does the value have to stand as a word, and not as a part of a longer name? */
-  whole: boolean;
+  /** How the value is read. */
+  match: InstallationMatch;
 }
 
 /**
@@ -887,7 +899,7 @@ function addInstallationValue(
   values: InstallationValue[],
   value: unknown,
   what: string,
-  whole: boolean,
+  match: InstallationMatch,
 ): void {
   if (typeof value !== 'string') return;
   const text = value.trim();
@@ -895,7 +907,7 @@ function addInstallationValue(
   if (isLoopback(text)) return;
   if (isReservedExample(text)) return;
   if (values.some((entry) => entry.value === text)) return;
-  values.push({ value: text, what, whole });
+  values.push({ value: text, what, match });
 }
 
 /**
@@ -953,7 +965,7 @@ async function installationValues(opts: InstallationOptions = {}): Promise<Insta
   const host = typeof config['advertisedHost'] === 'string' ? config['advertisedHost'] : '';
 
   // The zone of the DNS.
-  addInstallationValue(values, zone, 'the DNS zone of the installation', false);
+  addInstallationValue(values, zone, 'the DNS zone of the installation', 'substring');
 
   // The host names of the installation: the name the proxy reaches the
   // machine under, and the name the machine has. The name of the machine
@@ -961,34 +973,34 @@ async function installationValues(opts: InstallationOptions = {}): Promise<Insta
   // something: a machine with no installation of its own is not a value
   // of anything.
   if (zone !== '' || host !== '') {
-    addInstallationValue(values, host, 'the host name of the installation', true);
-    addInstallationValue(values, os.hostname(), 'the host name of the installation', true);
+    addInstallationValue(values, host, 'the host name of the installation', 'machine');
+    addInstallationValue(values, os.hostname(), 'the host name of the installation', 'machine');
   }
 
   // The address of the installation.
-  addInstallationValue(values, config['advertisedIp'], 'the address of the installation', true);
+  addInstallationValue(values, config['advertisedIp'], 'the address of the installation', 'word');
 
   // The networks the installation trusts.
   const cidrs = config['allowedCidrs'];
   if (Array.isArray(cidrs)) {
     for (const cidr of cidrs) {
-      addInstallationValue(values, cidr, 'the network of the installation', false);
+      addInstallationValue(values, cidr, 'the network of the installation', 'substring');
     }
   }
 
   // The paths of the installation: the absolute form and the short form
   // a document uses (`~/.config/gatewarden/`).
-  addInstallationValue(values, configPath, 'the path of the installation', false);
-  addInstallationValue(values, path.dirname(configPath), 'the path of the installation', false);
-  addInstallationValue(values, stateDir, 'the path of the installation', false);
+  addInstallationValue(values, configPath, 'the path of the installation', 'substring');
+  addInstallationValue(values, path.dirname(configPath), 'the path of the installation', 'substring');
+  addInstallationValue(values, stateDir, 'the path of the installation', 'substring');
   for (const value of [configPath, path.dirname(configPath), stateDir]) {
-    addInstallationValue(values, shortPath(value), 'the path of the installation', false);
+    addInstallationValue(values, shortPath(value), 'the path of the installation', 'substring');
   }
 
   // The names of the services the installation registered in the proxy.
   for (const registration of new RegistrationStore(stateDir).list()) {
-    addInstallationValue(values, objectName(registration), 'the name of a service of the installation', true);
-    addInstallationValue(values, registration.fqdn, 'the host name of a service of the installation', true);
+    addInstallationValue(values, objectName(registration), 'the name of a service of the installation', 'word');
+    addInstallationValue(values, registration.fqdn, 'the host name of a service of the installation', 'word');
   }
 
   // The values of the DNS of the zone.
@@ -1050,11 +1062,11 @@ async function zoneDnsValues(zone: string): Promise<InstallationValue[]> {
     () => dns.promises.resolve6(host),
   ]);
   for (const address of addresses) {
-    addInstallationValue(values, address, 'the address of the installation', true);
+    addInstallationValue(values, address, 'the address of the installation', 'word');
   }
 
   for (const server of await nameserversOf(host)) {
-    addInstallationValue(values, server, 'the nameserver of the installation', true);
+    addInstallationValue(values, server, 'the nameserver of the installation', 'word');
   }
 
   return values;
@@ -1117,18 +1129,20 @@ function withTimeout<T>(answer: Promise<T>, ms: number): Promise<T | undefined> 
 /**
  * The values of the installation that a file holds.
  *
+/**
  * The rule is the rule of the words: a value of the installation is
  * caught where it stands, and the file and the line it stands on are
- * named. A value that names a whole thing — a host name, a service name
- * — has to stand as a word: the name of one service does not catch the
- * name of another. The name of the machine is a part of the names it
- * carries, though — the path of the installation on the machine and the
- * name of the machine on its network both carry it — so the name is
- * caught when a dash or a dot follows it.
+ * named. A value that names a whole thing — an address, the name of a
+ * service, a nameserver — has to stand as a word: the name of one
+ * service does not catch the name of another. A value that names a part
+ * of a bigger name — the zone, a path — is caught wherever it stands,
+ * because every name under the zone carries it.
  *
- * A value that names a part of a bigger name — the zone, a path — is
- * caught wherever it stands, because every name under the zone carries
- * it.
+ * The name of the machine is an ordinary word, and an ordinary word is
+ * not a value of an installation: the repository is full of ordinary
+ * words, and a guard that reports every `staging` of the repository
+ * reports nothing. The name is caught where it names a machine, and not
+ * where it is a word — see `machineValueTraps`.
  *
  * The case does not matter: the zone of the DNS does not care about it,
  * and a name that differs in its case is the same name.
@@ -1136,17 +1150,82 @@ function withTimeout<T>(answer: Promise<T>, ms: number): Promise<T | undefined> 
 function installationValueTraps(file: string, text: string, values: InstallationValue[]): string[] {
   const hits: string[] = [];
 
-  for (const { value, what, whole } of values) {
+  for (const { value, what, match } of values) {
+    if (match === 'machine') {
+      hits.push(...machineValueTraps(file, text, value, what));
+      continue;
+    }
+
     const escaped = escapeRegExp(value);
-    const pattern = whole
-      ? new RegExp(`(?<![A-Za-z0-9_])${escaped}(?![A-Za-z0-9_])`, 'gi')
-      : new RegExp(escaped, 'gi');
-    for (const match of text.matchAll(pattern)) {
-      hits.push(`${file}:${lineOf(text, match.index ?? 0)}: "${match[0]}" — ${what}`);
+    const pattern =
+      match === 'word'
+        ? new RegExp(`(?<![A-Za-z0-9_])${escaped}(?![A-Za-z0-9_])`, 'gi')
+        : new RegExp(escaped, 'gi');
+    for (const found of text.matchAll(pattern)) {
+      hits.push(`${file}:${lineOf(text, found.index ?? 0)}: "${found[0]}" — ${what}`);
     }
   }
 
   return hits;
+}
+
+/**
+ * The places where the name of a machine is the name of a machine.
+ *
+ * The name of a machine is an ordinary word, and the repository is full
+ * of ordinary words. The name is caught where it names a machine:
+ *
+ *   - as a segment of a path: `/opt/buildhost-traefik-api`;
+ *   - as the host of a URL: `http://buildhost:45002/traefik`;
+ *   - as the host of a port: `buildhost:45002`;
+ *   - as the first label of a host name: `buildhost.private`.
+ *
+ * The name in the prose of a sentence is not caught: `the machine is
+ * called buildhost` names a word, and the guard would report every word of
+ * the repository that is the name of the machine of some installation.
+ */
+function machineValueTraps(file: string, text: string, value: string, what: string): string[] {
+  const hits: string[] = [];
+  const pattern = new RegExp(`(?<![A-Za-z0-9_])${escapeRegExp(value)}(?![A-Za-z0-9_])`, 'gi');
+
+  for (const found of text.matchAll(pattern)) {
+    const index = found.index ?? 0;
+    if (!namesAMachine(text.slice(0, index), text.slice(index + value.length))) continue;
+    hits.push(`${file}:${lineOf(text, index)}: "${found[0]}" — ${what}`);
+  }
+
+  return hits;
+}
+
+/**
+ * Does the name stand where a name is the name of a machine?
+ *
+ * The four places are the ones of the list above. The first label of a
+ * host name is a host name when the label that follows it is not the
+ * name of a file: the last label of `build.test.ts` is a file, and the
+ * last label of `buildhost.private` is a domain.
+ */
+function namesAMachine(before: string, after: string): boolean {
+  // A segment of a path: the name is a segment of its own, or the first
+  // part of one. A dot ends the segment when the dot ends the sentence
+  // and not when it begins the name of a file.
+  if (/\/$/.test(before)) {
+    if (/^(?:-[A-Za-z0-9_-]+)?(?:[\s"'`),;:/]|$)/.test(after)) return true;
+    if (/^(?:-[A-Za-z0-9_-]+)?\.(?![A-Za-z0-9])/.test(after)) return true;
+  }
+
+  // The host of a URL.
+  if (/\/\/[^\s]*$/.test(before) && /^(?::[\w.-]+)?(?:[\s"'`),;:/]|$)/.test(after)) return true;
+
+  // The host of a port.
+  if (/^:\d/.test(after)) return true;
+
+  // The first label of a host name.
+  const host = /^\.([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)/.exec(after);
+  if (host === null) return false;
+  const last = host[1].split('.').pop() ?? '';
+
+  return !POINTER_EXTENSIONS.includes(`.${last}`);
 }
 
 /**
@@ -1305,6 +1384,10 @@ interface RuleProbe {
  * the files the package does not ship, and a probe that plants a value in
  * the tarball would prove a rule that is not the one that is used.
  *
+ * The name of a machine is planted where it names a machine: the rule
+ * catches the name of the machine and not an ordinary word, and a probe
+ * that planted the name in the prose of a sentence would prove nothing.
+ *
  * A machine without an installation has no values to plant, and the list
  * is empty there. The rule of the values of the installation is proved on
  * every machine by the test that gives it an installation of its own.
@@ -1312,7 +1395,7 @@ interface RuleProbe {
 function installationProbes(): RuleProbe[] {
   return INSTALLATION_VALUES.map((entry) => ({
     what: entry.what,
-    value: entry.value,
+    value: entry.match === 'machine' ? `${entry.value}:45002` : entry.value,
     file: 'specs/tech-architecture/naming.md',
     find: (file: string, text: string) => installationValueTraps(file, text, INSTALLATION_VALUES),
     inRepository: true,
@@ -2663,10 +2746,31 @@ describe('the published package', () => {
 
       const host = values.find((entry) => entry.what === 'the host name of the installation');
       assert.ok(host !== undefined, 'the rule did not read the host name of the installation');
+
+      // The name of the machine is an ordinary word, and an ordinary word
+      // is not a value of an installation: the guard may not report every
+      // word of the repository that is the name of the machine.
       assert.deepEqual(
-        installationValueTraps('memory/boarden.md', `The machine is ${host.value}.`, values),
+        installationValueTraps('memory/boarden.md', `The machine is called ${host.value}.`, values),
+        [],
+        'the rule caught the name of the machine as an ordinary word',
+      );
+
+      // The name is caught where it names a machine.
+      assert.deepEqual(
+        installationValueTraps('memory/boarden.md', `The machine is ${host.value}:45002.`, values),
         [`memory/boarden.md:1: "${host.value}" — the host name of the installation`],
-        'the rule did not catch the host name of the installation',
+        'the rule did not catch the name of the machine',
+      );
+      assert.deepEqual(
+        installationValueTraps('memory/boarden.md', `The installation lives in /opt/${host.value}-api.`, values),
+        [`memory/boarden.md:1: "${host.value}" — the host name of the installation`],
+        'the rule did not catch the name of the machine in a path',
+      );
+      assert.deepEqual(
+        installationValueTraps('memory/boarden.md', `The proxy serves ${host.value}.private.`, values),
+        [`memory/boarden.md:1: "${host.value}" — the host name of the installation`],
+        'the rule did not catch the name of the machine in a host name',
       );
 
       const service = values.find((entry) => entry.what === 'the name of a service of the installation');
