@@ -168,7 +168,7 @@
  */
 
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -351,10 +351,18 @@ const SHIPPED_SCRIPTS = [
  *
  * The commands of the checkout are the exception, and they are named one
  * by one here: the build names the build configuration of the project,
- * the test command the test files, the end-to-end commands the tools of
- * the end-to-end environment, and the clean command the marker that says
- * "this is a checkout". A script that is not on this list names only
- * files that the package ships — or no file at all.
+ * the test command the pattern of the test files, the end-to-end
+ * commands the tools of the end-to-end environment, and the clean
+ * command the marker that says "this is a checkout". A script that is
+ * not on this list names only files that the package ships — or no file
+ * at all.
+ *
+ * The exception of the test command is the one that has to be earned
+ * (S99): the package ships no test files, so a command that names them
+ * and hands them to the test runner of node breaks in an installation —
+ * the reader of the package has no test files to run. The command of the
+ * manifest finds the test files itself, and the rule below proves that
+ * it runs in the published package.
  */
 const CHECKOUT_FILES: Record<string, string[]> = {
   build: ['tsconfig.build.json'],
@@ -886,6 +894,31 @@ function npmEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
     if (value !== undefined) env[key] = value;
   }
   return { ...env, ...extra };
+}
+
+/**
+ * Run an npm command in a directory and collect what it wrote and how it
+ * ended.
+ *
+ * The command may fail — that is what the rules below look for — so the
+ * exit code is collected and the failure is not thrown.
+ *
+ * @param args the arguments of the npm command
+ * @param cwd the directory the command runs in
+ * @returns the exit code and everything the command wrote
+ */
+function runNpm(args: string[], cwd: string): Promise<{ code: number; output: string }> {
+  return new Promise((resolve) => {
+    const child = spawn('npm', args, { cwd, env: npmEnv(), stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '';
+    child.stdout.on('data', (chunk: Buffer) => {
+      output += chunk.toString('utf8');
+    });
+    child.stderr.on('data', (chunk: Buffer) => {
+      output += chunk.toString('utf8');
+    });
+    child.on('close', (code) => resolve({ code: code ?? 1, output }));
+  });
 }
 
 /** Every file of a directory, relative to it. */
@@ -1668,10 +1701,11 @@ describe('the published package', () => {
     //
     // The `scripts` of the manifest are not read here, and that is on
     // purpose: they are the commands of the checkout — `npm test` runs
-    // the test files of the repository, and `npm run test:e2e` runs the
-    // end-to-end tools of the repository. They are commands, not paths
-    // into the package, and npm does not run them when the package is
-    // installed.
+    // the test files of the repository when it is a checkout, and
+    // `npm run test:e2e` runs the end-to-end tools of the repository.
+    // They are commands, not paths into the package, and npm does not
+    // run them when the package is installed. The rule that reads them
+    // is the one below.
     const manifest = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8')) as {
       main: string;
       types: string;
@@ -1708,13 +1742,17 @@ describe('the published package', () => {
     // an installation, and the reader has nothing but the package.
     //
     // The commands of the checkout are the exception, and they are named
-    // one by one: `build` names the build configuration, `test` the test
-    // files, `test:e2e` the tools of the end-to-end environment, and
-    // `clean` the marker that says "this is a checkout". Every other
-    // script of the manifest names only files that the package ships —
-    // or no file at all, which is what the clean command does: the
-    // installed package has no build output of its own to empty, and the
-    // manifest must not point at a file the reader does not have.
+    // one by one: `build` names the build configuration, `test` the
+    // pattern of the test files, `test:e2e` the tools of the end-to-end
+    // environment, and `clean` the marker that says "this is a
+    // checkout". Every other script of the manifest names only files
+    // that the package ships — or no file at all, which is what the
+    // clean command does: the installed package has no build output of
+    // its own to empty, and the manifest must not point at a file the
+    // reader does not have.
+    //
+    // The test command is the one that has to run without the files it
+    // names (S99), and the rule below proves that it does.
     const manifest = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8')) as {
       scripts: Record<string, string>;
     };
@@ -1750,6 +1788,39 @@ describe('the published package', () => {
     }
 
     assert.deepEqual(hits, [], 'the manifest points at files the package does not ship:\n' + hits.join('\n'));
+  });
+
+  test('the test command of the manifest runs in the published package', async () => {
+    // S99: the package ships no test files, and the test command of the
+    // manifest names the pattern of the test files of the checkout. The
+    // command has to find those files itself: it runs them when they
+    // are there, and it says that there are none when there are none.
+    //
+    // The rule runs the command in the package that is published, and
+    // not in a checkout: the published package is what a reader of the
+    // package gets, and a command that breaks there is a command that
+    // cannot be run. The exception of the test command in the list of
+    // the files of the checkout is earned here — without this rule, the
+    // exception would hide a command that breaks in an installation.
+    const manifest = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+    };
+    const command = manifest.scripts['test'];
+    assert.ok(command !== undefined, 'the manifest has no test script');
+
+    const result = await runNpm(['test'], packageDir);
+
+    assert.equal(result.code, 0, `the test command of the published package failed:\n${result.output}`);
+    assert.doesNotMatch(
+      result.output,
+      /Could not find/,
+      'the test command of the published package looks for a file that the package does not ship',
+    );
+    assert.match(
+      result.output,
+      /no test files/,
+      'the test command of the published package does not say that the package ships no test files',
+    );
   });
 
   test('the package ships the directories it says it ships', () => {
