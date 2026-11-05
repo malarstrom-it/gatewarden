@@ -72,8 +72,11 @@ names. Every release gets a section, newest first.
   starts it again after a reboot, and it left out the two things a reader
   needs: the service does not bring the daemon back after `gatewarden stop`,
   on macOS and on Linux, and `--no-enable` writes the unit of the platform
-  without enabling it, so the daemon does not start at a reboot. The README
-  says both now, the way the setup guide says them.
+  without enabling it. The README says both now, the way the setup guide
+  says them, and it says what `--no-enable` means on each platform: on Linux
+  the daemon does not start at a reboot when the unit is not enabled, on
+  macOS the agent is written to `~/Library/LaunchAgents`, which launchd
+  loads at every login, so the daemon starts at the next login.
 
 - **The test script of the manifest runs in an installation.** The published
   package ships no test files, so `npm test` in it stopped with an error
