@@ -71,12 +71,14 @@ values, and creates the three directories the gateway uses. A configuration
 file that is already there stays as it is.
 
 The install script does nothing in these cases: npm runs with
-`npm_config_ignore_scripts=true`, the install runs as root, `CI` is set, or
-`GATEWARDEN_AUTOSTART=0` is set. Under npm 12 the script is blocked until the
-dependency is approved. The commands that approve it came with npm 11.18, and
-they need a project: they read and write the `allowScripts` field in the
-`package.json` of the project, so they approve the project install and they
-cannot approve a global install. The project install is approved with
+`npm_config_ignore_scripts=true`, the install runs as root, or `CI` is set.
+`GATEWARDEN_AUTOSTART=0` turns the whole script off: no configuration file
+is written and none of the three directories the gateway uses is created.
+Under npm 12 the script is blocked until the dependency is approved. The
+commands that approve it came with npm 11.18, and they need a project: they
+read and write the `allowScripts` field in the `package.json` of the
+project, so they approve the project install and they cannot approve a
+global install. The project install is approved with
 `npm install-scripts approve @malarstrom/gatewarden`. A global install is
 approved in another way, with
 `npm install -g --allow-scripts=@malarstrom/gatewarden` or with
