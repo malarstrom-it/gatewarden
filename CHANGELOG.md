@@ -13,6 +13,105 @@ names. Every release gets a section, newest first.
 
 ## Unreleased
 
+### Changed
+
+- **The design documents name no address of the installation.** The zone,
+  the host name and the addresses of the installation are out of the
+  documents of the design as well, and those documents name example values
+  instead.
+
+- **The documentation shows the project installation as a choice.** The
+  installation was presented as the global installation only. The README and
+  the setup guide show both now, say when each one of them is right, and say
+  that the commands of a project installation live in the `node_modules/.bin`
+  of the project and not on the PATH of the shell.
+
+- **The commands that review the scripts say that they need a project.**
+  They read and write the `allowScripts` field of a `package.json`, so they
+  stop with `EGLOBAL` when they are given `-g`. The page of the install
+  scripts says it above the list of the commands, and the setup guide says
+  it too.
+
+- **The migration text describes both homes.** A home that holds one old
+  layout gets its configuration file and its route store, and a home that
+  holds both gets the ones of the layout of the old name. The older layout
+  is reported as not migrated, with the files that stayed where they were
+  and with the routes that have to be added to the route store by hand.
+
+- **The gate of the release checks the code that is shipped.** The package
+  is packed, unpacked into a clean directory, and every module of the
+  shipped build is imported, so a version whose shipped code does not load
+  never reaches the registry.
+
+- **The launchers name one module each.** The three launchers named two
+  modules each: the TypeScript source for a checkout and the compiled output
+  for an installed package. The source is derived from the compiled path
+  now, so a launcher names one module and the published package names no
+  path of the source. The behaviour is the same: a checkout runs the source
+  when it is there and the compiled output otherwise, an installed package
+  runs the compiled output.
+
+- **The examples of the repository show example values.** The zone, the host
+  name, the paths and the private addresses of the installation are replaced
+  by example values in the tests, the tools and the examples of the
+  repository, and the addresses of the tests come from the ranges that RFC
+  5737 reserves for documentation. The screenshots of the running
+  installation are out of the repository: they showed the zone, the host
+  name and the live projects in their pixels.
+
+- **The service stays stopped after `gatewarden stop`.** The setup guide
+  says now, on macOS and on Linux, that the daemon ends with the exit code 0
+  and that the unit of the platform leaves it alone: `SuccessfulExit=false`
+  in the launchd agent on macOS, `Restart=on-failure` in the systemd unit on
+  Linux.
+
+### Fixed
+
+- **The test script of the manifest runs in an installation.** The published
+  package ships no test files, so `npm test` in it stopped with an error
+  about the test files it could not find. The script finds the test files of
+  a checkout itself now, and it says that there are none when there are
+  none.
+
+- **The doctor does not say that the files of an old layout came over when
+  they did not.** It counted a file of an old layout as migrated when the
+  target file was there. It compares the content now: the routes of a route
+  store one by one, with the identity the migration uses, and the settings
+  of a configuration file one by one. What did not come over is named, the
+  old directory is not to be removed, and the advice says what to do by
+  hand.
+
+- **The doctor transcript of the setup guide is the output of the CLI.** The
+  transcript had drifted from what `gatewarden doctor` prints: the name
+  column started one space too early, the row for the shared middlewares
+  was missing, and the trust list held no IPv6 prefix. It is the output of
+  a real run in a clean installation now, copied word for word, with one
+  line that says which installation it comes from.
+
+- **The page of the install scripts describes what npm does.** It described
+  a denial of the scripts that cannot happen: a global installation has no
+  `allowScripts` field to write to, and the list of `--allow-scripts` and of
+  `.npmrc` can only carry approvals. The page says what holds under npm 11
+  and under npm 12, the examples of the warnings are what npm writes word
+  for word, and every reference to the field names the field.
+
+- **The migration says what happens with both old layouts.** A home with
+  both old layouts migrated the newer one first and skipped the older one,
+  and the report called the older one "nothing to migrate": the routes of
+  the older layout never came over, and the report did not say where they
+  were. The report says now what was moved, what was not moved and why, and
+  where the files that were not moved are. The layout of the old name is
+  migrated first, and the migration deletes nothing.
+
+- **The warning about an old layout can be cleared.** The check asked only
+  whether the old directory was still there. A migration copies the files
+  and leaves the directory where it is, so the warning could never be
+  cleared, and the reader was told to run `gatewarden migrate` again, for
+  ever. The check asks now what matters: is there anything in the old
+  layout that still has to be migrated? When everything the old layout held
+  came over, the doctor says so and says that the old directory can be left
+  in place or removed by the reader.
+
 ## 0.1.1 - 2026-11-01
 
 The version before this one, `0.1.0`, was published on the registry and
