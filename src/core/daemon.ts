@@ -20,7 +20,7 @@ import path from 'node:path';
 import { fork, type ChildProcess } from 'node:child_process';
 import { loadConfig, configPathFromArgv, resolveConfigPath } from './config.ts';
 import { logFileFor, resolvePaths } from './paths.ts';
-import { clearDaemonReason, ensureLogDirectory, writeDaemonReason } from './daemonControl.ts';
+import { clearDaemonReason, daemonEnv, ensureLogDirectory, writeDaemonReason } from './daemonControl.ts';
 import {
   installationRoot,
   installationTreeIsIntact,
@@ -28,6 +28,7 @@ import {
   removeInstallationFiles,
 } from './installation.ts';
 import { log, setLogLevel } from './log.ts';
+import type { Config } from './types.ts';
 import { relativeModulePath } from './util/module.ts';
 
 const SCOPE = 'daemon';
@@ -79,6 +80,28 @@ export function fatalReason(message: unknown): string | null {
   return typeof text === 'string' && text.length > 0 ? text : null;
 }
 
+/**
+ * The environment a worker is started with.
+ *
+ * A worker belongs to the daemon that supervises it, and to the
+ * installation the daemon runs. It must not inherit the name of another
+ * installation: `GATEWARDEN_HOME` wins over every other name, and a
+ * worker that carries it reads the configuration of that installation and
+ * writes its state there.
+ *
+ * The environment is the one the daemon is started with, so that the
+ * daemon and its workers cannot run in two installations at once. The
+ * name of the home installation is taken away from it, and the name it
+ * had before the rename with it.
+ */
+export function workerEnv(
+  config: Config,
+  configPath: string,
+  baseEnv: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  return daemonEnv(config, configPath, baseEnv);
+}
+
 class Supervisor {
   private child: ChildProcess | null = null;
   private stopping = false;
@@ -90,19 +113,20 @@ class Supervisor {
 
   private readonly role: string;
   private readonly configPath: string;
-  private readonly stateDir: string;
+  /** The configuration of the installation the daemon runs. */
+  private readonly config: Config;
   /** Called when the worker dies of a failure no restart can fix. */
   private readonly onFatal: (reason: string) => void;
 
   constructor(
     role: string,
     configPath: string,
-    stateDir: string,
+    config: Config,
     onFatal: (reason: string) => void,
   ) {
     this.role = role;
     this.configPath = configPath;
-    this.stateDir = stateDir;
+    this.config = config;
     this.onFatal = onFatal;
   }
 
@@ -110,13 +134,7 @@ class Supervisor {
     if (this.stopping) return;
     const child = fork(WORKER_PATH, [this.role, '--config', this.configPath], {
       execArgv: [],
-      env: {
-        ...process.env,
-        GATEWARDEN_CONFIG: this.configPath,
-        GATEWARDEN_STATE_DIR: this.stateDir,
-        TRAEFIK_DEV_CONFIG: this.configPath,
-        TRAEFIK_DEV_STATE_DIR: this.stateDir,
-      },
+      env: workerEnv(this.config, this.configPath),
       stdio: ['ignore', 'inherit', 'inherit', 'ipc'],
     });
     this.child = child;
@@ -296,8 +314,8 @@ export async function runDaemon(): Promise<void> {
   // configuration directory, not in the state directory. The file the CLI
   // resolved travels with the command line, so the workers cannot end up
   // reading another one.
-  registry = new Supervisor('registry', configPath, config.stateDir, fatal);
-  relay = new Supervisor('relay', configPath, config.stateDir, fatal);
+  registry = new Supervisor('registry', configPath, config, fatal);
+  relay = new Supervisor('relay', configPath, config, fatal);
   registry.start();
   relay.start();
 

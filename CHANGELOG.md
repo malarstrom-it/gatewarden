@@ -92,6 +92,14 @@ names. Every release gets a section, newest first.
   file any more: the log file lives in the state directory of the
   configuration, and both the CLI and the daemon find it there.
 
+- **The workers of the daemon do not run in another installation.** The
+  workers inherited the environment of the daemon, and `GATEWARDEN_HOME`
+  was in it: the name wins over every other name, so a worker read the
+  configuration of that installation and wrote its state there. The name,
+  and the name it had before the rename, are taken away from the
+  environment the workers get; they run with the configuration file and the
+  state directory the daemon was given.
+
 - **The README says what the service does.** The command table said that
   `gatewarden stop` stops the daemon, and that `gatewarden install-service`
   starts it again after a reboot, and it left out the two things a reader
