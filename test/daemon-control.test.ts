@@ -27,9 +27,10 @@ import { loadConfig } from '../src/core/config.ts';
 import { daemonStatus, ensureDaemon, isHealthy, isProcessAlive, processState, stopDaemon } from '../src/core/daemonControl.ts';
 import type { Config } from '../src/core/types.ts';
 import { CLI, DAEMON, freePort } from './helpers/cli.ts';
+import { isolate, type Isolation } from './helpers/isolation.ts';
 
 /** A throwaway installation with a configuration file of its own. */
-async function makeConfig(): Promise<{ dir: string; configPath: string; config: Config }> {
+async function makeConfig(): Promise<{ dir: string; configPath: string; config: Config; isolation: Isolation }> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-control-'));
   const configPath = path.join(dir, 'config.json');
   fs.writeFileSync(
@@ -56,7 +57,12 @@ async function makeConfig(): Promise<{ dir: string; configPath: string; config: 
       2,
     ),
   );
-  return { dir, configPath, config: loadConfig({ configPath, stateDir: dir }) };
+  // The daemon of the test runs in the throwaway directory and in
+  // nothing else: the environment of the machine says where the
+  // installation of the machine is, and the daemon of a test must not
+  // read it nor write to it.
+  const isolation = isolate(dir);
+  return { dir, configPath, config: loadConfig({ configPath, stateDir: dir }), isolation };
 }
 
 /** Wait for something to become true. */
@@ -170,7 +176,7 @@ test(
 );
 
 test('the daemon runs before it serves', async (t) => {
-  const { dir, configPath } = await makeConfig();
+  const { dir, configPath, isolation } = await makeConfig();
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
   // A port that is taken: the registry worker of the daemon cannot bind
@@ -185,7 +191,7 @@ test('the daemon runs before it serves', async (t) => {
   const config = loadConfig({ configPath, stateDir: dir });
 
   const daemon = spawn(process.execPath, [DAEMON, '--config', configPath], {
-    env: { ...process.env, HOME: dir, GATEWARDEN_STATE_DIR: dir },
+    env: isolation.env,
     detached: true,
     stdio: 'ignore',
   });
@@ -250,7 +256,7 @@ test('a pidfile that points at a foreign process is not stopped', { skip: proces
 });
 
 test('a pidfile that points at a foreign process does not lock the installation out', async (t) => {
-  const { dir, configPath, config } = await makeConfig();
+  const { dir, configPath, config, isolation } = await makeConfig();
   t.after(async () => {
     await stopDaemon(config);
     fs.rmSync(dir, { recursive: true, force: true });
@@ -276,7 +282,7 @@ test('a pidfile that points at a foreign process does not lock the installation 
   assert.equal(fs.existsSync(pidFile), false, 'the stale pidfile was not removed');
 
   // The installation is not locked out: the daemon starts again.
-  const started = await ensureDaemon(config, { configPath });
+  const started = await isolation.run(() => ensureDaemon(config, { configPath }));
   assert.equal(started.error, undefined);
   assert.equal(started.started, true);
   assert.ok(started.pid, 'the daemon did not start');
@@ -307,15 +313,10 @@ test(
   'stop says that it stopped the daemon, even when the daemon is not collected',
   { skip: canRun(SUBREAPER_PROBE) ? false : 'this machine cannot take the orphans in' },
   async (t) => {
-    const { dir, configPath, config } = await makeConfig();
+    const { dir, configPath, config, isolation } = await makeConfig();
     t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
-    const env = {
-      PATH: process.env['PATH'] ?? '',
-      HOME: dir,
-      GATEWARDEN_STATE_DIR: dir,
-      GATEWARDEN_CONFIG: configPath,
-    };
+    const env = isolation.env;
 
     // The command that starts the daemon runs under the helper, so that
     // the daemon is orphaned to the helper and not to the init of the

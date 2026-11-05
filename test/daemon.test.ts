@@ -8,6 +8,7 @@ import { loadConfig, listenHost } from '../src/core/config.ts';
 import { ensureDaemon, isHealthy, daemonStatus, isProcessAlive } from '../src/core/daemonControl.ts';
 import { RegistrationStore } from '../src/core/state.ts';
 import type { Config } from '../src/core/types.ts';
+import { isolate } from './helpers/isolation.ts';
 
 /** Ask the OS for a free TCP port. */
 /**
@@ -109,12 +110,15 @@ async function waitUntilGone(pids: number[], timeoutMs = 15000): Promise<boolean
   return waitFor(async () => pids.every((pid) => !isProcessAlive(pid)), timeoutMs);
 }
 
-async function setup(): Promise<{ dir: string; configPath: string; config: Config }> {
+/** What the start of the daemon says. */
+type DaemonStart = { started: boolean; pid: number | null; error?: string };
+
+async function setup(): Promise<{ dir: string; configPath: string; config: Config; startDaemon: () => Promise<DaemonStart> }> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'traefik-dev-daemon-'));
   const registryPort = await freePort();
   const relayPort = await freePort();
   const configPath = path.join(dir, 'config.json');
-  const config: Config = {
+  const written: Config = {
     proxy: 'traefik',
     registryPort,
     relayPort,
@@ -136,8 +140,19 @@ async function setup(): Promise<{ dir: string; configPath: string; config: Confi
     logKeep: 2,
     autostart: true,
   };
-  fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
-  return { dir, configPath, config: loadConfig({ configPath, stateDir: dir }) };
+  fs.writeFileSync(configPath, JSON.stringify(written, null, 2));
+  // The daemon of the test runs in the throwaway directory and in
+  // nothing else: the environment of the machine says where the
+  // installation of the machine is, and the daemon of a test must not
+  // read it nor write to it.
+  const isolation = isolate(dir);
+  const config = loadConfig({ configPath, stateDir: dir });
+  return {
+    dir,
+    configPath,
+    config,
+    startDaemon: () => isolation.run(() => ensureDaemon(config, { configPath })),
+  };
 }
 
 /**
@@ -160,13 +175,13 @@ async function stopDaemon(configPath: string): Promise<void> {
 }
 
 test('ensureDaemon starts the daemon and waits until it is healthy', async (t) => {
-  const { dir, configPath, config } = await setup();
+  const { dir, configPath, config, startDaemon } = await setup();
   t.after(async () => {
     await stopDaemon(configPath);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  const result = await ensureDaemon(config, { configPath });
+  const result = await startDaemon();
   assert.equal(result.started, true);
   assert.ok(result.pid, 'the daemon should have a pid');
   assert.equal(await isHealthy(config), true);
@@ -178,26 +193,26 @@ test('ensureDaemon starts the daemon and waits until it is healthy', async (t) =
 });
 
 test('ensureDaemon is a no-op when the daemon is already running', async (t) => {
-  const { dir, configPath, config } = await setup();
+  const { dir, configPath, startDaemon } = await setup();
   t.after(async () => {
     await stopDaemon(configPath);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  await ensureDaemon(config, { configPath });
-  const second = await ensureDaemon(config, { configPath });
+  await startDaemon();
+  const second = await startDaemon();
   assert.equal(second.started, false);
   assert.ok(second.pid);
 });
 
 test('the daemon serves the registrations written by the CLI', async (t) => {
-  const { dir, configPath, config } = await setup();
+  const { dir, configPath, config, startDaemon } = await setup();
   t.after(async () => {
     await stopDaemon(configPath);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  await ensureDaemon(config, { configPath });
+  await startDaemon();
   const store = new RegistrationStore(dir);
   store.upsert({ project: 'alpha', branch: 'feature/login', devPort: 5173, zone: config.zone });
 
@@ -206,13 +221,13 @@ test('the daemon serves the registrations written by the CLI', async (t) => {
 });
 
 test('the daemon restarts after it was killed', async (t) => {
-  const { dir, configPath, config } = await setup();
+  const { dir, configPath, config, startDaemon } = await setup();
   t.after(async () => {
     await stopDaemon(configPath);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  await ensureDaemon(config, { configPath });
+  await startDaemon();
   const first = await daemonStatus(config);
   assert.ok(first.pid);
   const daemonPid = first.pid as number;
@@ -241,7 +256,7 @@ test('the daemon restarts after it was killed', async (t) => {
   const workersGone = await waitUntilGone(workers);
   assert.equal(workersGone, true, 'a worker of the daemon outlived it and still holds the port');
 
-  const restarted = await ensureDaemon(config, { configPath });
+  const restarted = await startDaemon();
   assert.equal(restarted.started, true);
   assert.ok(restarted.pid, 'the daemon that came back should have a pid');
   assert.notEqual(restarted.pid, daemonPid, 'the daemon that came back should be a new process');
@@ -249,13 +264,13 @@ test('the daemon restarts after it was killed', async (t) => {
 });
 
 test('the daemon respawns a worker that dies, the other listener keeps serving', async (t) => {
-  const { dir, configPath, config } = await setup();
+  const { dir, configPath, config, startDaemon } = await setup();
   t.after(async () => {
     await stopDaemon(configPath);
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  await ensureDaemon(config, { configPath });
+  await startDaemon();
   const status = await daemonStatus(config);
   const pid = status.pid as number;
 
