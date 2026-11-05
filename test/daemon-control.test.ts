@@ -14,6 +14,10 @@
  *
  * The tests run against a throwaway directory. The gateway that runs on
  * the user's machine is never touched.
+ *
+ * The environment the daemon is started with is looked at, and not
+ * tried out: a daemon that reads the configuration of another
+ * installation must not be started to find that out.
  */
 
 import assert from 'node:assert/strict';
@@ -23,8 +27,16 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import test from 'node:test';
-import { loadConfig } from '../src/core/config.ts';
-import { daemonStatus, ensureDaemon, isHealthy, isProcessAlive, processState, stopDaemon } from '../src/core/daemonControl.ts';
+import { loadConfig, resolveConfigPath, resolveStateDir } from '../src/core/config.ts';
+import {
+  daemonEnv,
+  daemonStatus,
+  ensureDaemon,
+  isHealthy,
+  isProcessAlive,
+  processState,
+  stopDaemon,
+} from '../src/core/daemonControl.ts';
 import type { Config } from '../src/core/types.ts';
 import { CLI, DAEMON, freePort } from './helpers/cli.ts';
 
@@ -359,3 +371,81 @@ test(
     assert.equal(fs.existsSync(pidFile), false, 'the pidfile was not removed');
   },
 );
+
+test('the daemon does not inherit GATEWARDEN_HOME', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-control-'));
+  const config = loadConfig({ configPath: path.join(dir, 'config.json'), stateDir: dir });
+
+  const env = daemonEnv(config, path.join(dir, 'config.json'), {
+    PATH: '/usr/bin',
+    GATEWARDEN_HOME: path.join(os.tmpdir(), 'gatewarden-home-of-another-installation'),
+  });
+
+  assert.equal(env['GATEWARDEN_HOME'], undefined);
+});
+
+test('the daemon does not inherit the name GATEWARDEN_HOME had before the rename', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-control-'));
+  const config = loadConfig({ configPath: path.join(dir, 'config.json'), stateDir: dir });
+
+  const env = daemonEnv(config, path.join(dir, 'config.json'), {
+    PATH: '/usr/bin',
+    DEV_GATEWAY_HOME: path.join(os.tmpdir(), 'gatewarden-old-home'),
+  });
+
+  assert.equal(env['DEV_GATEWAY_HOME'], undefined);
+});
+
+test('the daemon reads the configuration it was given', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-control-'));
+  const configPath = path.join(dir, 'config.json');
+  const config = loadConfig({ configPath, stateDir: dir });
+
+  const env = daemonEnv(config, configPath, {
+    PATH: '/usr/bin',
+    GATEWARDEN_HOME: path.join(os.tmpdir(), 'gatewarden-home-of-another-installation'),
+  });
+
+  // The child resolves the paths with its own environment: the
+  // configuration file and the state directory are the ones it was
+  // given, and not the ones of the installation the name pointed at.
+  assert.equal(resolveConfigPath({ env }), configPath);
+  assert.equal(resolveStateDir({ env }), config.stateDir);
+});
+
+test('the other names of the environment are left as they are', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-control-'));
+  const configPath = path.join(dir, 'config.json');
+  const config = loadConfig({ configPath, stateDir: dir });
+
+  const env = daemonEnv(config, configPath, {
+    PATH: '/usr/bin',
+    HOME: '/home/someone',
+    GATEWARDEN_LOG_LEVEL: 'debug',
+    GATEWARDEN_CONFIG: '/somewhere/else/config.json',
+  });
+
+  assert.equal(env['PATH'], '/usr/bin');
+  assert.equal(env['HOME'], '/home/someone');
+  assert.equal(env['GATEWARDEN_LOG_LEVEL'], 'debug');
+  // The configuration and the state directory of the daemon are the ones
+  // it was started with, under both their current and their old names.
+  assert.equal(env['GATEWARDEN_CONFIG'], configPath);
+  assert.equal(env['GATEWARDEN_STATE_DIR'], config.stateDir);
+  assert.equal(env['TRAEFIK_DEV_CONFIG'], configPath);
+  assert.equal(env['TRAEFIK_DEV_STATE_DIR'], config.stateDir);
+});
+
+test('the environment of the caller is not changed', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-control-'));
+  const configPath = path.join(dir, 'config.json');
+  const config = loadConfig({ configPath, stateDir: dir });
+  const baseEnv: NodeJS.ProcessEnv = {
+    PATH: '/usr/bin',
+    GATEWARDEN_HOME: path.join(os.tmpdir(), 'gatewarden-home-of-another-installation'),
+  };
+
+  daemonEnv(config, configPath, baseEnv);
+
+  assert.equal(baseEnv['GATEWARDEN_HOME'], path.join(os.tmpdir(), 'gatewarden-home-of-another-installation'));
+});
