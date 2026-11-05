@@ -11,9 +11,6 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { DEFAULT_CONFIG } from '../src/core/config.ts';
-import { logFilePath } from '../src/core/daemonControl.ts';
-import type { Config } from '../src/core/types.ts';
 import {
   APP_NAME,
   configFileOverride,
@@ -171,28 +168,18 @@ test('the log of a state directory lives in the state directory', () => {
   assert.equal(logFileFor(stateDir), path.join(stateDir, 'daemon.log'));
 });
 
-test('the CLI and the daemon open the same log file, also when GATEWARDEN_HOME names another directory', () => {
-  // The CLI and the daemon are two processes with two environments. The
-  // environment of the CLI names a home directory; the environment of the
-  // daemon does not. The log file is the same file in both, or the CLI
-  // reads a log the daemon never writes.
+test('the log of a state directory does not depend on the environment of the process', () => {
+  // The environment of the process says where the installation of *that*
+  // process is. The CLI and the daemon are two processes, and the log
+  // file of the installation is one file.
   const stateDir = path.join(path.sep, 'tmp', 'state');
   const home = path.join(path.sep, 'tmp', 'home');
-  const config = { ...DEFAULT_CONFIG, stateDir } as Config;
 
-  const before = process.env['GATEWARDEN_HOME'];
-  try {
-    process.env['GATEWARDEN_HOME'] = home;
-    const cliLog = logFilePath(config);
-    delete process.env['GATEWARDEN_HOME'];
-    const daemonLog = logFileFor(config.stateDir);
-
-    assert.equal(cliLog, daemonLog, 'the CLI and the daemon do not open the same log file');
-    assert.equal(cliLog, path.join(stateDir, 'daemon.log'));
-  } finally {
-    if (before === undefined) delete process.env['GATEWARDEN_HOME'];
-    else process.env['GATEWARDEN_HOME'] = before;
-  }
+  assert.equal(
+    logFileFor(stateDir, { env: { GATEWARDEN_HOME: home } }),
+    path.join(stateDir, 'daemon.log'),
+  );
+  assert.equal(logFileFor(stateDir, { env: {} }), path.join(stateDir, 'daemon.log'));
 });
 
 test('the legacy directory is the old layout in the home directory', () => {

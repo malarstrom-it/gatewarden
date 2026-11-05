@@ -360,10 +360,16 @@ export function loadConfigWithReport(opts: LoadConfigOptions = {}): LoadedConfig
  * A state directory that a configuration file names is kept, unless it is
  * the old directory itself: the route store moves out of it.
  *
- * The environment wins over the file. The file may hold a state directory
- * that was resolved once, on another machine or under another home; an
- * environment variable that names the state directory is a decision of the
- * moment, and it is the one that counts.
+ * An environment variable that names the state directory is a decision of
+ * the moment: `GATEWARDEN_STATE_DIR` and `XDG_STATE_HOME` win over the
+ * file, and they say which directory the state lives in right now.
+ *
+ * `GATEWARDEN_HOME` does not win over the file. It says that the
+ * configuration, the state, the log and the cache live in one directory,
+ * and it decides the state directory when the configuration names none.
+ * A configuration that names one is the decision of the installation: the
+ * CLI and the daemon have to agree on it, and the environment of the CLI
+ * may name another home directory than the one the daemon runs with.
  */
 function resolveStateDirFor(
   opts: LoadConfigOptions,
@@ -374,26 +380,44 @@ function resolveStateDirFor(
   excluded: string[],
 ): string {
   if (opts.stateDir) return path.resolve(opts.stateDir);
-  if (environmentNamesStateDir(env, opts.platform ?? process.platform)) return paths.stateDir;
-  for (const candidate of [fileStateDir, legacyStateDir]) {
-    if (typeof candidate !== 'string' || candidate.length === 0) continue;
-    // A state directory inside one of the old layouts is not kept: the
-    // route store moves out of it.
-    if (excluded.some((dir) => isInside(dir, candidate))) continue;
-    return path.resolve(candidate);
-  }
+  if (stateDirOverride(env)) return paths.stateDir;
+  if (xdgNamesStateDir(env, opts.platform ?? process.platform)) return paths.stateDir;
+  // The state directory that the configuration names is the state
+  // directory of the installation: the CLI and the daemon have to agree
+  // on it.
+  const named = stateDirOfAFile(fileStateDir, excluded);
+  if (named) return named;
+  // `GATEWARDEN_HOME` puts everything in one directory.
+  if (homeOverride(env)) return paths.stateDir;
+  // The state directory of the old layout: the routes come over from
+  // there.
+  const legacy = stateDirOfAFile(legacyStateDir, excluded);
+  if (legacy) return legacy;
+  // No name in the environment and none in the file: the state directory
+  // of the platform.
   return paths.stateDir;
 }
 
 /**
- * Does the environment name the state directory?
+ * The state directory that a file names, when the installation keeps it.
+ *
+ * A state directory inside one of the old layouts is not kept: the route
+ * store moves out of it.
+ */
+function stateDirOfAFile(candidate: unknown, excluded: string[]): string | undefined {
+  if (typeof candidate !== 'string' || candidate.length === 0) return undefined;
+  if (excluded.some((dir) => isInside(dir, candidate))) return undefined;
+  return path.resolve(candidate);
+}
+
+/**
+ * Does the environment name the state directory of the platform?
  *
  * `XDG_STATE_HOME` is such a name on Linux, the platform where XDG rules.
  * On macOS and Windows the platform has a state directory of its own and
  * ignores the variable, so the configuration file may still name one.
  */
-function environmentNamesStateDir(env: PathEnv, platform: NodeJS.Platform): boolean {
-  if (stateDirOverride(env) || homeOverride(env)) return true;
+function xdgNamesStateDir(env: PathEnv, platform: NodeJS.Platform): boolean {
   if (platform !== 'linux') return false;
   const xdg = env['XDG_STATE_HOME'];
   return typeof xdg === 'string' && xdg.length > 0;

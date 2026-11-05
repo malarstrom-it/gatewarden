@@ -523,6 +523,12 @@ The names the variables had before the rename (`DEV_GATEWAY_HOME`,
 `DEV_GATEWAY_CONFIG`, `DEV_GATEWAY_STATE_DIR`) are still read, below the
 current ones. They are deprecated: the CLI and the MCP server say so once,
 where the user can see it, and the current name wins when both are set.
+The state directory of an installation that names one in its configuration
+file is the one of the file. `GATEWARDEN_STATE_DIR` and `XDG_STATE_HOME`
+are decisions of the moment and win over the file; `GATEWARDEN_HOME`
+decides the state directory only when the configuration names none. The
+CLI and the daemon are two processes with two environments, and they have
+to agree on the state directory — the log file lives there.
 
 ### 3.2 Configuration
 

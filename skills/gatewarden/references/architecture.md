@@ -67,7 +67,9 @@ Inside the state directory:
 | `daemon.error` | why the daemon stopped, when it stopped for a reason of its own |
 
 `GATEWARDEN_HOME` puts all four in one directory, which is what the tests
-and a throwaway installation use.
+and a throwaway installation use — as long as the configuration file names
+no state directory of its own. A file that names one is the decision of the
+installation: the CLI and the daemon have to agree on it.
 
 ## What the agent may and may not touch
 

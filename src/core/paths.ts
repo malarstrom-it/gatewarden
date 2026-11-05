@@ -285,10 +285,14 @@ export function deprecatedEnvNotices(env: PathEnv = process.env): string[] {
  * processes: the one that has the variable must not send the log of the
  * installation to a directory the other one never writes to.
  *
+ * The options are kept, so that a caller that resolves for another
+ * platform keeps compiling: the platform and the environment do not
+ * decide the log file any more.
+ *
  * This and {@link resolvePaths} must always answer the same: the daemon
  * writes its log where the CLI opens it.
  */
-export function logFileFor(stateDir: string): string {
+export function logFileFor(stateDir: string, _opts: PathOptions = {}): string {
   return path.join(stateDir, 'daemon.log');
 }
 
