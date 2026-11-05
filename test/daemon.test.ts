@@ -4,11 +4,14 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { loadConfig, listenHost } from '../src/core/config.ts';
+import { spawn } from 'node:child_process';
+import { loadConfig, listenHost, resolveConfigPath } from '../src/core/config.ts';
 import { ensureDaemon, isHealthy, daemonStatus, isProcessAlive } from '../src/core/daemonControl.ts';
+import { workerEnv } from '../src/core/daemon.ts';
 import { RegistrationStore } from '../src/core/state.ts';
 import type { Config } from '../src/core/types.ts';
 import { isolate } from './helpers/isolation.ts';
+import { REPO_ROOT } from './helpers/cli.ts';
 
 /** Ask the OS for a free TCP port. */
 /**
@@ -113,10 +116,13 @@ async function waitUntilGone(pids: number[], timeoutMs = 15000): Promise<boolean
 /** What the start of the daemon says. */
 type DaemonStart = { started: boolean; pid: number | null; error?: string };
 
-async function setup(): Promise<{ dir: string; configPath: string; config: Config; startDaemon: () => Promise<DaemonStart> }> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'traefik-dev-daemon-'));
-  const registryPort = await freePort();
-  const relayPort = await freePort();
+/**
+ * Write the configuration of a throwaway installation.
+ *
+ * The file is written where the test says it is, and the state of the
+ * installation is the directory of the test.
+ */
+function writeConfig(dir: string, registryPort: number, relayPort: number): string {
   const configPath = path.join(dir, 'config.json');
   const written: Config = {
     proxy: 'traefik',
@@ -141,6 +147,14 @@ async function setup(): Promise<{ dir: string; configPath: string; config: Confi
     autostart: true,
   };
   fs.writeFileSync(configPath, JSON.stringify(written, null, 2));
+  return configPath;
+}
+
+async function setup(): Promise<{ dir: string; configPath: string; config: Config; startDaemon: () => Promise<DaemonStart> }> {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'traefik-dev-daemon-'));
+  const registryPort = await freePort();
+  const relayPort = await freePort();
+  const configPath = writeConfig(dir, registryPort, relayPort);
   // The daemon of the test runs in the throwaway directory and in
   // nothing else: the environment of the machine says where the
   // installation of the machine is, and the daemon of a test must not
@@ -336,4 +350,99 @@ test('the daemon respawns a worker that dies, the other listener keeps serving',
 
   // The registry listener was never touched.
   assert.equal(await isHealthy(config), true);
+});
+
+test('the workers of the daemon do not inherit GATEWARDEN_HOME', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'traefik-dev-worker-'));
+  const configPath = path.join(dir, 'config.json');
+  const config = loadConfig({ configPath, stateDir: dir });
+
+  const env = workerEnv(config, configPath, {
+    PATH: '/usr/bin',
+    GATEWARDEN_HOME: path.join(os.tmpdir(), 'gatewarden-machine-installation'),
+    DEV_GATEWAY_HOME: path.join(os.tmpdir(), 'gatewarden-machine-installation'),
+  });
+
+  // The name of another installation is not in the environment of the
+  // worker, and the name it had before the rename is not either.
+  assert.equal(env['GATEWARDEN_HOME'], undefined);
+  assert.equal(env['DEV_GATEWAY_HOME'], undefined);
+
+  // The worker reads the configuration the daemon was given, and not the
+  // one of the installation the name pointed at.
+  assert.equal(resolveConfigPath({ env }), configPath);
+  assert.equal(env['GATEWARDEN_CONFIG'], configPath);
+  assert.equal(env['GATEWARDEN_STATE_DIR'], config.stateDir);
+});
+
+test('a worker of a daemon that was started by hand does not have GATEWARDEN_HOME', async (t) => {
+  if (process.platform !== 'linux') {
+    t.skip('the environment of a process is read from /proc, and /proc is Linux');
+    return;
+  }
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'traefik-dev-worker-'));
+  // The installation of the machine: another directory, outside the
+  // throwaway directory of the test.
+  const installation = path.join(dir, 'machine-installation');
+  fs.mkdirSync(installation, { recursive: true });
+  const registryPort = await freePort();
+  const relayPort = await freePort();
+  const configPath = writeConfig(dir, registryPort, relayPort);
+
+  // The daemon is started by hand and the name of another installation is
+  // in its environment: this is what the service unit and the autostart
+  // of the CLI do. The daemon reads the configuration it was given, and
+  // its workers must read it too.
+  let errors = '';
+  const daemon = spawn(process.execPath, [path.join(REPO_ROOT, 'src', 'daemon.ts'), '--config', configPath], {
+    env: {
+      PATH: process.env['PATH'] ?? '',
+      HOME: dir,
+      GATEWARDEN_HOME: installation,
+    },
+    stdio: ['ignore', 'ignore', 'pipe'],
+  });
+  daemon.stderr?.on('data', (chunk: Buffer) => {
+    errors += chunk.toString();
+  });
+  t.after(async () => {
+    daemon.kill('SIGTERM');
+    await waitUntilGone(processesOf(configPath));
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  // The daemon serves, so its workers run.
+  const served = await waitFor(async () => {
+    try {
+      const answer = await fetch(`http://127.0.0.1:${registryPort}/healthz`);
+      return (await answer.text()).trim() === 'ok';
+    } catch {
+      return false;
+    }
+  }, 15000);
+  assert.equal(served, true, `the daemon should serve: ${errors}`);
+
+  const workers = childrenOf(daemon.pid as number).filter((pid) => cmdlineOf(pid).includes('worker.ts'));
+  assert.ok(workers.length > 0, 'the daemon should have workers');
+
+  for (const worker of workers) {
+    const environment = fs.readFileSync(`/proc/${worker}/environ`, 'utf8').split('\0');
+    // The name of the home installation is not in the environment of the
+    // worker, and the name it had before the rename is not either.
+    assert.equal(
+      environment.some((entry) => entry.startsWith('GATEWARDEN_HOME=')),
+      false,
+      `the worker ${worker} should not have GATEWARDEN_HOME`,
+    );
+    assert.equal(
+      environment.some((entry) => entry.startsWith('DEV_GATEWAY_HOME=')),
+      false,
+      `the worker ${worker} should not have DEV_GATEWAY_HOME`,
+    );
+    // The configuration the daemon was given travels with the worker.
+    assert.ok(
+      environment.includes(`GATEWARDEN_CONFIG=${configPath}`),
+      `the worker ${worker} should read the configuration of the daemon`,
+    );
+  }
 });
