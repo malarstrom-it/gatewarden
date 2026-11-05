@@ -67,6 +67,17 @@ names. Every release gets a section, newest first.
 
 ### Fixed
 
+- **The README says what the service does.** The command table said that
+  `gatewarden stop` stops the daemon, and that `gatewarden install-service`
+  starts it again after a reboot, and it left out the two things a reader
+  needs: the service does not bring the daemon back after `gatewarden stop`,
+  on macOS and on Linux, and `--no-enable` writes the unit of the platform
+  without enabling it. The README says both now, the way the setup guide
+  says them, and it says what `--no-enable` means on each platform: on Linux
+  the daemon does not start at a reboot when the unit is not enabled, on
+  macOS the agent is written to `~/Library/LaunchAgents`, which launchd
+  loads at every login, so the daemon starts at the next login.
+
 - **The test script of the manifest runs in an installation.** The published
   package ships no test files, so `npm test` in it stopped with an error
   about the test files it could not find. The script finds the test files of
