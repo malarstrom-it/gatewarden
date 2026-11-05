@@ -54,7 +54,7 @@ The files follow the XDG Base Directory specification:
 | --- | --- | --- | --- |
 | configuration | `~/.config/gatewarden/config.json` | `~/Library/Preferences/gatewarden/` | `%APPDATA%\gatewarden\Config\` |
 | state (routes, pid) | `~/.local/state/gatewarden/` | `~/Library/Application Support/gatewarden/` | `%LOCALAPPDATA%\gatewarden\State\` |
-| log | `~/.local/state/gatewarden/daemon.log` | `~/Library/Logs/gatewarden/` | `%LOCALAPPDATA%\gatewarden\Log\` |
+| log | `~/.local/state/gatewarden/daemon.log` | `~/Library/Application Support/gatewarden/daemon.log` | `%LOCALAPPDATA%\gatewarden\State\daemon.log` |
 | cache | `~/.cache/gatewarden/` | `~/Library/Caches/gatewarden/` | `%LOCALAPPDATA%\gatewarden\Cache\` |
 
 Inside the state directory:
@@ -67,7 +67,9 @@ Inside the state directory:
 | `daemon.error` | why the daemon stopped, when it stopped for a reason of its own |
 
 `GATEWARDEN_HOME` puts all four in one directory, which is what the tests
-and a throwaway installation use.
+and a throwaway installation use — as long as the configuration file names
+no state directory of its own. A file that names one is the decision of the
+installation: the CLI and the daemon have to agree on it.
 
 ## What the agent may and may not touch
 

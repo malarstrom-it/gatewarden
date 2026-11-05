@@ -11,7 +11,8 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { DEFAULT_CONFIG, configFileContent, loadConfig, requireZone, resolveConfigPath, writeConfigFile } from '../src/core/config.ts';
-import { resolvePaths } from '../src/core/paths.ts';
+import { logFilePath } from '../src/core/daemonControl.ts';
+import { logFileFor, resolvePaths } from '../src/core/paths.ts';
 
 function isolatedHome(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-config-'));
@@ -327,6 +328,53 @@ test('the detected address is not written to the configuration file', () => {
     const own = configFileContent({ ...config, advertisedIp: '10.9.8.7', advertisedHost: 'myhost' });
     assert.equal(own['advertisedIp'], '10.9.8.7');
     assert.equal(own['advertisedHost'], 'myhost');
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('the CLI and the daemon open the same log file, also when the environment of the CLI names a home directory', () => {
+  // The CLI and the daemon are two processes with two environments. The
+  // environment of the CLI names the home directory of the installation;
+  // the environment of the daemon names the state directory of the
+  // installation. The installation is one: the same configuration file,
+  // and the state directory that the file names.
+  const home = isolatedHome();
+  const installationHome = path.join(home, 'home-of-the-installation');
+  const stateDir = path.join(home, 'state', 'of-the-installation');
+  const configPath = path.join(installationHome, 'config.json');
+  try {
+    fs.mkdirSync(installationHome, { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify({ stateDir }));
+
+    // The CLI: its environment names the home directory of the
+    // installation, and the configuration file is the one of that
+    // directory.
+    const cli = loadConfig({
+      configPath,
+      home: installationHome,
+      env: { GATEWARDEN_HOME: installationHome },
+    });
+    // The daemon: the environment of the service unit names the state
+    // directory of the installation.
+    const daemon = loadConfig({
+      configPath,
+      home: installationHome,
+      env: { GATEWARDEN_STATE_DIR: stateDir },
+    });
+    // The daemon that was started by hand: its environment names nothing.
+    const bare = loadConfig({ configPath, home: installationHome, env: {} });
+
+    assert.equal(cli.stateDir, stateDir, 'the CLI does not use the state directory of the installation');
+    assert.equal(daemon.stateDir, stateDir, 'the daemon does not use the state directory of the installation');
+    assert.equal(bare.stateDir, stateDir, 'the daemon does not use the state directory of the installation');
+
+    // The log file is the one the daemon writes to, and the one the CLI
+    // opens: the same file, in every process.
+    const cliLog = logFilePath(cli);
+    assert.equal(cliLog, logFileFor(daemon.stateDir), 'the CLI and the daemon do not open the same log file');
+    assert.equal(cliLog, logFileFor(bare.stateDir), 'the CLI and the daemon do not open the same log file');
+    assert.equal(cliLog, path.join(stateDir, 'daemon.log'));
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

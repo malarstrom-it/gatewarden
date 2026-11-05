@@ -105,7 +105,12 @@ export function clearDaemonReason(config: Config): void {
   }
 }
 
-/** Path of the log file. */
+/**
+ * Path of the log file.
+ *
+ * It is the file the daemon writes to: the log lives in the state
+ * directory of the configuration, and the daemon opens it there.
+ */
 export function logFilePath(config: Config): string {
   return logFileFor(config.stateDir);
 }
@@ -113,9 +118,8 @@ export function logFilePath(config: Config): string {
 /**
  * Make sure the directory of the log file exists.
  *
- * The log does not always live in the state directory: on macOS and
- * Windows it lives in the log directory of the platform, and that
- * directory does not exist yet on a fresh installation.
+ * The log lives in the state directory, and that directory does not
+ * always exist yet on a fresh installation.
  */
 export function ensureLogDirectory(logFile: string): string {
   const dir = path.dirname(logFile);

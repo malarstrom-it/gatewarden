@@ -34,6 +34,7 @@ import {
   ensureDaemon,
   isHealthy,
   isProcessAlive,
+  logFilePath,
   processState,
   stopDaemon,
 } from '../src/core/daemonControl.ts';
@@ -229,6 +230,61 @@ test('the daemon runs before it serves', async (t) => {
   assert.equal(status.healthy, false, 'the daemon does not serve: the registry cannot bind its port');
 });
 
+test('the daemon writes the log where the CLI opens it, also when the environment of the CLI names a home directory', async (t) => {
+  // The installation: a home directory of its own, and a configuration
+  // file that names a state directory somewhere else. The environment of
+  // the CLI names the home directory, the environment of the daemon names
+  // the state directory, and the log file is one file.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-log-file-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const installationHome = path.join(dir, 'home');
+  const stateDir = path.join(dir, 'state');
+  const configPath = path.join(installationHome, 'config.json');
+  fs.mkdirSync(installationHome, { recursive: true });
+  fs.writeFileSync(
+    configPath,
+    JSON.stringify(
+      {
+        proxy: 'traefik',
+        registryPort: await freePort(),
+        relayPort: await freePort(),
+        advertisedIp: '127.0.0.1',
+        advertisedHost: '127.0.0.1',
+        zone: 'gwtest.local',
+        entryPoints: ['websecure'],
+        certResolver: 'testca',
+        stateDir,
+      },
+      null,
+      2,
+    ),
+  );
+
+  // The environment of the CLI: the home directory of the installation.
+  const config = loadConfig({
+    configPath,
+    home: installationHome,
+    env: {
+      PATH: process.env['PATH'] ?? '',
+      HOME: dir,
+      GATEWARDEN_HOME: installationHome,
+    },
+  });
+  assert.equal(config.stateDir, stateDir, 'the CLI does not use the state directory of the installation');
+
+  const started = await ensureDaemon(config, { configPath });
+  t.after(() => {
+    void stopDaemon(config);
+  });
+  assert.equal(started.error, undefined, started.error);
+  assert.equal(started.started, true, 'the daemon did not start');
+
+  // The daemon writes the log where the CLI opens it.
+  const logFile = logFilePath(config);
+  assert.equal(logFile, path.join(stateDir, 'daemon.log'));
+  assert.ok(fs.existsSync(logFile), 'the daemon did not write the log where the CLI opens it');
+});
 test('a pidfile that points at a process that is gone says that the daemon does not run', async (t) => {
   const { dir, config } = await makeConfig();
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));

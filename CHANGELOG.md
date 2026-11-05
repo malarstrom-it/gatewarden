@@ -15,6 +15,23 @@ names. Every release gets a section, newest first.
 
 ### Changed
 
+- **The log file lives in the state directory on every platform.** macOS and
+  Windows had a log directory of their own, and the log file lived there;
+  it lives in the state directory now, the way it does on Linux. The state
+  directory is the one place where the CLI and the daemon agree, and the
+  daemon has to write its log where the CLI opens it. The platform and the
+  environment of the process do not decide the log file any more, so
+  `logFileFor(stateDir, options)` answers the same file whatever the
+  options say.
+
+- **A configuration file that names a state directory keeps it.** The
+  environment of the process used to win over the file, and
+  `GATEWARDEN_HOME` was such an environment: the CLI ended up with a state
+  directory of its own, and the daemon with the one of the installation.
+  `GATEWARDEN_STATE_DIR` and `XDG_STATE_HOME` are decisions of the moment
+  and still win over the file; `GATEWARDEN_HOME` decides the state
+  directory when the configuration names none.
+
 - **The design documents name no address of the installation.** The zone,
   the host name and the addresses of the installation are out of the
   documents of the design as well, and those documents name example values
@@ -66,6 +83,14 @@ names. Every release gets a section, newest first.
   Linux.
 
 ### Fixed
+
+- **The CLI and the daemon open the same log file.** The log file was
+  resolved with the environment of the process that asked for it, so a
+  `GATEWARDEN_HOME` in the environment of the CLI sent it to a log file the
+  daemon never wrote, while the daemon wrote its log in a directory the CLI
+  did not look in. The environment of the process does not decide the log
+  file any more: the log file lives in the state directory of the
+  configuration, and both the CLI and the daemon find it there.
 
 - **The workers of the daemon do not run in another installation.** The
   workers inherited the environment of the daemon, and `GATEWARDEN_HOME`

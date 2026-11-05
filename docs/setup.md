@@ -214,6 +214,10 @@ The file is:
 Three environment variables move it: `GATEWARDEN_HOME` (everything in one
 directory), `GATEWARDEN_CONFIG` (the configuration file only) and
 `GATEWARDEN_STATE_DIR` (the state directory only).
+`GATEWARDEN_HOME` decides the state directory when the configuration file
+names none. A file that names one is the decision of the installation: the
+CLI and the daemon are two processes with two environments, and they have
+to agree on the state directory.
 
 The names these variables had before the rename (`DEV_GATEWAY_HOME`,
 `DEV_GATEWAY_CONFIG`, `DEV_GATEWAY_STATE_DIR`) still work. They are

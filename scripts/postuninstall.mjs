@@ -22,7 +22,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { gatewayPaths, isCheckout } from './paths.mjs';
+import { gatewayPaths, isCheckout, platformDirs } from './paths.mjs';
 
 /** The uninstall must never fail because of this script. */
 function stop() {
@@ -129,9 +129,14 @@ try {
   removeFile(paths.configFile);
   removeStateFiles(paths.stateDir);
   removeCacheDir(paths.cacheDir);
-  // The log lives in the state directory on Linux, and in the log
-  // directory of the platform on macOS and Windows.
+  // The log lives in the state directory, on every platform. An
+  // installation that was made before the log moved there had its log in
+  // the log directory of the platform, on macOS and Windows: the file
+  // belongs to the installation, and it goes with it.
   removeFile(paths.logFile);
+  if (process.platform !== 'linux') {
+    removeFile(path.join(platformDirs(process.platform, process.env, os.homedir()).log, 'daemon.log'));
+  }
   removeEmptyStateDir(paths.stateDir);
 } catch {
   // Never fail the uninstall.

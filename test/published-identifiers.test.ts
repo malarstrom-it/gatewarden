@@ -959,7 +959,6 @@ const PACKAGE_MACHINE_NAMES: string[] = [
   'caches',
   'launchagents',
   'library',
-  'logs',
   'preferences',
   'acme',
   'api',

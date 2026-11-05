@@ -156,19 +156,17 @@ test('the log file is opened, and the directory it lives in is created', () => {
   }
 });
 
-test('the log directory of the platform is created, where it is not the state directory', () => {
+test('the log directory is the state directory', () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-log-'));
   try {
-    for (const platform of ['darwin', 'win32'] as NodeJS.Platform[]) {
-      const stateDir = path.join(home, 'state');
-      const logFile = logFileFor(stateDir, { platform, env: {}, home });
-      assert.notEqual(path.dirname(logFile), stateDir, `${platform}: the log should live outside the state`);
+    const stateDir = path.join(home, 'state');
+    const logFile = logFileFor(stateDir);
+    assert.equal(path.dirname(logFile), stateDir, 'the log is not in the state directory');
 
-      const handle = openLogFile(logFile);
-      fs.closeSync(handle);
+    const handle = openLogFile(logFile);
+    fs.closeSync(handle);
 
-      assert.ok(fs.existsSync(logFile), `${platform}: the log file was not created`);
-    }
+    assert.ok(fs.existsSync(logFile), 'the log file was not created');
   } finally {
     fs.rmSync(home, { recursive: true, force: true });
   }

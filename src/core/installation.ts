@@ -22,6 +22,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { envPathsDirs } from './paths.ts';
 
 /**
  * The files the gateway owns in its state directory.
@@ -175,9 +176,14 @@ export function removeInstallationFiles(files: InstallationFiles): void {
     }
   }
 
-  // The log lives in the state directory on Linux, and in the log
-  // directory of the platform on macOS and Windows.
+  // The log lives in the state directory, on every platform. An
+  // installation that was made before the log moved there had its log in
+  // the log directory of the platform, on macOS and Windows: the file
+  // belongs to the installation, and it goes with it.
   removeFile(files.logFile);
+  if (process.platform !== 'linux') {
+    removeFile(path.join(envPathsDirs().log, 'daemon.log'));
+  }
 
   // The state directory goes when nothing is left in it.
   if (fs.existsSync(files.stateDir) && !isProtectedDirectory(files.stateDir)) {
