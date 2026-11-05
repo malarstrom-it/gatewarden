@@ -10,7 +10,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { DEFAULT_CONFIG, configFileContent, loadConfig, requireZone, resolveConfigPath, writeConfigFile } from '../src/core/config.ts';
+import { DEFAULT_CONFIG, configFileContent, loadConfig, requireZone, resolveConfigPath, resolveStateDir, writeConfigFile } from '../src/core/config.ts';
 import { logFilePath } from '../src/core/daemonControl.ts';
 import { logFileFor, resolvePaths } from '../src/core/paths.ts';
 
@@ -107,6 +107,24 @@ test('GATEWARDEN_HOME wins over GATEWARDEN_CONFIG, as the order of §3.1 says', 
   };
 
   assert.equal(resolveConfigPath({ env }), path.join(path.sep, 'h', 'config.json'));
+});
+
+test('the daemon that was given a configuration file does not read the name of the home installation', () => {
+  const env = {
+    GATEWARDEN_HOME: path.join(path.sep, 'h'),
+    GATEWARDEN_CONFIG: path.join(path.sep, 'c.json'),
+    GATEWARDEN_STATE_DIR: path.join(path.sep, 's'),
+  };
+
+  // The CLI looks up an installation of its own: the name of the home
+  // installation wins, as the order of §3.1 says.
+  assert.equal(resolveConfigPath({ env }), path.join(path.sep, 'h', 'config.json'));
+  assert.equal(resolveStateDir({ env }), path.join(path.sep, 'h'));
+
+  // A process that was given a configuration file does not read the
+  // name: the other names of the environment decide.
+  assert.equal(resolveConfigPath({ env, ignoreHome: true }), path.join(path.sep, 'c.json'));
+  assert.equal(resolveStateDir({ env, ignoreHome: true }), path.join(path.sep, 's'));
 });
 
 test('the state directory follows XDG_STATE_HOME, even when the file names one', () => {

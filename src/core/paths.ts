@@ -34,6 +34,13 @@
  * honoured the same way, below the current ones. They are deprecated:
  * {@link deprecatedEnvNotices} says so, once, where it can be seen.
  *
+ * The name of the home installation is read by the process that looks up
+ * an installation of its own: the CLI, the doctor and the MCP server.
+ * A process that was given a configuration file does not read it: the
+ * daemon runs with the configuration it was given, and the name in its
+ * environment belongs to whoever started it. The option
+ * {@link PathOptions.ignoreHome} says so.
+ *
  * The directories the old name owned (`~/.config/dev-gateway/` and the
  * state directory next to it) are found by {@link legacyAppPaths}, so that
  * the migration can move them and the doctor can report that they are
@@ -112,6 +119,19 @@ export interface PathOptions {
   env?: PathEnv;
   /** The user's home directory. Defaults to `os.homedir()`. */
   home?: string;
+  /**
+   * Do not read the name of the home installation.
+   *
+   * `GATEWARDEN_HOME` puts everything of an installation in one
+   * directory, and it wins over every other name. A process that was
+   * given a configuration file of its own does not read that name: the
+   * file it was given is the installation it runs, and the name in the
+   * environment belongs to whoever started it.
+   *
+   * The CLI looks up an installation of its own, and there the name wins.
+   * The option is for the daemon and for the workers it starts.
+   */
+  ignoreHome?: boolean;
 }
 
 /** Read an environment variable, treating an empty value as unset. */
@@ -302,6 +322,11 @@ export function logFileFor(stateDir: string, _opts: PathOptions = {}): string {
  * `GATEWARDEN_HOME` wins over everything: it puts the configuration, the
  * state, the log and the cache in one directory. The other two overrides
  * touch one directory each.
+ *
+ * A resolution that ignores the name of the home installation
+ * ({@link PathOptions.ignoreHome}) reads the other names and the layout
+ * of the platform: the process that asked for it was given a
+ * configuration file, and the name belongs to another installation.
  */
 export function resolvePaths(opts: PathOptions = {}): GatewayPaths {
   const platform = opts.platform ?? process.platform;
@@ -309,7 +334,7 @@ export function resolvePaths(opts: PathOptions = {}): GatewayPaths {
   const home = opts.home ?? os.homedir();
   const dirs = baseDirs(platform, env, home);
 
-  const homeDir = homeOverride(env);
+  const homeDir = opts.ignoreHome ? undefined : homeOverride(env);
   if (homeDir) {
     const base = path.resolve(homeDir);
     return {
