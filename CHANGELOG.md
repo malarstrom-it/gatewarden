@@ -15,6 +15,12 @@ names. Every release gets a section, newest first.
 
 ### Changed
 
+- **The first release of the package goes out with a token.** The package
+  was not on the registry yet, and npm accepts a trusted publisher only
+  for a package that is already there, so the publish of `0.1.1` uses the
+  token of the organisation secret on GitHub. The releases after that one
+  go out with the trusted publishing again.
+
 - **The log file lives in the state directory on every platform.** macOS and
   Windows had a log directory of their own, and the log file lived there;
   it lives in the state directory now, the way it does on Linux. The state

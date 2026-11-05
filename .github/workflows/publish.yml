@@ -1,7 +1,23 @@
 # Publish the gatewarden to npmjs.org, from GitHub.
 #
 # The repository of the project lives on GitHub, and the package is
-# published from it with npm's trusted publishing.
+# published from it.
+#
+# **This release goes out with a token.** The package is not on the
+# registry yet: `@malarstrom/gatewarden` has never been published, and
+# npm accepts a trusted publisher only for a package that is already
+# there — a package comes into being with its first publish. The first
+# publish therefore needs a token, and the token is the organisation
+# secret `NPM_TOKEN` of the organisation `malarstrom-it` on GitHub. The
+# job below puts it into the environment of the run as `NODE_AUTH_TOKEN`,
+# and `actions/setup-node` writes the `.npmrc` that reads that variable.
+# The token is a secret of the organisation and not of this repository,
+# and its value is never written down.
+#
+# The trusted publishing path comes back for the releases after this one:
+# task S121 (traefik-api/136) puts it back. Until then this file has one
+# way to publish, and it is the token. The runbook for this release and
+# for the ones after it is in `CONTRIBUTING.md`.
 #
 # The trigger is a tag: `v1.2.3` publishes version 1.2.3. The tag and the
 # version in package.json must agree, or the run stops.
@@ -11,76 +27,51 @@
 # names. No push of a branch publishes anything: this workflow has one
 # trigger and it is the tag.
 #
-# The publish goes through npm's trusted publishing. The run hands npm an
-# OpenID Connect token — the `id-token: write` permission below is what
-# makes GitHub give one — and npm exchanges it for a short-lived
-# credential for the account that is connected to this repository. No
-# secret is stored in the repository, and no token is ever written down.
+# The run asks GitHub for an OpenID Connect token — the `id-token: write`
+# permission below is what makes GitHub give one — and `npm publish
+# --provenance` gives it to npm, which signs the published version with
+# it. The provenance says which repository, which workflow and which
+# commit the version came from, and a reader can verify it with `npm
+# audit signatures`. The permission stays in place for the provenance.
 #
-# Two things have to be in place before this workflow can publish, and
-# both of them are one-time settings that the maintainer makes by hand:
+# What the trusted publisher on npmjs.com needs, for the releases after
+# this one: the package page of `@malarstrom/gatewarden`, the settings of
+# the package, the trusted publisher for GitHub Actions. There the owner,
+# the name of the repository, the name of the workflow file, the
+# environment name and the allowed actions are filled in:
 #
-#   1. **The npm account has to be connected to this repository.** On
-#      npmjs.com: the package page, the settings of the package, the
-#      trusted publisher for GitHub Actions. There the owner, the name of
-#      the repository, the name of the workflow file and the allowed
-#      actions are filled in:
+#   * the owner is the organisation that owns the repository on GitHub,
+#     `malarstrom-it`;
+#   * the repository is `gatewarden`;
+#   * the workflow file is `publish.yml`, and it has to live in
+#     `.github/workflows/`. npm checks the path, and a workflow somewhere
+#     else is not the workflow that was connected;
+#   * the environment name is empty: the project uses no GitHub
+#     environment, and this workflow names none;
+#   * **the allowed actions have to allow `npm publish`.** npm's staged
+#     publishing (`npm stage publish`) is always allowed, and the direct
+#     publish is a separate permission that is off by default. This
+#     workflow publishes directly — `npm publish --provenance` — so that
+#     permission has to be on. With it off, npm refuses the publish and
+#     the run fails in its last step;
+#   * the `repository` field of `package.json` has to name the same
+#     repository — npm checks it, because a credential for one repository
+#     must not publish another one. The manifest names
+#     `github.com/malarstrom-it/gatewarden`, and it does.
 #
-#      * the owner is the organisation that owns the repository on GitHub,
-#        `malarstrom-it`;
-#      * the repository is `gatewarden`;
-#      * the workflow file is `publish.yml`, and it has to live in
-#        `.github/workflows/`. npm checks the path, and a workflow
-#        somewhere else is not the workflow that was connected;
-#      * **the allowed actions have to allow `npm publish`.** npm's
-#        staged publishing (`npm stage publish`) is always allowed, and
-#        the direct publish is a separate permission that is off by
-#        default. This workflow publishes directly — `npm publish
-#        --provenance` — so that permission has to be on. With it off,
-#        npm refuses the publish and the run fails in its last step;
-#      * the environment name is empty: the project uses no GitHub
-#        environment, and this workflow names none;
-#      * the package has to be on the registry before this workflow can
-#        publish anything: npm accepts a trusted publisher only for a
-#        package that is already there, and a package comes into being
-#        with its first publish. `CONTRIBUTING.md` says how the package
-#        is made to exist;
-#      * the `repository` field of `package.json` has to name the same
-#        repository — npm checks it, because a credential for one
-#        repository must not publish another one. The manifest names
-#        `github.com/malarstrom-it/gatewarden`, and it does.
-#
-#      npm does not check the configuration when it is saved: a wrong
-#      owner, a wrong repository name or a missing permission shows up in
-#      the first publish, and not before.
-#
-#      A connection that is made and then not used expires: npm wants the
-#      first successful publish within two days of the connection, and a
-#      connection that is not used in that time has to be made again.
-#
-#   2. **The workflow has to be the one that is connected.** The
-#      workflow file is `publish.yml`, and it has to live in
-#      `.github/workflows/`. npm checks the path, and a workflow
-#      somewhere else is not the workflow that was connected. The
-#      workflows of the server the repository left are gone: the
-#      package is published from here, and from nowhere else.
-#
-# npm provenance is signed here, and it is signed by npm and by GitHub:
-# `npm publish --provenance` adds the provenance statement to the
-# published version, and the statement says which repository, which
-# workflow and which commit the version came from. A reader can verify it
-# with `npm audit signatures`.
+#   A connection that is made and then not used expires: npm wants the
+#   first successful publish within two days of the connection, and a
+#   connection that is not used in that time has to be made again.
 #
 # The registry is npmjs.org, and it is written down instead of being a
-# secret: npm's trusted publishing works against npmjs.org and against
-# nothing else. A rehearsal against another registry is not possible with
-# a trusted publisher, because it needs a token.
+# secret. A rehearsal against another registry is not possible with a
+# token that is written for npmjs.org.
 #
 # `npm publish` runs `prepublishOnly`, which is `npm run build && npm
 # test`. The build and the tests are therefore the gate of the publish.
 #
-# Trusted publishing needs npm CLI 11.5.1 or later, and the npm of the
-# runner is older than that. The job upgrades npm before it publishes.
+# The npm of the runner is older than the version npm asks for, and the
+# job upgrades npm before it publishes.
 
 name: publish
 
@@ -92,13 +83,22 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # The job installs the dependencies, builds the package, runs the
+    # tests and publishes it. The timeout keeps a run that hangs from
+    # holding the runner for ever.
+    timeout-minutes: 30
     permissions:
       # The workflow reads the repository ...
       contents: read
-      # ... and asks GitHub for an OpenID Connect token. The token is what
-      # npm's trusted publishing uses to identify the run; without this
-      # permission there is no token and the publish fails.
+      # ... and asks GitHub for an OpenID Connect token. The token signs
+      # the provenance of the published version.
       id-token: write
+    env:
+      # The token of this release: the organisation secret `NPM_TOKEN` of
+      # the organisation `malarstrom-it` on GitHub. `actions/setup-node`
+      # writes the `.npmrc` that reads this variable, and npm reads the
+      # token from it. The value of the token is not in this repository.
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -122,15 +122,18 @@ jobs:
       - name: typecheck
         run: npm run typecheck
 
-      # npm's trusted publishing needs npm CLI 11.5.1 or later, and the
-      # npm of the runner is older than that, so it is upgraded here,
-      # right before the publish.
+      # npm needs a recent npm, and the npm of the runner is older than
+      # that, so it is upgraded here, right before the publish.
       #
       # The npm that lands here is npm 12, and npm 12 wants Node
       # ^22.22.2 || ^24.15.0 || >=26. The job therefore wants Node 22.22.2
       # or later, and it asks the installed npm itself whether it runs on
       # the node of the runner, so a future npm@latest that wants more
       # fails here and not in the middle of the publish.
+      #
+      # The gate stays for the token publish as well: npm 11.5.1 or later
+      # is what the trusted publishing path of the releases after this one
+      # asks for, and the same job serves both paths.
       - name: npm must support trusted publishing
         run: |
           set -euo pipefail
@@ -181,9 +184,9 @@ jobs:
             exit 1
           fi
 
-      # The publish itself. The credential comes from the OpenID Connect
-      # token of the run, so there is no token in this step and no secret
-      # in the environment.
+      # The publish itself. The credential is the token of the
+      # environment above: npm reads it from the `.npmrc` that
+      # `actions/setup-node` wrote.
       #
       # `npm publish` runs `prepublishOnly`, which is `npm run build &&
       # npm test`. The build and the tests are therefore the gate of the
