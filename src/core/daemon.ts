@@ -232,8 +232,8 @@ export async function runDaemon(): Promise<void> {
 
   fs.mkdirSync(config.stateDir, { recursive: true });
   const logFile = logFileFor(config.stateDir);
-  // The log does not always live in the state directory: on macOS and
-  // Windows it lives in the log directory of the platform.
+  // The log lives in the state directory; the helper makes sure that the
+  // directory is there.
   ensureLogDirectory(logFile);
   rotateLog(logFile, config.logMaxBytes, config.logKeep);
 

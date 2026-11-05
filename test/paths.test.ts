@@ -11,6 +11,9 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { DEFAULT_CONFIG } from '../src/core/config.ts';
+import { logFilePath } from '../src/core/daemonControl.ts';
+import type { Config } from '../src/core/types.ts';
 import {
   APP_NAME,
   configFileOverride,
@@ -53,17 +56,17 @@ test('Linux follows XDG_CONFIG_HOME, XDG_STATE_HOME and XDG_CACHE_HOME', () => {
   assert.equal(paths.cacheDir, path.join(path.sep, 'xdg', 'cache', APP_NAME));
 });
 
-test('macOS keeps the configuration in Preferences, the state in Application Support and the log in Logs', () => {
+test('macOS keeps the configuration in Preferences and the state in Application Support', () => {
   const paths = resolvePaths({ platform: 'darwin', env: {}, home: HOME });
   const library = path.join(HOME, 'Library');
 
   assert.equal(paths.configFile, path.join(library, 'Preferences', APP_NAME, 'config.json'));
   assert.equal(paths.stateDir, path.join(library, 'Application Support', APP_NAME));
-  assert.equal(paths.logFile, path.join(library, 'Logs', APP_NAME, 'daemon.log'));
+  assert.equal(paths.logFile, path.join(library, 'Application Support', APP_NAME, 'daemon.log'));
   assert.equal(paths.cacheDir, path.join(library, 'Caches', APP_NAME));
 });
 
-test('Windows keeps the configuration in APPDATA and the state and the log in LOCALAPPDATA', () => {
+test('Windows keeps the configuration in APPDATA and the state in LOCALAPPDATA', () => {
   const appData = path.join(path.sep, 'users', 'u', 'AppData', 'Roaming');
   const localAppData = path.join(path.sep, 'users', 'u', 'AppData', 'Local');
   const paths = resolvePaths({
@@ -74,7 +77,7 @@ test('Windows keeps the configuration in APPDATA and the state and the log in LO
 
   assert.equal(paths.configFile, path.join(appData, APP_NAME, 'Config', 'config.json'));
   assert.equal(paths.stateDir, path.join(localAppData, APP_NAME, 'State'));
-  assert.equal(paths.logFile, path.join(localAppData, APP_NAME, 'Log', 'daemon.log'));
+  assert.equal(paths.logFile, path.join(localAppData, APP_NAME, 'State', 'daemon.log'));
   assert.equal(paths.cacheDir, path.join(localAppData, APP_NAME, 'Cache'));
 });
 
@@ -162,19 +165,34 @@ test('the overrides are read from the environment', () => {
   assert.equal(homeOverride({}), undefined);
 });
 
-test('the log of a state directory follows the platform', () => {
-  assert.equal(
-    logFileFor(path.join(path.sep, 'tmp', 'state'), { platform: 'linux', env: {}, home: HOME }),
-    path.join(path.sep, 'tmp', 'state', 'daemon.log'),
-  );
-  assert.equal(
-    logFileFor(path.join(path.sep, 'tmp', 'state'), { platform: 'darwin', env: {}, home: HOME }),
-    path.join(HOME, 'Library', 'Logs', APP_NAME, 'daemon.log'),
-  );
-  assert.equal(
-    logFileFor(path.join(path.sep, 'tmp', 'state'), { platform: 'win32', env: {}, home: HOME }),
-    path.join(HOME, 'AppData', 'Local', APP_NAME, 'Log', 'daemon.log'),
-  );
+test('the log of a state directory lives in the state directory', () => {
+  const stateDir = path.join(path.sep, 'tmp', 'state');
+
+  assert.equal(logFileFor(stateDir), path.join(stateDir, 'daemon.log'));
+});
+
+test('the CLI and the daemon open the same log file, also when GATEWARDEN_HOME names another directory', () => {
+  // The CLI and the daemon are two processes with two environments. The
+  // environment of the CLI names a home directory; the environment of the
+  // daemon does not. The log file is the same file in both, or the CLI
+  // reads a log the daemon never writes.
+  const stateDir = path.join(path.sep, 'tmp', 'state');
+  const home = path.join(path.sep, 'tmp', 'home');
+  const config = { ...DEFAULT_CONFIG, stateDir } as Config;
+
+  const before = process.env['GATEWARDEN_HOME'];
+  try {
+    process.env['GATEWARDEN_HOME'] = home;
+    const cliLog = logFilePath(config);
+    delete process.env['GATEWARDEN_HOME'];
+    const daemonLog = logFileFor(config.stateDir);
+
+    assert.equal(cliLog, daemonLog, 'the CLI and the daemon do not open the same log file');
+    assert.equal(cliLog, path.join(stateDir, 'daemon.log'));
+  } finally {
+    if (before === undefined) delete process.env['GATEWARDEN_HOME'];
+    else process.env['GATEWARDEN_HOME'] = before;
+  }
 });
 
 test('the legacy directory is the old layout in the home directory', () => {
@@ -194,7 +212,7 @@ test('the log file of a state directory and the one of the resolution are the sa
   for (const platform of ['linux', 'darwin', 'win32'] as NodeJS.Platform[]) {
     const env = platform === 'win32' ? { APPDATA: path.join(path.sep, 'a'), LOCALAPPDATA: path.join(path.sep, 'b') } : {};
     const paths = resolvePaths({ platform, env, home: HOME });
-    const logFile = logFileFor(paths.stateDir, { platform, env, home: HOME });
+    const logFile = logFileFor(paths.stateDir);
     assert.equal(logFile, paths.logFile, `${platform}: the log file of the resolution differs`);
   }
 });
@@ -205,7 +223,7 @@ test('the log file is in the one directory when GATEWARDEN_HOME is set', () => {
     const paths = resolvePaths({ platform, env, home: HOME });
     assert.equal(paths.logFile, path.join(path.sep, 'tmp', 'one-directory', 'daemon.log'), `${platform}`);
     assert.equal(
-      logFileFor(paths.stateDir, { platform, env, home: HOME }),
+      logFileFor(paths.stateDir),
       paths.logFile,
       `${platform}: the log file of the resolution differs`,
     );

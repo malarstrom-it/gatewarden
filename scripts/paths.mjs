@@ -126,7 +126,7 @@ export function resolveGatewayPaths(env = process.env, platform = process.platfo
   return {
     configFile: configOverride ? path.resolve(configOverride) : path.join(dirs.config, 'config.json'),
     stateDir,
-    logFile: path.join(platform === 'linux' ? stateDir : dirs.log, 'daemon.log'),
+    logFile: path.join(stateDir, 'daemon.log'),
     cacheDir: dirs.cache,
   };
 }

@@ -54,7 +54,7 @@ The files follow the XDG Base Directory specification:
 | --- | --- | --- | --- |
 | configuration | `~/.config/gatewarden/config.json` | `~/Library/Preferences/gatewarden/` | `%APPDATA%\gatewarden\Config\` |
 | state (routes, pid) | `~/.local/state/gatewarden/` | `~/Library/Application Support/gatewarden/` | `%LOCALAPPDATA%\gatewarden\State\` |
-| log | `~/.local/state/gatewarden/daemon.log` | `~/Library/Logs/gatewarden/` | `%LOCALAPPDATA%\gatewarden\Log\` |
+| log | `~/.local/state/gatewarden/daemon.log` | `~/Library/Application Support/gatewarden/daemon.log` | `%LOCALAPPDATA%\gatewarden\State\daemon.log` |
 | cache | `~/.cache/gatewarden/` | `~/Library/Caches/gatewarden/` | `%LOCALAPPDATA%\gatewarden\Cache\` |
 
 Inside the state directory:

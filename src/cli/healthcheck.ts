@@ -691,7 +691,7 @@ export async function runHealthCheck(opts: HealthCheckOptions = {}): Promise<Hea
     configError = error instanceof Error ? error.message : String(error);
   }
 
-  const logFile = logFileFor(stateDir, { env });
+  const logFile = logFileFor(stateDir);
   const configExists = exists(configPath);
   const legacy = legacyDir({ env });
   const legacyConfig = path.join(legacy, 'config.json');

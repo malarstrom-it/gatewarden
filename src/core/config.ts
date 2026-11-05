@@ -320,7 +320,7 @@ export function loadConfigWithReport(opts: LoadConfigOptions = {}): LoadedConfig
   const targetPaths: GatewayPaths = {
     configFile: configPath,
     stateDir,
-    logFile: logFileFor(stateDir, opts),
+    logFile: logFileFor(stateDir),
     cacheDir: paths.cacheDir,
   };
 

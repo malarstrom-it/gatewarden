@@ -100,11 +100,14 @@ Resolved with `env-paths`, which is the npm ecosystem's convention.
 | --- | --- | --- | --- |
 | configuration | `~/.config/gatewarden/config.json` | `~/Library/Preferences/gatewarden/` | `%APPDATA%\gatewarden\Config\` |
 | state (routes, pid) | `~/.local/state/gatewarden/` | `~/Library/Application Support/gatewarden/` | `%LOCALAPPDATA%\gatewarden\State\` |
-| log | `~/.local/state/gatewarden/daemon.log` | `~/Library/Logs/gatewarden/` | `%LOCALAPPDATA%\gatewarden\Log\` |
+| log | `~/.local/state/gatewarden/daemon.log` | `~/Library/Application Support/gatewarden/daemon.log` | `%LOCALAPPDATA%\gatewarden\State\daemon.log` |
 
-`env-paths` supplies configuration, data, cache and log directly. The state
+`env-paths` supplies configuration, data and cache directly. The state
 directory is one extra resolution, because XDG's `state` has no macOS or
-Windows equivalent in `env-paths`.
+Windows equivalent in `env-paths`. The log file follows the state
+directory, on every platform: the state directory is the one place where
+the CLI and the daemon agree, and the daemon must write its log where the
+CLI opens it.
 
 *Rejected*: a hidden directory in the home directory (the older convention,
 which is not XDG), one directory for everything (config and mutable runtime

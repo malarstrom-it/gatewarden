@@ -175,8 +175,7 @@ export function removeInstallationFiles(files: InstallationFiles): void {
     }
   }
 
-  // The log lives in the state directory on Linux, and in the log
-  // directory of the platform on macOS and Windows.
+  // The log lives in the state directory, on every platform.
   removeFile(files.logFile);
 
   // The state directory goes when nothing is left in it.

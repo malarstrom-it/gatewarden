@@ -8,14 +8,14 @@
  * | --------- | --------------------------------- | ----------------------------------------- | ---------------------------------- |
  * | config    | `~/.config/gatewarden/config.json` | `~/Library/Preferences/gatewarden/`     | `%APPDATA%\gatewarden\Config\`     |
  * | state     | `~/.local/state/gatewarden/`       | `~/Library/Application Support/gatewarden/` | `%LOCALAPPDATA%\gatewarden\State\` |
- * | log       | `~/.local/state/gatewarden/daemon.log` | `~/Library/Logs/gatewarden/`         | `%LOCALAPPDATA%\gatewarden\Log\`   |
+ * | log       | `~/.local/state/gatewarden/daemon.log` | `~/Library/Application Support/gatewarden/daemon.log` | `%LOCALAPPDATA%\gatewarden\State\daemon.log` |
  *
- * `env-paths` supplies the configuration, cache and log directories. The
+ * `env-paths` supplies the configuration and the cache directories. The
  * state directory is one extra resolution, because XDG's `state` has no
- * macOS or Windows equivalent in `env-paths`: on Linux the state directory
- * *is* the log directory (`~/.local/state`), on macOS it is the "Application
- * Support" directory, and on Windows it is a `State` directory next to the
- * ones `env-paths` knows.
+ * macOS or Windows equivalent in `env-paths`: on Linux it is the `state`
+ * directory of XDG, on macOS it is the "Application Support" directory,
+ * and on Windows it is a `State` directory next to the ones `env-paths`
+ * knows. The log file follows the state directory, on every platform.
  *
  * The resolution order:
  *
@@ -276,23 +276,20 @@ export function deprecatedEnvNotices(env: PathEnv = process.env): string[] {
 /**
  * The log file of a state directory.
  *
- * `GATEWARDEN_HOME` puts the log in that one directory, like everything
- * else. Otherwise the log lives next to the state on Linux, because XDG
- * keeps both under `~/.local/state`; on macOS and Windows the platform has
- * a log directory of its own, and the log goes there.
+ * The rule, in one sentence: **the log file lives in the state
+ * directory**, because that is the one place where the CLI and the daemon
+ * agree, and the daemon has to write its log where the CLI opens it.
+ *
+ * The environment of the process does not decide it. `GATEWARDEN_HOME` is
+ * read by the process that has it, and the CLI and the daemon are two
+ * processes: the one that has the variable must not send the log of the
+ * installation to a directory the other one never writes to.
  *
  * This and {@link resolvePaths} must always answer the same: the daemon
  * writes its log where the CLI opens it.
  */
-export function logFileFor(stateDir: string, opts: PathOptions = {}): string {
-  const platform = opts.platform ?? process.platform;
-  const env = opts.env ?? process.env;
-  const home = opts.home ?? os.homedir();
-  const homeDir = homeOverride(env);
-  if (homeDir) return path.join(path.resolve(homeDir), 'daemon.log');
-  const dirs = baseDirs(platform, env, home);
-  const logDir = platform === 'linux' ? stateDir : dirs.log;
-  return path.join(logDir, 'daemon.log');
+export function logFileFor(stateDir: string): string {
+  return path.join(stateDir, 'daemon.log');
 }
 
 /**
@@ -314,7 +311,7 @@ export function resolvePaths(opts: PathOptions = {}): GatewayPaths {
     return {
       configFile: path.join(base, 'config.json'),
       stateDir: base,
-      logFile: path.join(base, 'daemon.log'),
+      logFile: logFileFor(base),
       cacheDir: path.join(base, 'cache'),
     };
   }
@@ -326,7 +323,7 @@ export function resolvePaths(opts: PathOptions = {}): GatewayPaths {
   return {
     configFile: configOverride ? path.resolve(configOverride) : path.join(dirs.config, 'config.json'),
     stateDir,
-    logFile: logFileFor(stateDir, { platform, env, home }),
+    logFile: logFileFor(stateDir),
     cacheDir: dirs.cache,
   };
 }
