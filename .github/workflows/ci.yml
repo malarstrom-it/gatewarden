@@ -99,6 +99,7 @@ jobs:
           - cli.test.ts
           - config.test.ts
           - core-isolation.test.ts
+          - daemon-cleanup.test.ts
           - daemon-config.test.ts
           - daemon-control.test.ts
           - daemon.test.ts
@@ -136,7 +137,7 @@ jobs:
         with:
           node-version: '22'
       - run: npm ci
-      - run: node --test "test/${{ matrix.file }}"
+      - run: node --test --import ./test/helpers/suite.ts "test/${{ matrix.file }}"
 
   # The version matrix. The package says in its `engines` field that it
   # runs on Node 20.11 and later, and a promise like that is only worth
