@@ -220,6 +220,10 @@ The names these variables had before the rename (`DEV_GATEWAY_HOME`,
 deprecated: the CLI reads them, and it says once that they are on their way
 out. The current name wins when both are set.
 
+The daemon and the workers it starts do not carry `GATEWARDEN_HOME` with
+them: they run with the configuration file and the state directory they were
+given, so the installation that applies is the one those name.
+
 The commands below use the file the installation actually has:
 
 ```bash
