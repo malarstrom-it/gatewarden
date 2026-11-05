@@ -8,6 +8,8 @@
  *   - the tarball, installed into a temporary directory, gives a working
  *     `gatewarden` binary, a working MCP server and a pi extension pi
  *     can load;
+ *   - the test script of the manifest runs in the installation, and it
+ *     runs the test files of a checkout (S99);
  *   - a launcher that finds no build speaks about the installation and
  *     not about a checkout (S55);
  *   - the message about a missing build is one text that holds for
@@ -227,6 +229,31 @@ function runLauncher(launcher: string): Promise<{ code: number | null; stderr: s
       stderr += chunk.toString('utf8');
     });
     child.on('close', (code) => resolve({ code, stderr }));
+  });
+}
+
+/**
+ * Run an npm command in a directory and collect what it wrote and how it
+ * ended.
+ *
+ * The command may fail — that is what the tests below look for — so the
+ * exit code is collected and the failure is not thrown.
+ *
+ * @param args the arguments of the npm command
+ * @param cwd the directory the command runs in
+ * @returns the exit code and everything the command wrote
+ */
+function runNpm(args: string[], cwd: string): Promise<{ code: number; output: string }> {
+  return new Promise((resolve) => {
+    const child = spawn('npm', args, { cwd, env: npmEnv(), stdio: ['ignore', 'pipe', 'pipe'] });
+    let output = '';
+    child.stdout.on('data', (chunk: Buffer) => {
+      output += chunk.toString('utf8');
+    });
+    child.stderr.on('data', (chunk: Buffer) => {
+      output += chunk.toString('utf8');
+    });
+    child.on('close', (code) => resolve({ code: code ?? 1, output }));
   });
 }
 
@@ -471,6 +498,81 @@ describe('the published package', () => {
     assert.deepEqual(MANIFEST.bugs, { url: 'https://github.com/malarstrom-it/gatewarden/issues' });
     assert.equal(MANIFEST.funding, undefined);
     assert.equal(MANIFEST.author.name, 'malarstrom');
+
+    // The test command of the manifest runs in an installation too
+    // (S99): the package ships no test files, so the command finds the
+    // test files of a checkout itself and says that there are none when
+    // there are none. It names the pattern of the test files, so that
+    // the guard of the CI matrix finds them (see `test/ci-matrix.ts`).
+    assert.ok(MANIFEST.scripts['test'], 'the manifest has no test script');
+    assert.match(
+      MANIFEST.scripts['test'],
+      /test\/\*\.test\.ts/,
+      `the test command of the manifest names no pattern of test files ("${MANIFEST.scripts['test']}")`,
+    );
+  });
+
+  test('the test command of the manifest runs the test files of a checkout', async (t) => {
+    // The command of the manifest is the command of the checkout: it
+    // finds the test files of the repository and runs them. The test
+    // runs the command in a directory that looks like a checkout — the
+    // manifest of the package and one test file — and the test file has
+    // to run.
+    const checkout = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-test-command-'));
+    t.after(() => fs.rmSync(checkout, { recursive: true, force: true }));
+
+    fs.writeFileSync(
+      path.join(checkout, 'package.json'),
+      `${JSON.stringify(
+        {
+          name: 'checkout',
+          version: '0.0.0',
+          private: true,
+          type: 'module',
+          scripts: { test: MANIFEST.scripts['test'] },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    fs.mkdirSync(path.join(checkout, 'test'));
+    fs.writeFileSync(
+      path.join(checkout, 'test', 'smoke.test.ts'),
+      "import test from 'node:test';\n\ntest('the test command runs the test files of a checkout', () => {});\n",
+    );
+
+    const result = await runNpm(['test'], checkout);
+
+    assert.equal(result.code, 0, `the test command of the manifest failed:\n${result.output}`);
+    assert.match(
+      result.output,
+      /the test command runs the test files of a checkout/,
+      'the test command of the manifest did not run the test files of the checkout',
+    );
+  });
+
+  test('the test script of the published package runs in an installation', async () => {
+    // S99: the package ships no test files, and the test script of the
+    // manifest has to run in the installation anyway — a reader of the
+    // package runs `npm test` and gets an error about a file that is not
+    // there when the command goes looking for one.
+    //
+    // The installation is the package as it is unpacked in the
+    // `node_modules` of a project: the compiled output, the launchers
+    // and the scripts of the installation, and no test files at all.
+    const result = await runNpm(['test'], packageDir);
+
+    assert.equal(result.code, 0, `the test script of the installed package failed:\n${result.output}`);
+    assert.doesNotMatch(
+      result.output,
+      /Could not find/,
+      'the test script of the installed package looks for a file that the package does not ship',
+    );
+    assert.match(
+      result.output,
+      /no test files/,
+      'the test script of the installed package does not say that the package ships no test files',
+    );
   });
 
   test('a copy of the repository builds itself and ships the compiled output', async (t) => {
