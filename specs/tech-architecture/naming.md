@@ -183,5 +183,5 @@ The name, everywhere it appears, and nothing else:
   migrated and reported, and the old environment variables are deprecated
   with a notice instead of silently working.
 
-The live gateway in `/opt/devbox-traefik-api` was not touched, and nothing
+The live gateway in `/opt/gatewarden` was not touched, and nothing
 was written to `~/.traefik-dev/` or to the directories of the old name.

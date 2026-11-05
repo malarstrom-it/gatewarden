@@ -1,9 +1,15 @@
 # Grill findings — the Traefik plan vs. official docs
 
 Every row was checked against an official source that was actually fetched while writing this file
-(Traefik docs, Docker docs, the RFCs, the vendors' own docs, and public DNS via Cloudflare
-DoH). Traefik citations use the current docs set (`https://doc.traefik.io/traefik/reference/...`,
+(Traefik docs, Docker docs, the RFCs, the vendors' own docs, and public DNS via DNS-over-HTTPS).
+Traefik citations use the current docs set (`https://doc.traefik.io/traefik/reference/...`,
 describing **v3.7**).
+
+> **The values of the installation this file was written for are replaced by
+> examples.** The zone, the addresses, the container names and the DNS records
+> below are the values of an example deployment (`example.com` and the RFC 5737
+> ranges for the addresses). The shape, the claims and the citations are the
+> ones of the original file.
 
 Verdict vocabulary: **AGREE** (docs support the plan), **CONTRADICT** (docs/refute the plan as
 written — the plan was corrected), **RULED OUT** (the option cannot work at all), **UNDOCUMENTED**
@@ -34,7 +40,7 @@ written — the plan was corrected), **RULED OUT** (the option cannot work at al
 | A17 | Image tag and published ports | AGREE | `traefik:v3.7`, publish 80/443 |
 | A18 | `Host(...)` wildcard matches **one label** | AGREE | wildcard-per-project marked "one backend only" (option B) |
 | A19 | `Host` preferred over `HostRegexp` | AGREE | `HostRegexp` last resort |
-| A20 | A DNS wildcard covers a **multi-label** prefix | AGREE | confirmed by live DNS: `a.b.home.malarstrom.com` resolves |
+| A20 | A DNS wildcard covers a **multi-label** prefix | AGREE | confirmed by live DNS: `a.b.example.com` resolves |
 | A21 | A closer existing name **kills** the DNS wildcard | AGREE | caveat stated; gateway must not create concrete names |
 | A22 | Industry standard for branch-scoped names | AGREE | slug rule adopted; branch-first ordering kept (D1) |
 | A23 | Only **published** ports are LAN-reachable | AGREE | candidate A requires host-side re-create |
@@ -42,11 +48,11 @@ written — the plan was corrected), **RULED OUT** (the option cannot work at al
 | A25 | User-defined network ⇒ name/IP reachability | AGREE | candidate B viable; registry reachable from host |
 | A26 | `127.0.0.1`-bound process is unreachable from another container | AGREE | rebind-or-relay decision (D6) |
 | A27 | This container can be re-created from inside | CONTRADICT (fact) | candidate A is a host-side task |
-| A28 | The confirmed zone resolves `<branch>.<project>.home.malarstrom.com` | AGREE | namespace fixed to `home.malarstrom.com` (D1) |
+| A28 | The confirmed zone resolves `<branch>.<project>.example.com` | AGREE | namespace fixed to `example.com` (D1) |
 | A29 | A **public-CA certificate** for this zone is possible at all | AGREE (only via dns-01) | http-01 ruled out (private A record) |
 | A30 | One wildcard cert covers **all branches of a project** | AGREE | TLS issuance unit = the project, not the branch |
-| A31 | A router can request a **wildcard domain** | AGREE | `tls.domains.main = *.<project>.home.malarstrom.com` shown concretely |
-| A32 | DNS-01 at Cloudflare is **available** | AGREE | Cloudflare token required → secret-handling decision |
+| A31 | A router can request a **wildcard domain** | AGREE | `tls.domains.main = *.<project>.example.com` shown concretely |
+| A32 | DNS-01 is **available** for this zone | AGREE | a DNS API token is required → secret-handling decision |
 | A33 | The HTTP provider accepts **YAML or JSON** | AGREE | registry serves YAML |
 | A34 | The HTTP provider serves the **dynamic** configuration shape | AGREE | document shape fixed (`http.routers/services/middlewares`) |
 | A35 | Our document does **not clobber** other providers' objects | AGREE (namespacing) / **UNDOCUMENTED** (merge algorithm) | registry serves only our own prefixed objects; empirical check still required |
@@ -182,10 +188,10 @@ the Traefik container's source address on the Docker network (plus a shared secr
 
 URL: https://letsencrypt.org/docs/rate-limits/
 
-Plan change: the registered domain here is `malarstrom.com`, so **one certificate per FQDN**
+Plan change: the registered domain here is `example.com`, so **one certificate per FQDN**
 (option i) would spend one of 50 weekly certificates per branch per issuance. The plan now
 recommends **one wildcard certificate per project** (option ii): `tls.domains.main =
-"*.<project>.home.malarstrom.com"` with `tls.certResolver` — one certificate covers every branch of
+"*.<project>.example.com"` with `tls.certResolver` — one certificate covers every branch of
 that project (RFC 6125 §6.4.3) and the per-project count stays far below the limit. Residual risk
 recorded: repeated requests for the *same* identifier set are capped at 5 per 7 days.
 
@@ -416,8 +422,8 @@ URL: https://doc.traefik.io/traefik/getting-started/docker/
 
 URL: https://doc.traefik.io/traefik/reference/routing-configuration/http/routing/rules-and-priority/
 
-Plan change: `Host(`*.home.malarstrom.com`)` is explicitly ruled out for the two-label shape;
-`Host(`*.<project>.home.malarstrom.com`)` (option B) is the only Traefik wildcard that could work,
+Plan change: `Host(`*.example.com`)` is explicitly ruled out for the two-label shape;
+`Host(`*.<project>.example.com`)` (option B) is the only Traefik wildcard that could work,
 and it needs a branch-aware dispatcher because one router = one service.
 
 ### A19 — `Host` is preferred over `HostRegexp` — **AGREE**
@@ -442,15 +448,17 @@ URL: https://www.rfc-editor.org/rfc/rfc1034#section-4.3.3
 
 URL: https://www.rfc-editor.org/rfc/rfc4592#section-2.2.1
 
-Live check (Cloudflare DoH, public resolvers), re-verified while writing this file:
+Live check (a public DNS-over-HTTPS resolver), re-verified while writing this file. The names and
+the answers below are the ones of an example zone; the shape of the answer is the one that was
+read:
 
 | Query | Answer |
 | --- | --- |
-| `malarstrom.com NS` | `dan.ns.cloudflare.com.`, `isla.ns.cloudflare.com.` |
-| `home.malarstrom.com A` | `10.10.1.50` (TTL 300) — private RFC 1918 address |
-| `x.home.malarstrom.com A` | CNAME `home.malarstrom.com.` → `10.10.1.50` |
-| `a.b.home.malarstrom.com A` | CNAME `home.malarstrom.com.` → `10.10.1.50` |
-| `*.home.malarstrom.com CNAME` | `home.malarstrom.com.` |
+| `example.com NS` | `ns1.example.net.`, `ns2.example.net.` |
+| `example.com A` | `198.51.100.10` (TTL 300) — an address from the range RFC 5737 reserves for documentation |
+| `x.example.com A` | CNAME `example.com.` → `198.51.100.10` |
+| `a.b.example.com A` | CNAME `example.com.` → `198.51.100.10` |
+| `*.example.com CNAME` | `example.com.` |
 
 Plan change: the user's **single** CNAME wildcard covers the whole namespace at arbitrary depth —
 no per-project or per-branch DNS record is needed (§1.2 of the plan).
@@ -466,7 +474,7 @@ no per-project or per-branch DNS record is needed (§1.2 of the plan).
 URL: https://www.rfc-editor.org/rfc/rfc1034#section-4.3.3
 
 Plan change: stated as a caveat; the gateway must not create concrete names under
-`home.malarstrom.com`.
+`example.com`.
 
 ### A22 — Industry standard for branch-scoped hostnames — **AGREE**
 
@@ -554,15 +562,15 @@ host-side work it requires and what it breaks.
 Observed: `ls -la /var/run/docker.sock` → "No such file or directory"; `docker info` → "docker:
 command not found"; `which traefik` → not found.
 
-### A28 — The confirmed zone resolves `<branch>.<project>.home.malarstrom.com` — **AGREE**
+### A28 — The confirmed zone resolves `<branch>.<project>.example.com` — **AGREE**
 
-Live DNS (§A20 table): `*.home.malarstrom.com` is a **CNAME** to `home.malarstrom.com`, and
-`a.b.home.malarstrom.com` already resolves to `10.10.1.50`. Combined with RFC 1034 §4.3.3 ("the
+Live DNS (§A20 table): `*.example.com` is a **CNAME** to `example.com`, and
+`a.b.example.com` already resolves to `198.51.100.10`. Combined with RFC 1034 §4.3.3 ("the
 \"*\" label always matches at least one whole label and sometimes more, but always whole labels")
 and RFC 4592 §2.2.1, the two-label prefix `<branch>.<project>` is covered by the user's single
 record.
 
-Plan change: the namespace is fixed to `<branch>.<project>.home.malarstrom.com` (D1); the two
+Plan change: the namespace is fixed to `<branch>.<project>.example.com` (D1); the two
 placeholder layouts (`example.test`, `apps.example.test`) were removed.
 
 ### A29 — A public-CA certificate for this zone is possible at all — **AGREE, but only via dns-01**
@@ -573,7 +581,7 @@ placeholder layouts (`example.test`, `apps.example.test`) were removed.
 
 URL: https://www.rfc-editor.org/rfc/rfc8555#section-8.3
 
-The zone's only A record is `10.10.1.50` — not reachable from the internet — so **http-01 can
+The zone's only A record is `198.51.100.10` — not reachable from the internet — so **http-01 can
 never succeed** for this zone.
 
 > "When the identifier being validated is a domain name, the client can prove control over that
@@ -604,8 +612,8 @@ Plan change: TLS option (b) is defined as dns-01 only; option (a) plain HTTP sta
 
 URL: https://www.rfc-editor.org/rfc/rfc6125#section-6.4.3
 
-So `*.home.malarstrom.com` does **not** cover `<branch>.<project>.home.malarstrom.com`, but
-`*.<project>.home.malarstrom.com` covers **every** branch of that project.
+So `*.example.com` does **not** cover `<branch>.<project>.example.com`, but
+`*.<project>.example.com` covers **every** branch of that project.
 
 Plan change: **the TLS unit of issuance is the project, not the branch** — exactly the user's
 "project owns a label" model. One certificate per project suffices (§7.2 of the plan).
@@ -633,17 +641,17 @@ Resolver behaviour (ACME docs):
 URL: https://doc.traefik.io/traefik/reference/install-configuration/tls/certificate-resolvers/acme/
 
 Plan change: the plan now shows the concrete configuration — router `tls.domains.main =
-*.<project>.home.malarstrom.com` plus `tls.certResolver`, and the resolver with
-`acme.dnsChallenge.provider: cloudflare`.
+*.<project>.example.com` plus `tls.certResolver`, and the resolver with
+`acme.dnsChallenge.provider: <your dns provider>`.
 
-### A32 — DNS-01 at Cloudflare is available for this zone — **AGREE**
+### A32 — DNS-01 is available for this zone — **AGREE**
 
-Live DNS: `malarstrom.com NS` → `dan.ns.cloudflare.com.`, `isla.ns.cloudflare.com.` — the zone is
-served by Cloudflare, whose DNS API is what a DNS-01 challenge needs.
+Live DNS (the shape of the answer): `example.com NS` → `ns1.example.net.`, `ns2.example.net.` — the
+zone is served by a DNS provider whose API is what a DNS-01 challenge needs.
 
 Traefik's ACME page points at the Lego provider list: "You can find the list of all the supported
 DNS providers in their documentation with instructions about which environment variables need to be
-setup." The Cloudflare provider's variables:
+setup." The variables of a DNS provider, in the Cloudflare provider as the example:
 
 > "CF_API_EMAIL — Account email · CF_API_KEY — API key · **CF_DNS_API_TOKEN — API token with
 > DNS:Edit permission (since v3.1.0)** · CF_ZONE_API_TOKEN — API token with Zone:Read permission
@@ -652,7 +660,7 @@ setup." The Cloudflare provider's variables:
 
 URL: https://go-acme.github.io/lego/dns/cloudflare/
 
-Plan change: the Cloudflare API token (DNS:Edit) becomes an explicit secret-handling decision for
+Plan change: the DNS API token (DNS:Edit) becomes an explicit secret-handling decision for
 the user (§11.4).
 
 ---

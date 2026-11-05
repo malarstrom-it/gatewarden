@@ -1,21 +1,20 @@
 # Boarden
 
-Översikt över vad som flyttats från 0.2-projektet
-(`/home/node/.herdr-projects-legacy/traefik-api/`) in i repot, vad som finns kvar där, och var
-boardens backlogg för repot ligger.
+Översikt över vad som flyttats från 0.2-projektet (som ligger utanför repot) in i repot, vad som
+finns kvar där, och var boardens backlogg för repot ligger.
 
 ## Nu i repot
 
 - `MEMORY.md` — indexet över minnesfilerna.
-- `memory/traefik-namespace.md` — de bekräftade faktorna (DNS-namnrymden, FQDN-mallen,
-  routingmodellen, containerfakta, TLS-reglerna) plus en kronologisk logg över indexsidan och
-  de beslut som följde efteråt.
 - `memory/context-policy.md` — pekare till den globala kontextpolicyn (uppgiften fortsätter,
   överlämningen skrivs i slutnoten).
 - `memory/context-usage.mjs` — mätverktyget för kontextbeläggning (40 % / 50 %).
 - `memory/boarden.md` — den här filen.
 
-## Finns kvar i /home/node/.herdr-projects-legacy/traefik-api/
+## Finns kvar utanför repot
+
+Allt som finns kvar ligger i 0.2-projektet, utanför repot. Sökvägen dit står i boardens egna
+filer, inte i repot.
 
 - `AGENTS.md` (och `CLAUDE.md`, en symlänk dit) — projektets stående instruktioner. Det som
   gäller dev-servern finns redan i repot: `skills/gatewarden/SKILL.md`, `README.md` och
@@ -28,6 +27,10 @@ boardens backlogg för repot ligger.
 - `routines/pr-followup.md` — rutinen för att följa upp en PR.
 - `inbox/`, `scratch/`, `uploads/`, `.state/` — herdr-projects egen drift (ingång, lås, tickare,
   coordinator-state). Inte material.
+- `memory/traefik-namespace.md` — de bekräftade faktorna om installationen (DNS-namnrymden,
+  FQDN-mallen, routingmodellen, containerfakta, TLS-reglerna) plus en kronologisk logg över
+  indexsidan och de beslut som följde efteråt. Filen lämnade repot här: repot ska bli publikt,
+  och de här värdena hör till installationen, inte till paketet.
 
 ## Var backloggen ligger
 

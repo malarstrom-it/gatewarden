@@ -99,8 +99,8 @@ a tarball whose binary runs, and the 103 existing tests pass unchanged.
 ## 5. The constraints that hold for every slice
 
 - **The live system is not touched.** A separate copy of the gateway runs
-  from `/opt/devbox-traefik-api`, on ports 45001 and 45002, serving
-  `home.malarstrom.com`. Do not start, stop or reconfigure it. Do not
+  from `/opt/gatewarden`, on ports 45001 and 45002, serving
+  `example.com`. Do not start, stop or reconfigure it. Do not
   change the user's Traefik. The tests use temporary directories and must
   keep doing so.
 - **The tests stay green.** `npm test` and `npm run typecheck` pass before a
