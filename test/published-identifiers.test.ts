@@ -214,6 +214,19 @@
  * otherwise make the guard report every `server` of the package, and the
  * guard would hold the publishing of the package for a word.
  *
+ * The rule asks the package about the file it is reading, and never
+ * about the package as a whole: a value the package uses in another file
+ * is a word of the package, and a value that stands in one file only is
+ * the value of the installation. The rule cannot ask the package whether
+ * it publishes the value, for the file the rule is reading is the file
+ * the value may have leaked into — and a value the package publishes
+ * there is a value the package publishes by mistake.
+ *
+ * The name of a machine is a word of the package only where the package
+ * uses it in its own prose. The package names the machines of its
+ * examples in its prose, and a name that stands nowhere else is the name
+ * of the machine of an installation: the package does not know that name.
+ *
  * The zone of the DNS is the one exception. The package publishes the
  * zones of its examples in the domains that RFC 2606 and RFC 6761
  * reserve, and those belong to nobody — so the zone of an installation
@@ -221,13 +234,10 @@
  * leak, and the guard catches it even when the package publishes it, for
  * the package publishes it by mistake.
  *
- * A host name that is a word of the package cannot be told apart from
- * the word of the package, and the guard stays quiet about it. It does
- * not report the words of the package as values of an installation, and
- * it holds the publishing of the package for nothing. The host name of
- * the installation is therefore caught in the shipped files only while
- * the package does not use the word — and the host name is caught in the
- * files the package does not ship either way.
+ * A host name that the package uses in its own prose cannot be told
+ * apart from the word of the package, and the guard stays quiet about it.
+ * It does not report the words of the package as values of an
+ * installation, and it holds the publishing of the package for nothing.
  *
  * The message of the rule names the file and the line the value stands
  * on, and not the value itself. A red run of the guard is a log on a
@@ -823,10 +833,6 @@ function gitServerTraps(file: string, text: string, publicHost: string = PUBLIC_
 interface InstallationOptions {
   /** The environment the paths of the installation are resolved in. */
   env?: NodeJS.ProcessEnv;
-  /** The directory of the unpacked package. */
-  packageDir?: string;
-  /** The files the package holds. */
-  packageFiles?: string[];
 }
 
 /**
@@ -852,8 +858,11 @@ function escapeRegExp(value: string): string {
  * package as it stands in the text of the repository, and not as a part
  * of a longer name.
  *
- * The tarball keeps such a value only where the value is the zone of the
- * DNS (see `publishedValue`).
+ * The rule of the values of the installation does not ask this question
+ * about the file it is reading (see `wordOfThePackage`), for the file it
+ * is reading is the file the value may have leaked into. This function
+ * answers the question about the package as a whole, and the test of the
+ * allowance of the domains of the package uses it.
  */
 function packageUsesValue(value: string, packageDir: string, files: string[]): boolean {
   const pattern = new RegExp(`(?<![A-Za-z0-9_])${escapeRegExp(value)}(?![A-Za-z0-9_])`, 'i');
@@ -1116,7 +1125,57 @@ async function installationValues(opts: InstallationOptions = {}): Promise<Insta
   // The values of the DNS of the zone.
   values.push(...(await zoneDnsValues(zone)));
 
-  return values.filter((entry) => !publishedValue(entry, opts));
+  return values;
+}
+
+/**
+ * The files of the package that use each value of the installation as a
+ * word of the package.
+ *
+ * The map is read for every file the rule scans, and the rule asks it
+ * about the file it is reading: a value the package uses in another file
+ * is a word of the package and not a value of the installation. The rule
+ * never asks the map about the file it is reading — a value that stands
+ * in the file the rule reads is the value the rule is looking for.
+ *
+ * The name of a machine is a word of the package only where the package
+ * uses it in its own prose. The package names the machines of its
+ * examples in its prose, and a name that stands nowhere else is the name
+ * of the machine of an installation: the package does not know that name,
+ * and it publishes it only by mistake.
+ */
+function publishedIn(
+  values: InstallationValue[],
+  packageDir: string,
+  files: string[],
+): Map<string, Set<string>> {
+  const published = new Map<string, Set<string>>();
+  for (const entry of values) published.set(entry.value, new Set<string>());
+
+  for (const file of files) {
+    if (!/\.(?:md|json|js|mjs|ts|txt|yml|yaml)$/.test(file)) continue;
+
+    let text = '';
+    try {
+      text = fs.readFileSync(path.join(packageDir, file), 'utf8');
+    } catch {
+      continue;
+    }
+
+    for (const entry of values) {
+      const pattern = new RegExp(`(?<![A-Za-z0-9_])${escapeRegExp(entry.value)}(?![A-Za-z0-9_])`, 'gi');
+      for (const found of text.matchAll(pattern)) {
+        const index = found.index ?? 0;
+        if (entry.match === 'machine' && namesAMachine(text.slice(0, index), text.slice(index + entry.value.length))) {
+          continue;
+        }
+        published.get(entry.value)?.add(file);
+        break;
+      }
+    }
+  }
+
+  return published;
 }
 
 /**
@@ -1128,6 +1187,12 @@ async function installationValues(opts: InstallationOptions = {}): Promise<Insta
  * guard would report the words of the package as the values of an
  * installation. The words of the package are the same for every
  * installation, and the package publishes them on purpose.
+ *
+ * The package publishes a value in the file the rule reads and in the
+ * other files of the package. The other files are what tells the two
+ * apart: a value that the package uses in another file is a word of the
+ * package, and a value that stands in one file only is the value of the
+ * installation — the package publishes it there by mistake.
  *
  * The zone of the DNS is the one exception (S107). The package publishes
  * the zones of its examples in the domains that RFC 2606 and RFC 6761
@@ -1142,17 +1207,25 @@ async function installationValues(opts: InstallationOptions = {}): Promise<Insta
  * package publishes on purpose are published on purpose here as well
  * (see `PUBLIC_DOMAINS`).
  */
-function publishedValue(entry: InstallationValue, opts: InstallationOptions): boolean {
-  if (opts.packageDir === undefined || opts.packageFiles === undefined) return false;
-
+function wordOfThePackage(
+  entry: InstallationValue,
+  file: string,
+  published: Map<string, Set<string>>,
+): boolean {
   if (entry.what === THE_ZONE_OF_THE_INSTALLATION && isDomainName(entry.value)) {
     // A zone that is a domain of the package itself is published on
     // purpose and is not a leak.
-    if (PUBLIC_DOMAINS.includes(entry.value.toLowerCase())) return true;
-    return false;
+    return PUBLIC_DOMAINS.includes(entry.value.toLowerCase());
   }
 
-  return packageUsesValue(entry.value, opts.packageDir, opts.packageFiles);
+  const files = published.get(entry.value);
+  if (files === undefined) return false;
+
+  for (const other of files) {
+    if (other !== file) return true;
+  }
+
+  return false;
 }
 
 /**
@@ -1290,6 +1363,8 @@ function installationValueTraps(file: string, text: string, values: Installation
   const hits: string[] = [];
 
   for (const { value, what, match } of values) {
+    if (wordOfThePackage({ value, what, match }, file, PUBLISHED_IN)) continue;
+
     if (match === 'machine') {
       hits.push(...machineValueTraps(file, text, value, what));
       continue;
@@ -1383,6 +1458,16 @@ function namesAMachine(before: string, after: string): boolean {
  * the ones that matter.
  */
 let INSTALLATION_VALUES: InstallationValue[] = [];
+
+/**
+ * The files of the package that use each value of the installation as a
+ * word of the package.
+ *
+ * The map is read for every file the rule scans, and the rule asks it
+ * about the file it is reading: a value the package uses in another file
+ * is a word of the package and not a value of the installation.
+ */
+let PUBLISHED_IN: Map<string, Set<string>> = new Map();
 
 /**
  * The fields of the manifest that point at a repository.
@@ -1551,22 +1636,21 @@ function installationProbes(): RuleProbe[] {
   for (const entry of INSTALLATION_VALUES) {
     const value = entry.match === 'machine' ? `${entry.value}:45002` : entry.value;
 
-    probes.push({
-      what: entry.what,
-      value,
-      file: 'specs/tech-architecture/naming.md',
-      find: (file: string, text: string) => installationValueTraps(file, text, INSTALLATION_VALUES),
-      inRepository: true,
-      hidesValue: true,
-    });
+    for (const file of ['specs/tech-architecture/naming.md', 'README.md']) {
+      // A value that the rule reads as a word of the package is a word of
+      // the package in that file, and the rule cannot catch it there. The
+      // probe proves the rule that is used, and not a rule that is not.
+      if (wordOfThePackage(entry, file, PUBLISHED_IN)) continue;
 
-    probes.push({
-      what: entry.what,
-      value,
-      file: 'README.md',
-      find: (file: string, text: string) => installationValueTraps(file, text, INSTALLATION_VALUES),
-      hidesValue: true,
-    });
+      probes.push({
+        what: entry.what,
+        value,
+        file,
+        find: (file: string, text: string) => installationValueTraps(file, text, INSTALLATION_VALUES),
+        inRepository: file.endsWith('.md') && file.startsWith('specs/'),
+        hidesValue: true,
+      });
+    }
   }
 
   return probes;
@@ -2186,7 +2270,8 @@ describe('the published package', () => {
     // The values of the installation are read now: the rule has to know
     // the words of the package before it can tell a value of the
     // installation from a word of the package.
-    INSTALLATION_VALUES = await installationValues({ packageDir, packageFiles: files });
+    INSTALLATION_VALUES = await installationValues();
+    PUBLISHED_IN = publishedIn(INSTALLATION_VALUES, packageDir, files);
   });
 
   after(async () => {
@@ -2374,21 +2459,30 @@ describe('the published package', () => {
         hits.join('\n'),
     );
 
-    // The rule has to fire: a tarball that names the zone of the
-    // installation is caught, and the message leaves the value out. A
-    // machine without an installation has no zone, and there is nothing
-    // to plant there.
-    const zone = INSTALLATION_VALUES.find((entry) => entry.what === THE_ZONE_OF_THE_INSTALLATION);
-    if (zone !== undefined) {
-      const planted = plant('README.md', `The zone of the installation is ${zone.value}.`);
-      const plantedHits = installationValueTraps('README.md', planted, INSTALLATION_VALUES);
+    // The rule has to fire: a tarball that names a value of the
+    // installation is caught, and the message leaves the value out. The
+    // value is one the rule reads as a value of the installation in the
+    // readme — a value the package uses in another file is a word of the
+    // package and not a value of the installation.
+    const plantedValue = INSTALLATION_VALUES.find(
+      (entry) => !wordOfThePackage(entry, 'README.md', PUBLISHED_IN),
+    );
+    assert.ok(plantedValue !== undefined, 'the rule reads no value of the installation in the readme');
 
-      assert.ok(plantedHits.length > 0, 'the rule did not catch the zone of the installation in the tarball');
-      assert.ok(
-        plantedHits.every((hit) => !hit.includes(zone.value)),
-        'the message of the rule wrote out the zone of the installation',
-      );
-    }
+    // The name of a machine is caught where it names a machine, and not
+    // in the prose of a sentence.
+    const line =
+      plantedValue.match === 'machine'
+        ? `The machine of the installation is ${plantedValue.value}:45002.`
+        : `The installation of the package is ${plantedValue.value}.`;
+    const planted = plant('README.md', line);
+    const plantedHits = installationValueTraps('README.md', planted, INSTALLATION_VALUES);
+
+    assert.ok(plantedHits.length > 0, 'the rule did not catch the value of the installation in the tarball');
+    assert.ok(
+      plantedHits.every((hit) => !hit.includes(plantedValue.value)),
+      'the message of the rule wrote out the value of the installation',
+    );
   });
 
   test('the documents of the repository name the support address and no other address', () => {
