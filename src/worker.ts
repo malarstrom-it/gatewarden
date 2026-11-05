@@ -72,9 +72,12 @@ async function adapterFor(config: Config): Promise<ProxyAdapter> {
 }
 
 // The daemon names the configuration file it resolved, so that the worker
-// reads the same file as the daemon.
+// reads the same file as the daemon. The name of another installation in
+// the environment of the worker does not decide where the worker keeps its
+// state: the worker belongs to the daemon that supervises it, and the
+// daemon belongs to the file it was given.
 const configPath = configPathFromArgv(process.argv);
-const config = loadConfig(configPath ? { configPath } : {});
+const config = loadConfig(configPath ? { configPath, ignoreHome: true } : {});
 const adapter = await adapterFor(config);
 
 runWorker(role as WorkerRole, adapter, config).catch((error: unknown) => {
