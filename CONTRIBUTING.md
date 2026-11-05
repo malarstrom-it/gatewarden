@@ -58,6 +58,9 @@ npm run test:e2e    # the end-to-end suite; needs a proxy
 **`npm test` takes a few minutes** — around three to five, depending on the
 machine. It starts daemons, writes to temporary directories and talks to real
 ports. Let it run.
+**`npm test` leaves no daemon behind.** Every test file stops the daemons it
+started when the file is over, so the suite keeps neither a process nor a port
+on the machine it runs on.
 
 **`npm run build` empties `dist/` before it writes it** — it runs
 `npm run clean` first. Never run `npm run build` while the tests are
