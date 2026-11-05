@@ -37,9 +37,10 @@ import { isolate } from './helpers/isolation.ts';
  * @param dir The directory of the installation.
  * @param registryPort The port of the registry.
  * @param relayPort The port of the relay.
+ * @param stateDir The state directory the configuration names, or nothing.
  * @returns The path of the configuration file.
  */
-function writeConfig(dir: string, registryPort: number, relayPort: number): string {
+function writeConfig(dir: string, registryPort: number, relayPort: number, stateDir = dir): string {
   const configPath = path.join(dir, 'config.json');
   const config: Config = {
     proxy: 'traefik',
@@ -57,7 +58,7 @@ function writeConfig(dir: string, registryPort: number, relayPort: number): stri
     allowedCidrs: ['127.0.0.1/32'],
     registryAllowedCidrs: [],
     secret: '',
-    stateDir: dir,
+    stateDir,
     documentFormat: 'yaml',
     logMaxBytes: 1024 * 1024,
     logKeep: 2,
@@ -114,11 +115,12 @@ test('the cleanup finds the daemon whose pidfile lies in the directory GATEWARDE
   const home = path.join(root, 'home');
   fs.mkdirSync(dir, { recursive: true });
   fs.mkdirSync(home, { recursive: true });
-  const configPath = writeConfig(dir, await freePort(), await freePort());
+  const configPath = writeConfig(dir, await freePort(), await freePort(), '');
   // The daemon is started by hand, with the name of another
-  // installation in its environment: the name wins over every other
-  // name, so the daemon writes its pidfile in the directory the name
-  // points at, and not in the state directory of the configuration file.
+  // installation in its environment: the configuration names no state
+  // directory, and the name decides where the state lives, so the daemon
+  // writes its pidfile in the directory the name points at, and not in
+  // the state directory of the configuration file.
   const daemon = spawn(process.execPath, [DAEMON, '--config', configPath], {
     env: {
       PATH: process.env['PATH'] ?? '',
