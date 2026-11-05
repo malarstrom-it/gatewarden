@@ -53,10 +53,15 @@ file that is already there stays as it is.
 The install script does nothing in these cases: npm runs with
 `npm_config_ignore_scripts=true`, the install runs as root, `CI` is set, or
 `GATEWARDEN_AUTOSTART=0` is set. Under npm 12 the script is blocked until the
-dependency is approved. The commands that approve it are in
-[docs/install-scripts.md](docs/install-scripts.md). The daemon starts itself the
-first time a command needs it, and this command brings it back after a reboot:
-`gatewarden install-service`
+dependency is approved. The commands that approve it came with npm 11.18, and
+they need a project: they read and write the `allowScripts` field in the
+`package.json` of the project, so they cannot approve the global install
+above. A global install is approved in another way, with
+`npm install -g --allow-scripts=@malarstrom/gatewarden` or with
+`npm config set allow-scripts='@malarstrom/gatewarden' --location=user`. The
+commands are in [docs/install-scripts.md](docs/install-scripts.md). The daemon
+starts itself the first time a command needs it, and this command brings it
+back after a reboot: `gatewarden install-service`
 
 ## What you need
 

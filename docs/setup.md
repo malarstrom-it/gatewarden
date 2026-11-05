@@ -72,11 +72,27 @@ npm install-scripts ls
 npm install-scripts approve @malarstrom/gatewarden
 ```
 
-Nothing breaks if you do not approve them: the wizard writes the same
+These two commands work on a project: they read and write the `allowScripts`
+field in the `package.json` of the project. The install above is a global one,
+and a global install has no `package.json` of its own, so these two commands
+cannot approve it — with `-g` they stop with `EGLOBAL`. A global install is
+approved in one of two other ways:
+
+```bash
+npm install -g --allow-scripts=@malarstrom/gatewarden
+npm config set allow-scripts='@malarstrom/gatewarden' --location=user
+```
+
+The first one approves the scripts for that one install, the second one for
+every global install from now on.
+
+Nothing breaks if you do not approve the scripts: the wizard writes the same
 configuration file, and the commands work without one.
 
-What the scripts do, how to deny them, and what npm 11.16 and npm 11.17 call
-the same commands: [`docs/install-scripts.md`](install-scripts.md).
+The block above shows two of the three commands of the set: `ls` and
+`approve`. The third one, `deny`, is in
+[`docs/install-scripts.md`](install-scripts.md), together with what the scripts
+do and what npm 11.16 and npm 11.17 call the same commands.
 
 The same package is a pi package, and pi installs it like any other:
 
