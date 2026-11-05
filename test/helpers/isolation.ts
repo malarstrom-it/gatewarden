@@ -21,6 +21,7 @@
  */
 
 import path from 'node:path';
+import { registerSuiteDirectory, SUITE_VARIABLE, suiteMarker } from './daemons.ts';
 
 /**
  * The variables that say where an installation keeps its files.
@@ -105,12 +106,22 @@ export function isolate(dir: string, options: IsolationOptions = {}): Isolation 
     // the daemon: it reads them when the new ones are not there.
     TRAEFIK_DEV_CONFIG: configPath,
     TRAEFIK_DEV_STATE_DIR: stateDir,
+    // The marker of the suite: the daemon that the test starts carries
+    // it, and the cleanup of the suite finds the daemon by it.
+    [SUITE_VARIABLE]: suiteMarker(),
     ...(options.env ?? {}),
   };
   // A variable that is removed is not in the environment at all.
   for (const [name, value] of Object.entries(env)) {
     if (value === undefined) delete env[name];
   }
+  // The installation of the test is known to the cleanup of the suite:
+  // the daemon of the test is found by the directories it runs in, also
+  // when it writes its pidfile somewhere else.
+  registerSuiteDirectory(dir);
+  registerSuiteDirectory(stateDir);
+  registerSuiteDirectory(options.home ?? dir);
+  if (options.configPath) registerSuiteDirectory(path.dirname(options.configPath));
   return { env, run: (action) => withEnv(env, action) };
 }
 

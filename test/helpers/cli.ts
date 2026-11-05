@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { loadConfig, listenHost } from '../../src/core/config.ts';
 import { isHealthy } from '../../src/core/daemonControl.ts';
+import { registerSuiteDirectory, SUITE_VARIABLE, suiteMarker } from './daemons.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -135,8 +136,15 @@ export async function makeCliFixture(options: FixtureOptions = {}): Promise<CliF
     XDG_STATE_HOME: path.join(dir, '.local', 'state'),
     XDG_CACHE_HOME: path.join(dir, '.cache'),
     GATEWARDEN_STATE_DIR: dir,
+    // The marker of the suite: the daemon that the fixture starts
+    // carries it, and the cleanup of the suite finds the daemon by it.
+    [SUITE_VARIABLE]: suiteMarker(),
     ...(options.env ?? {}),
   };
+  // The installation of the fixture is known to the cleanup of the
+  // suite: the daemon of the fixture is found by the directory it runs
+  // in, also when it writes its pidfile somewhere else.
+  registerSuiteDirectory(dir);
 
   const exec = (args: string[]) =>
     execFileAsync(process.execPath, [CLI, ...args, '--config', configPath, '--state-dir', dir], { env });

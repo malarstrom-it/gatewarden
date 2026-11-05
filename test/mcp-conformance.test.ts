@@ -22,6 +22,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { isPortListening } from '../src/core/util/net.ts';
 import { freePort } from './helpers/cli.ts';
+import { registerSuiteDirectory, SUITE_VARIABLE, suiteMarker } from './helpers/daemons.ts';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -87,7 +88,14 @@ async function makeMcpFixture(
     XDG_CONFIG_HOME: path.join(dir, '.config'),
     XDG_STATE_HOME: path.join(dir, '.local', 'state'),
     XDG_CACHE_HOME: path.join(dir, '.cache'),
+    // The marker of the suite: the daemon that the tools start carries
+    // it, and the cleanup of the suite finds the daemon by it.
+    [SUITE_VARIABLE]: suiteMarker(),
   };
+  // The installation of the fixture is known to the cleanup of the
+  // suite: the daemon of the fixture is found by the directory it runs
+  // in, also when it writes its pidfile somewhere else.
+  registerSuiteDirectory(dir);
 
   const transport = new StdioClientTransport({
     command: process.execPath,
