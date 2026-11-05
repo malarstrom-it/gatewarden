@@ -1274,6 +1274,101 @@ async function installationValues(opts: InstallationOptions = {}): Promise<Insta
 }
 
 /**
+ * An installation of the rule's own.
+ *
+ * The rule of the values of the installation reads the values of the
+ * installation it runs on. A machine without an installation has no
+ * values at all, and the rule reads nothing there: there is nothing of
+ * an installation to keep out of the package, and a rule that catches
+ * what is not there catches words.
+ *
+ * A rule that cannot fail guards nothing, and the proof that the rule
+ * fires cannot wait for an installation to exist on the machine that
+ * runs it: the runner of the build has none, and a contributor without
+ * the package installed has none, and the guard of the package has to be
+ * green on them too. The rule is therefore given an installation of its
+ * own — a configuration file of its own, in a directory of its own, with
+ * a route store of its own — and the values of that installation are
+ * planted in the files the rule reads.
+ *
+ * The values of the probe installation are the values of the standards:
+ * a zone under a domain that belongs to nobody, a host name that is an
+ * ordinary word, an address of the range of RFC 5737. They name no
+ * installation of this project and no machine of it, and they may be
+ * written down here in a public repository.
+ */
+interface ProbeInstallation {
+  /** The directory of the probe installation. */
+  home: string;
+  /** The environment that points at the probe installation. */
+  env: NodeJS.ProcessEnv;
+  /** The values of the probe installation. */
+  values: () => Promise<InstallationValue[]>;
+  /** The zone of the probe installation. */
+  zone: string;
+  /** The host name of the probe installation. */
+  host: string;
+  /** Remove the probe installation and everything in it. */
+  remove: () => void;
+}
+
+/**
+ * Build an installation of the rule's own.
+ *
+ * The installation lives in a directory of its own and is removed when
+ * the proof is done: nothing of it reaches the disk of the repository.
+ */
+function probeInstallation(): ProbeInstallation {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-probe-installation-'));
+  const configFile = path.join(home, 'config.json');
+  const stateDir = path.join(home, 'state');
+  const zone = 'probe.zone';
+  const host = 'probe-host';
+
+  fs.mkdirSync(stateDir, { recursive: true });
+  fs.writeFileSync(
+    configFile,
+    JSON.stringify({ zone, advertisedHost: host, advertisedIp: '192.0.2.13', stateDir }),
+  );
+  fs.writeFileSync(
+    path.join(stateDir, 'routes.json'),
+    JSON.stringify({
+      version: 1,
+      registrations: [
+        {
+          id: 'probe-app-main',
+          project: 'Probe App',
+          branch: 'main',
+          projectSlug: 'probeapp',
+          branchSlug: 'main',
+          fqdn: 'probeapp.main.probe.zone',
+          zone,
+          devPort: 3000,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+    }),
+  );
+
+  // The home of the installation wins over the configuration file, and
+  // the machine that runs the test may name one: the environment of the
+  // probe installation names the configuration file and nothing else.
+  const env: NodeJS.ProcessEnv = { ...process.env, GATEWARDEN_CONFIG: configFile };
+  delete env['GATEWARDEN_HOME'];
+  delete env['DEV_GATEWAY_HOME'];
+
+  return {
+    home,
+    env,
+    values: () => installationValues({ env }),
+    zone,
+    host,
+    remove: () => fs.rmSync(home, { recursive: true, force: true }),
+  };
+}
+
+/**
  * The files of the package that use each value of the installation as a
  * word of the package (S105).
  *
@@ -2472,6 +2567,30 @@ describe('the published package', () => {
   };
 
   /**
+   * A copy of the tarball with a line planted in each of its files.
+   *
+   * A rule that cannot fail guards nothing, so the rule is run against a
+   * tarball that has been broken on purpose: a copy of the tarball with
+   * a line planted in one of its files. The copy is a copy — the tarball
+   * of the package is not written to, and the copy is removed when the
+   * rule has been run over it.
+   */
+  const plantInTarball = (plantings: Array<{ file: string; line: string }>): string => {
+    const copy = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-tarball-probe-'));
+    try {
+      fs.cpSync(packageDir, copy, { recursive: true });
+      for (const planting of plantings) {
+        fs.appendFileSync(path.join(copy, planting.file), `\n${planting.line}\n`);
+      }
+    } catch (error) {
+      fs.rmSync(copy, { recursive: true, force: true });
+      throw error;
+    }
+
+    return copy;
+  };
+
+  /**
    * The text of a file of the repository with a line planted in it.
    *
    * The file of the repository is not written to: its text is read and
@@ -2596,7 +2715,7 @@ describe('the published package', () => {
     assert.ok(support > 0, 'the published package names no support address');
   });
 
-  test('the published package holds no value of the installation', () => {
+  test('the published package holds no value of the installation', async () => {
     // The tarball is what every user of the package downloads, and it is
     // the part of the repository that was read by nobody but the
     // maintainer until S107. A zone of the installation in the readme, in
@@ -2627,11 +2746,84 @@ describe('the published package', () => {
         hits.join('\n'),
     );
 
-    // The rule has to fire: a tarball that names a value of the
-    // installation is caught, and the message leaves the value out.
-    let caught = false;
+    // The rule has to fire, and it has to fire on every machine.
+    //
+    // The values of the installation are read from the installation
+    // itself, and a machine without an installation has none: there is
+    // nothing of an installation to keep out of the package, and the
+    // rule reads nothing there. A proof that waits for an installation
+    // to exist is a proof that runs on some machines and not on others,
+    // and the guard of the package is red on the machines that have no
+    // installation — the runner of the build, a contributor without the
+    // package installed.
+    //
+    // The rule is therefore given an installation of its own: a probe
+    // installation, with a configuration file of its own, in a directory
+    // of its own, with a route store of its own. The values of that
+    // installation are planted in the tarball — the zone in the readme
+    // and the host name in the documentation — and the rule has to
+    // catch them there. A tarball that names them is caught, and the
+    // message of the trap names the file and the line and not the
+    // value.
+    const probe = probeInstallation();
 
+    try {
+      const values = await probe.values();
+      const copy = plantInTarball([
+        { file: 'README.md', line: `The zone of the installation is ${probe.zone}.` },
+        { file: 'docs/setup.md', line: `The machine of the installation is ${probe.host}:45002.` },
+      ]);
+
+      try {
+        const planted: string[] = [];
+
+        for (const file of filesUnder(copy)) {
+          const text = fs.readFileSync(path.join(copy, file), 'utf8');
+          planted.push(...installationValueTraps(file, text, values));
+        }
+
+        // The zone of the installation is caught in the readme and the
+        // host name of the installation in the documentation: a tarball
+        // that names them is a leak, and the rule of the leak is the
+        // rule that is used over the tarball.
+        assert.match(
+          planted.find((hit) => hit.startsWith('README.md:') && hit.endsWith('the DNS zone of the installation')) ?? '',
+          /^README\.md:\d+: the DNS zone of the installation$/,
+          'the rule did not catch the zone of the installation in the readme of the tarball',
+        );
+        assert.match(
+          planted.find(
+            (hit) => hit.startsWith('docs/setup.md:') && hit.endsWith('the host name of the installation'),
+          ) ?? '',
+          /^docs\/setup\.md:\d+: the host name of the installation$/,
+          'the rule did not catch the host name of the installation in the documentation of the tarball',
+        );
+
+        // The message of the rule names the file and the line and not
+        // the value: a log of a red run must not publish the value it
+        // caught.
+        for (const hit of planted) {
+          assert.ok(
+            !hit.includes(probe.zone) && !hit.includes(probe.host),
+            'the message of the rule wrote out the value of the installation',
+          );
+        }
+      } finally {
+        fs.rmSync(copy, { recursive: true, force: true });
+      }
+    } finally {
+      probe.remove();
+    }
+
+    // The values of the installation of the machine that runs the test
+    // are planted as well, when the machine has an installation: the
+    // rule has to catch those too, and the message of the trap has to
+    // leave them out.
     for (const entry of INSTALLATION_VALUES) {
+      // A value the rule leaves alone in that file is a value the rule
+      // does not look for there.
+      if (!ruleReadsValue(entry, 'README.md')) continue;
+
       // The name of a machine is caught where it names a machine, and not
       // in the prose of a sentence.
       const line =
@@ -2639,17 +2831,16 @@ describe('the published package', () => {
           ? `The machine of the installation is ${entry.value}:45002.`
           : `The installation of the package is ${entry.value}.`;
       const plantedHits = installationValueTraps('README.md', plant('README.md', line), INSTALLATION_VALUES);
-      if (plantedHits.length === 0) continue;
 
-      caught = true;
+      assert.ok(
+        plantedHits.length > 0,
+        `the rule did not catch a value of the installation in the readme of the tarball: ${entry.what}`,
+      );
       assert.ok(
         plantedHits.every((hit) => !hit.includes(entry.value)),
         'the message of the rule wrote out the value of the installation',
       );
-      break;
     }
-
-    assert.ok(caught, 'the rule caught no value of the installation in the tarball');
   });
 
   test('the documents of the repository name the support address and no other address', () => {
@@ -3262,47 +3453,14 @@ describe('the published package', () => {
     // values of that installation are values of the standards: they name
     // nothing of this installation, and they may be written here in a
     // public repository.
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-installation-'));
+    //
+    // The installation of the probe is the same one the rule over the
+    // tarball is proved with (S107): one installation of the rule's own,
+    // used by both proofs.
+    const probe = probeInstallation();
 
     try {
-      const configFile = path.join(home, 'config.json');
-      const stateDir = path.join(home, 'state');
-      fs.mkdirSync(stateDir, { recursive: true });
-      fs.writeFileSync(
-        configFile,
-        JSON.stringify({
-          zone: 'probe.zone',
-          advertisedHost: 'probe-host',
-          advertisedIp: '192.0.2.13',
-          stateDir,
-        }),
-      );
-      fs.writeFileSync(
-        path.join(stateDir, 'routes.json'),
-        JSON.stringify({
-          version: 1,
-          registrations: [
-            {
-              id: 'probe-app-main',
-              project: 'Probe App',
-              branch: 'main',
-              projectSlug: 'probeapp',
-              branchSlug: 'main',
-              fqdn: 'probeapp.main.probe.zone',
-              zone: 'probe.zone',
-              devPort: 3000,
-              createdAt: '2026-01-01T00:00:00.000Z',
-              updatedAt: '2026-01-01T00:00:00.000Z',
-            },
-          ],
-        }),
-      );
-
-      const env: NodeJS.ProcessEnv = { ...process.env, GATEWARDEN_CONFIG: configFile };
-      delete env['GATEWARDEN_HOME'];
-      delete env['DEV_GATEWAY_HOME'];
-
-      const values = await installationValues({ env });
+      const values = await probe.values();
 
       const zone = values.find((entry) => entry.what === 'the DNS zone of the installation');
       assert.ok(zone !== undefined, 'the rule did not read the zone of the installation');
@@ -3373,7 +3531,10 @@ describe('the published package', () => {
 
       // A machine without an installation has no values of an
       // installation, and the rule reads nothing there.
-      const without: NodeJS.ProcessEnv = { ...process.env, GATEWARDEN_CONFIG: path.join(home, 'no-such-file.json') };
+      const without: NodeJS.ProcessEnv = {
+        ...process.env,
+        GATEWARDEN_CONFIG: path.join(probe.home, 'no-such-file.json'),
+      };
       delete without['GATEWARDEN_HOME'];
       delete without['DEV_GATEWAY_HOME'];
       assert.deepEqual(
@@ -3382,7 +3543,7 @@ describe('the published package', () => {
         'the rule read values without an installation',
       );
     } finally {
-      fs.rmSync(home, { recursive: true, force: true });
+      probe.remove();
     }
   });
 });
