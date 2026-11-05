@@ -18,12 +18,13 @@ import path from 'node:path';
 import test from 'node:test';
 import { PassThrough } from 'node:stream';
 import { DEFAULT_CONFIG } from '../src/core/config.ts';
-import { cidrOf, proxyAddresses, runSetup } from '../src/cli/setup.ts';
+import { cidrOf, proxyAddresses, runSetup, type SetupOptions } from '../src/cli/setup.ts';
 import { createRelayServer } from '../src/core/relay.ts';
 import { DISPATCH_HEADER } from '../src/core/protocol.ts';
 import { RegistrationStore } from '../src/core/state.ts';
 import type { Config } from '../src/core/types.ts';
 import { freePort, makeCliFixture } from './helpers/cli.ts';
+import { isolate } from './helpers/isolation.ts';
 import { makeCertificate } from './helpers/cert.ts';
 import { close, listen } from './helpers/fixtures.ts';
 import { FakeTraefik, type FakeRouter, type FakeService } from './helpers/proxy.ts';
@@ -56,6 +57,18 @@ interface SetupReport {
   };
   daemon: { running: boolean; pid: number | null; restarted?: boolean };
   nextSteps: string[];
+}
+
+/**
+ * The wizard runs in the throwaway directory and in nothing else.
+ *
+ * The wizard starts the daemon of the installation it writes, and the
+ * daemon inherits the environment of the process: the environment of the
+ * machine says where the installation of the machine is, and the daemon
+ * of a test must not read it nor write to it.
+ */
+function runWizard(dir: string, options: SetupOptions): ReturnType<typeof runSetup> {
+  return isolate(dir).run(() => runSetup(options));
 }
 
 /**
@@ -308,7 +321,7 @@ test('the wizard asks for the values it cannot derive', async (t) => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  const report = await runSetup({
+  const report = await runWizard(dir, {
     config: {
       ...DEFAULT_CONFIG,
       registryPort,
@@ -505,7 +518,7 @@ test('the wizard keeps the answers that arrive before their question', async (t)
   const output = new PassThrough();
   input.write('pasted.local\nweb,websecure\nmyca\nfile\n10.0.0.0/8\nmyhost\n');
 
-  const report = await runSetup({
+  const report = await runWizard(dir, {
     config: {
       ...DEFAULT_CONFIG,
       registryPort,
@@ -966,7 +979,7 @@ test('the trust list keeps what the wizard offered when the user answers with a 
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  await runSetup({
+  await runWizard(dir, {
     config: {
       ...DEFAULT_CONFIG,
       registryPort,
@@ -1338,7 +1351,7 @@ test('a new installation does not get the zone of another project', async (t) =>
   // The built-in defaults are the ones of another project, and they must
   // not end up in the file of this one.
   const configPath = path.join(dir, 'config.json');
-  const report = await runSetup({
+  const report = await runWizard(dir, {
     config: {
       ...DEFAULT_CONFIG,
       registryPort,
@@ -1383,7 +1396,7 @@ test('a question nobody answers is a value nobody confirmed', async (t) => {
   // are not written to the file of a new installation.
   const input = new PassThrough();
   const output = new PassThrough();
-  const report = await runSetup({
+  const report = await runWizard(dir, {
     config: {
       ...DEFAULT_CONFIG,
       registryPort,
