@@ -10,6 +10,8 @@
  *     can load;
  *   - the test script of the manifest runs in the installation, and it
  *     runs the test files of a checkout (S99);
+ *   - the end-to-end commands of the manifest run in the installation,
+ *     and they run the tools of a checkout (S104);
  *   - a launcher that finds no build speaks about the installation and
  *     not about a checkout (S55);
  *   - the message about a missing build is one text that holds for
@@ -510,6 +512,22 @@ describe('the published package', () => {
       /test\/\*\.test\.ts/,
       `the test command of the manifest names no pattern of test files ("${MANIFEST.scripts['test']}")`,
     );
+
+    // The end-to-end commands of the manifest run in an installation
+    // too (S104): the package ships no tools of the end-to-end
+    // environment, so the commands find the tools themselves and say
+    // that there is nothing to run when there is nothing to run. They
+    // name the tools, so that the guard of the published identifiers
+    // finds them (see `test/published-identifiers.test.ts`).
+    for (const command of ['test:e2e', 'test:e2e:stop']) {
+      const script = MANIFEST.scripts[command];
+      assert.ok(script, `the manifest has no ${command} script`);
+      assert.match(
+        script,
+        /tools\/testenv\//,
+        `the ${command} command of the manifest names no tools of the end-to-end environment ("${script}")`,
+      );
+    }
   });
 
   test('the test command of the manifest runs the test files of a checkout', async (t) => {
@@ -572,6 +590,86 @@ describe('the published package', () => {
       result.output,
       /no test files/,
       'the test script of the installed package does not say that the package ships no test files',
+    );
+  });
+
+  test('the end-to-end commands of the published package run in an installation', async () => {
+    // S104: the package ships no tools of the end-to-end environment,
+    // and the commands of the manifest have to run in the installation
+    // anyway — a reader of the package runs `npm run test:e2e` and gets
+    // an error about a file that is not there when the command goes
+    // looking for one.
+    //
+    // The installation is the package as it is unpacked in the
+    // `node_modules` of a project: the compiled output, the launchers
+    // and the scripts of the installation, and no tools of the end-to-end
+    // environment at all. There is nothing to run there — no Traefik, no
+    // ports, no state — and the command has to say so instead of looking
+    // for a file that the reader does not have.
+    for (const command of ['test:e2e', 'test:e2e:stop']) {
+      const result = await runNpm(['run', command], packageDir);
+
+      assert.equal(result.code, 0, `the ${command} command of the installed package failed:\n${result.output}`);
+      assert.doesNotMatch(
+        result.output,
+        /Could not find/,
+        `the ${command} command of the installed package looks for a file that the package does not ship`,
+      );
+
+      // npm writes the command it runs above what the command writes.
+      // The lines of the command are what it said itself.
+      const said = result.output
+        .split('\n')
+        .filter((line) => !line.startsWith('>'))
+        .join('\n');
+      assert.match(
+        said,
+        /need a checkout/,
+        `the ${command} command of the installed package does not say that the suite needs a checkout:\n${result.output}`,
+      );
+    }
+  });
+
+  test('the end-to-end command of the manifest runs the tools of a checkout', async (t) => {
+    // S104: the command of the manifest is the command of the checkout:
+    // it finds the tools of the end-to-end environment and runs them.
+    // The test runs the command in a directory that looks like a
+    // checkout — the manifest of the package and one tool of the
+    // end-to-end environment — and the tool has to run.
+    //
+    // The tool of the test is not the tool of the repository: it writes
+    // one line and stops. The real tool brings up a proxy, and a test
+    // that brings up a proxy is not a test of the packaging.
+    const checkout = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-e2e-command-'));
+    t.after(() => fs.rmSync(checkout, { recursive: true, force: true }));
+
+    fs.writeFileSync(
+      path.join(checkout, 'package.json'),
+      `${JSON.stringify(
+        {
+          name: 'checkout',
+          version: '0.0.0',
+          private: true,
+          type: 'module',
+          scripts: { 'test:e2e': MANIFEST.scripts['test:e2e'] },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    fs.mkdirSync(path.join(checkout, 'tools', 'testenv'), { recursive: true });
+    fs.writeFileSync(
+      path.join(checkout, 'tools', 'testenv', 'run.ts'),
+      "console.log('the tools of the end-to-end environment ran');\n",
+    );
+
+    const result = await runNpm(['run', 'test:e2e'], checkout);
+
+    assert.equal(result.code, 0, `the end-to-end command of the manifest failed:\n${result.output}`);
+    assert.match(
+      result.output,
+      /the tools of the end-to-end environment ran/,
+      'the end-to-end command of the manifest did not run the tools of the checkout',
     );
   });
 
