@@ -12,12 +12,13 @@
 # The steps are separate jobs on purpose. GitHub reports one check per job,
 # so a failing run says which step failed and not only that something did.
 #
-# The tests are one job per test file. Two of the test files need the
-# compiled output of the repository: one builds it and reads it, the other
-# packs the package, and the pack builds it again. The build deletes
-# `dist/` before it writes it, so the two must not run at the same time.
-# One job per file gives every job its own copy of the repository, and it
-# makes a failing run name the file that failed.
+# The tests are one job per test file. Three of the test files need the
+# compiled output of the repository: one builds it and reads it, one packs
+# the package, and the pack builds it again, and one packs the package and
+# imports every module of the build. The build deletes `dist/` before it
+# writes it, so the three must not run at the same time. One job per file
+# gives every job its own copy of the repository, and it makes a failing
+# run name the file that failed.
 #
 # The package's own install script writes the configuration file and starts
 # no daemon, so no daemon runs on the runner.
@@ -120,6 +121,7 @@ jobs:
           - registry.test.ts
           - relay.test.ts
           - service.test.ts
+          - shipped-code.test.ts
           - slug.test.ts
           - source-paths.test.ts
           - state.test.ts
