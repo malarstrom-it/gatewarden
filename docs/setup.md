@@ -401,9 +401,9 @@ gatewarden unregister --project probe --branch main
 The doctor reads the installation and writes one line per check:
 
 ```text
-ok        config file         /tmp/hp-1000/e3184e/API-79/home/.config/gatewarden/config.json
-ok        state directory     /tmp/hp-1000/e3184e/API-79/home/.local/state/gatewarden
-warn      daemon              not running (pidfile /tmp/hp-1000/e3184e/API-79/home/.local/state/gatewarden/daemon.pid): it starts with the first route, or run "gatewarden start"
+ok        config file         /home/user/.config/gatewarden/config.json
+ok        state directory     /home/user/.local/state/gatewarden
+warn      daemon              not running (pidfile /home/user/.local/state/gatewarden/daemon.pid): it starts with the first route, or run "gatewarden start"
 warn      dns zone            not configured: the host names of the routes are built from it (run "gatewarden setup", or write it in the configuration file)
 warn      shared middlewares  the shared middlewares are on, but no provider owns them (run "gatewarden setup")
 warn      registry port       :::55002 (nothing listens there: the daemon has not started it)
@@ -424,8 +424,9 @@ nothing is broken (8 checks are not in place here: daemon, dns zone, shared midd
 This transcript is the output of `gatewarden doctor` in a clean installation
 — a configuration file with nothing in it but the shared middlewares on and
 ports of its own, a state directory of its own, no daemon — on a machine
-whose IPv6 network is in the documentation range of RFC 3849; the paths, the
-ports and the addresses are the ones of that installation.
+whose IPv6 network is in the documentation range of RFC 3849; the ports and
+the addresses are the ones of that installation, and the paths are the ones
+of your own home.
 
 The columns are the status, the name of the check and what it saw. A check
 that does not apply to the installation is `skipped`.
@@ -445,8 +446,8 @@ that does not apply to the installation is `skipped`.
 | `trust list` | the trust list (`allowedCidrs`) — the addresses that may talk to the gateway | the list holds an address; the detail prints the whole list | the list is empty: no address may talk to the gateway — or the configuration file holds nothing, and the only addresses that may talk to the gateway are the ones this machine adds | — |
 | `registry list` | the trust list of the registry (`registryAllowedCidrs`) — the addresses that may read the configuration document | the detail prints the whole list; an empty list is not a warning: the registry then serves the document to the same addresses as the relay | — | — |
 | `proxy address` | the addresses the host of the proxy's API resolves to — the addresses the proxy connects from are usually the same; when the doctor does not know where the proxy is, the check is skipped | the doctor resolved the host of the proxy's API, and the trust list covers the addresses it found | the trust list does not cover the addresses of the host of the proxy's API: the gateway answers them a `403` — or the list is empty, or holds the loopback and nothing else | — |
-| `legacy layout` | the old directory `~/.traefik-dev/` | — | it is still there: `gatewarden migrate` writes the configuration and the route store into the new layout and leaves the directory, so the warning stays until the directory is removed by hand | — |
-| `old name layout` | the directories of the name the package had before the rename (`~/.config/dev-gateway/` and the state directory of the same name) | — | it is still there: `gatewarden migrate` writes the configuration and the route store into the new layout and leaves the directories, so the warning stays until they are removed by hand | — |
+| `legacy layout` | the old directory `~/.traefik-dev/` | everything it held came over: the directory can be left in place or removed by you | something did not come over: the detail names it, and the directory must not be removed: it holds what did not come over | — |
+| `old name layout` | the directories of the name the package had before the rename (`~/.config/dev-gateway/` and the state directory of the same name) | everything they held came over: the directories can be left in place or removed by you | something did not come over: the detail names it, and the directories must not be removed: they hold what did not come over | — |
 | `old service` | the unit of the name the package had before the rename (`dev-gateway.service`, the old launchd label) | — | it is still there: it runs a launcher that does not exist any more — `gatewarden install-service` writes the new one | — |
 | `service` | the unit of the platform | it is installed | it is not installed: `gatewarden install-service` makes the daemon survive a reboot | — |
 
