@@ -115,14 +115,16 @@ npm warn install-scripts Run `npm install-scripts ls` to review, or `npm install
 
 ## How to review the scripts
 
-These commands work in a project. They read and write the `allowScripts` field
-in the `package.json` of the project.
+These commands need a project: they read and write the `allowScripts` field in
+the `package.json` of the project, and with `-g` they stop with `EGLOBAL`.
 
 ```bash
 npm install-scripts ls                                  # list, read-only
 npm install-scripts approve @malarstrom/gatewarden      # write the approval
 npm install-scripts deny @malarstrom/gatewarden         # write the denial
 ```
+
+`docs/setup.md` shows `ls` and `approve`. `deny` is only on this page.
 
 - `npm install-scripts ls` prints the same list as the warning, and changes
   nothing.
@@ -136,8 +138,6 @@ npm install-scripts deny @malarstrom/gatewarden         # write the denial
 The key in the `allowScripts` field follows where the dependency comes from. A
 dependency from the registry gets a pinned `@malarstrom/gatewarden@0.1.1`. A
 dependency from a tarball gets the path of the tarball.
-
-These commands need a project. With `-g` they stop with `EGLOBAL`.
 
 The command arrived in npm 11.18. npm 11.16 and 11.17 have the same commands
 under their own names: `npm approve-scripts --allow-scripts-pending` reads the
