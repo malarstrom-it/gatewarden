@@ -24,8 +24,8 @@ in the board's own files, not in the repository.
 - `library/` — the material the threads produced: `t-0002` saved the Traefik configuration as
   json/yaml, `t-0007` saved the "daylight" world and the candidates.
 - `routines/pr-followup.md` — the routine for following up a PR.
-- `inbox/`, `scratch/`, `uploads/`, `.state/` — the own drift of herdr-projects (inbox, locks,
-  tickers, coordinator-state). Not material.
+- `inbox/`, `scratch/`, `uploads/`, `.state/` — the own operation of herdr-projects
+  (inbox, locks, tickers, coordinator-state). Not material.
 - `memory/traefik-namespace.md` — the confirmed facts about the installation (the DNS namespace,
   the FQDN template, the routing model, the container facts, the TLS rules) plus a chronological
   log of the index page and the decisions that followed. The file left the repository here: the
