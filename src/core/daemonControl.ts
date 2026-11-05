@@ -189,6 +189,49 @@ function readPidFile(pidFile: string): number | null {
 }
 
 /**
+ * The names that put everything of an installation in one directory.
+ *
+ * They are the two names of the same thing: `DEV_GATEWAY_HOME` is the
+ * name `GATEWARDEN_HOME` had before the rename.
+ */
+const HOME_VARIABLES = ['GATEWARDEN_HOME', 'DEV_GATEWAY_HOME'] as const;
+
+/**
+ * The environment the daemon is started with.
+ *
+ * The daemon must run with the configuration it was given, and not with
+ * the configuration of another installation. `GATEWARDEN_HOME` says
+ * that everything — the configuration, the state, the log and the cache
+ * — lives in one directory, and it wins over every other name. So it is
+ * taken away from the environment the child inherits: the daemon that
+ * is started with `--config` and with `GATEWARDEN_CONFIG` reads that
+ * configuration, and not the one of the installation the name points
+ * at.
+ *
+ * The other names are left as they are. The configuration file and the
+ * state directory travel with the child, under both their current and
+ * their old names.
+ */
+export function daemonEnv(
+  config: Config,
+  configPath: string,
+  baseEnv: NodeJS.ProcessEnv = process.env,
+): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...baseEnv };
+  for (const name of HOME_VARIABLES) {
+    delete env[name];
+  }
+  return {
+    ...env,
+    GATEWARDEN_CONFIG: configPath,
+    GATEWARDEN_STATE_DIR: config.stateDir,
+    // The old names are still read by the daemon, so they travel with it.
+    TRAEFIK_DEV_CONFIG: configPath,
+    TRAEFIK_DEV_STATE_DIR: config.stateDir,
+  };
+}
+
+/**
  * Make sure the daemon is running.
  *
  * Starts it detached when it is not, then waits for `/healthz`.
@@ -242,14 +285,7 @@ export async function ensureDaemon(
   const child = spawn(process.execPath, [DAEMON_PATH, '--config', configPath], {
     detached: true,
     stdio: ['ignore', out, out],
-    env: {
-      ...process.env,
-      GATEWARDEN_CONFIG: configPath,
-      GATEWARDEN_STATE_DIR: config.stateDir,
-      // The old names are still read by the daemon, so they travel with it.
-      TRAEFIK_DEV_CONFIG: configPath,
-      TRAEFIK_DEV_STATE_DIR: config.stateDir,
-    },
+    env: daemonEnv(config, configPath),
   });
   child.unref();
   fs.closeSync(out);
