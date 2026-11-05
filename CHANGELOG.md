@@ -84,6 +84,14 @@ names. Every release gets a section, newest first.
   a checkout itself now, and it says that there are none when there are
   none.
 
+- **The end-to-end commands of the manifest run in an installation.** The
+  published package ships no tools of the end-to-end environment, so
+  `npm run test:e2e` and `npm run test:e2e:stop` in it looked for a file
+  that the reader does not have and died with "Could not find". The commands
+  find the tools themselves now, the way the test command does: they run the
+  tools of a checkout, and they say that there is nothing to run when there
+  is nothing to run.
+
 - **The doctor does not say that the files of an old layout came over when
   they did not.** It counted a file of an old layout as migrated when the
   target file was there. It compares the content now: the routes of a route
