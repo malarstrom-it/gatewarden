@@ -104,6 +104,7 @@ jobs:
           - daemon.test.ts
           - docs.test.ts
           - document.test.ts
+          - english-code.test.ts
           - golden.test.ts
           - healthcheck.test.ts
           - install-scripts-doc.test.ts
