@@ -88,6 +88,13 @@ names. Every release gets a section, newest first.
   in the launchd agent on macOS, `Restart=on-failure` in the systemd unit on
   Linux.
 
+- **The documents of the repository are in English.** The repository is
+  public from now on, and every text in it is read by people who do not read
+  Swedish. The memory of the project, the index of the memory and one
+  quoted fragment of the specification said the other language; they say
+  English now. The file names, the paths and the names of the things they
+  point at are the same as they were.
+
 ### Fixed
 
 - **The CLI and the daemon open the same log file.** The log file was

@@ -1,41 +1,42 @@
-# Kontextpolicy (2026-10-24)
+# Context policy (2026-10-24)
 
-Pekare till den globala policyn: README.md i projektet `pi-setup` →
-avsnittet **"Kontextpolicy (2026-10-24)"**. Dit gäller:
+A pointer to the global policy: README.md in the project `pi-setup` →
+the section **"Kontextpolicy (2026-10-24)"** (the context policy of that project).
+There the following holds:
 
-- **pi komprimerar inte medvetet** (`compaction.enabled = false` i `~/.pi/agent/settings.json`,
-  eftersom context-mode ska hålla kontexten liten) — det finns ingen komprimering att falla
-  tillbaka på; överlämning till en ny session är mekanismen.
-- **under 40 %:** mät bara, ingen rapportering.
-- **från 40 %:** agenten **fortsätter den pågående uppgiften** så länge det går. Uppgiften
-  avbryts inte mitt i. Sammanfatta tidigt och skriv ut stora utskrifter med `ctx_execute`
-  i stället för att dra in dem rakt in i kontexten. Håll samtidigt överlämningen aktuell,
-  så att den kan skrivas när som helst.
-- **från 50 %:** samma regel — fortsätt den pågående uppgiften. Det finns ingen
-  komprimering att falla tillbaka på. Över 50 % är inte förbjudet, men ska aldrig bli en
-  överraskning: beläggningen redovisas i överlämningen när sessionen avslutas.
-- **Överlämningen** är sessionens **slutnot**. Den skrivs när sessionen avslutas — aldrig
-  mitt i en pågående uppgift — och ska räcka för att en ny agent kan fortsätta precis där
-  den gamla slutade. Den innehåller:
-  - vad som är gjort;
-  - vad som kvarstår;
-  - vilka filer som är rörda och vilken branch (och worktree) som håller arbetet,
-    inklusive ocommittat arbete;
-  - nästa konkreta steg;
-  - beläggningen: tokens / kontextfönster och procenten.
-- **Mätning:** sessions-JSONL i `~/.pi/agent/sessions/<cwd-kodad>/`, `usage.totalTokens` ÷
-  `contextWindow` (MiniMax: 1 000 000 i `models-store.json`; Codex: 500 000 i `models.json`).
-- **Mätverktyg i det här repot:** `memory/context-usage.mjs` (`PLAN = 40`, `THRESHOLD = 50`).
-  Det skriver ut samma regeltexter som policyfilen: att uppgiften fortsätter och att
-  överlämningen skrivs i slutnoten.
+- **pi does not compact on purpose** (`compaction.enabled = false` in `~/.pi/agent/settings.json`,
+  because context-mode shall keep the context small) — there is no compaction to fall back
+  to; the handover to a new session is the mechanism.
+- **under 40 %:** measure only, no reporting.
+- **from 40 %:** the agent **continues the ongoing task** for as long as it goes. The task is
+  not interrupted halfway. Summarise early and print large outputs with `ctx_execute`
+  instead of pulling them straight into the context. Keep the handover up to date
+  at the same time, so that it can be written at any moment.
+- **from 50 %:** the same rule — continue the ongoing task. There is no
+  compaction to fall back to. Over 50 % is not forbidden, but shall never become a
+  surprise: the usage is reported in the handover when the session ends.
+- **The handover** is the **closing note** of the session. It is written when the session ends — never
+  halfway through an ongoing task — and shall be enough for a new agent to continue exactly where
+  the old one stopped. It contains:
+  - what has been done;
+  - what remains;
+  - which files are touched and which branch (and worktree) holds the work,
+    including uncommitted work;
+  - the next concrete step;
+  - the usage: tokens / context window and the percentage.
+- **Measuring:** the session JSONL in `~/.pi/agent/sessions/<cwd-encoded>/`, `usage.totalTokens` ÷
+  `contextWindow` (MiniMax: 1 000 000 in `models-store.json`; Codex: 500 000 in `models.json`).
+- **Measuring tool in this repository:** `memory/context-usage.mjs` (`PLAN = 40`, `THRESHOLD = 50`).
+  It prints the same rule texts as the policy file, in English: that the task continues and that
+  the handover is written in the closing note.
 
-## Maskinläsbar sanningskalla (2026-10-25)
+## Machine-readable source of truth (2026-10-25)
 
-Trösklarna **40 % / 50 %** och regeltexterna ligger nu i pluginens policyfil:
+The thresholds **40 % / 50 %** and the rule texts now live in the policy file of the plugin:
 
     context-ledger-plugin/policy.json
 
-Extensionen laddas av **varje** pi-process (shim i `~/.pi/agent/extensions/context-ledger/`),
-så reglerna injiceras i agentens egen prompt i stället för att behöva läsas härifrån.
-Se context-ledger-plugin/docs/context-policy-injection.md för mekanismen och begränsningarna.
-Den här filen är pekare - sanningskällan är policy.json.
+The extension is loaded by **every** pi process (shim in `~/.pi/agent/extensions/context-ledger/`),
+so the rules are injected into the agent's own prompt instead of having to be read from here.
+See context-ledger-plugin/docs/context-policy-injection.md for the mechanism and the limitations.
+This file is a pointer - the source of truth is policy.json.

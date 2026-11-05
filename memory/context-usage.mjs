@@ -1,21 +1,21 @@
 #!/usr/bin/env node
-// Mäter kontextbeläggning för agent-sessioner i det här projektet.
-// Källa: pi sparar varje session som JSONL i ~/.pi/agent/sessions/<cwd-kodad>/,
-// varje assistant-rad bär usage.totalTokens; fönstret finns i ~/.pi/agent/models.json
-// och ~/.pi/agent/models-store.json.
-// Policy: README.md i projektet `pi-setup` -> "Kontextpolicy (2026-10-24)"
-// Användning: node memory/context-usage.mjs [projektfilter]
+// Measures the context usage of the agent sessions in this project.
+// Source: pi saves every session as JSONL in ~/.pi/agent/sessions/<cwd-encoded>/,
+// every assistant row carries usage.totalTokens; the window is in ~/.pi/agent/models.json
+// and ~/.pi/agent/models-store.json.
+// Policy: README.md in the project `pi-setup` -> "Kontextpolicy (2026-10-24)" (the context policy)
+// Usage: node memory/context-usage.mjs [project filter]
 
 import fs from 'node:fs';
 import path from 'node:path';
 
 const filter = process.argv[2] || 'traefik-api';
-// Två nivåer - se README.md i projektet `pi-setup` "Kontextpolicy (2026-10-24)"
-// och policy.json i pluginen `context-ledger-plugin` (sanningskällan).
-// PLAN = 40 %: agenten fortsätter den pågående uppgiften och förbereder överlämningen.
-// THRESHOLD = 50 %: riktmärke - samma regel, beläggningen redovisas i överlämningen.
-// Över 50 % är inte förbjudet, men ska aldrig bli en överraskning: överlämningen hålls
-// aktuell redan från 40 %.
+// Two levels - see README.md in the project `pi-setup` "Kontextpolicy (2026-10-24)" (the context policy)
+// and policy.json in the plugin `context-ledger-plugin` (the source of truth).
+// PLAN = 40 %: the agent continues the ongoing task and prepares the handover.
+// THRESHOLD = 50 %: the marker - the same rule, the usage is reported in the handover.
+// Over 50 % is not forbidden, but shall never become a surprise: the handover is kept
+// up to date already from 40 %.
 const PLAN = 40;
 const THRESHOLD = 50;
 
@@ -34,7 +34,7 @@ function windowsFrom(file) {
     };
     walk(json);
   } catch {
-    /* fil saknas -> hoppas över */
+    /* the file is missing -> skipped */
   }
   return out;
 }
@@ -77,7 +77,7 @@ for (const dir of fs.readdirSync(root)) {
       ? dir.replace(/^--home-[^.-]+-\.herdr-worktrees-/, '').replace(/--$/, '').replace(new RegExp(`^${filter}-`), '')
       : dir.includes('threads-')
         ? dir.replace(/^--home-[^.-]+-\.herdr-projects-.*-threads-/, '').replace(/--$/, '')
-        : 'koordinator (projektfolder)';
+        : 'coordinator (project folder)';
     rows.push({
       label,
       model: model || '?',
@@ -94,21 +94,21 @@ rows.sort((a, b) => (b.pct ?? -1) - (a.pct ?? -1));
 for (const r of rows) {
   const flag = r.pct === null ? ' ? ' : r.pct >= THRESHOLD ? '!! ' : r.pct >= PLAN ? '! ' : '   ';
   console.log(
-    `${flag}${String(r.pct ?? '?').padStart(4)}%  ${String(r.tokens).padStart(7)}/${String(r.win).padStart(7)}  ${r.model}  comp=${r.compactions}  aktiv ${r.ageMin} min  ${r.label}`,
+    `${flag}${String(r.pct ?? '?').padStart(4)}%  ${String(r.tokens).padStart(7)}/${String(r.win).padStart(7)}  ${r.model}  comp=${r.compactions}  active ${r.ageMin} min  ${r.label}`,
   );
 }
 
 const worst = rows.reduce((max, r) => (r.pct !== null && r.pct > (max?.pct ?? -1) ? r : max), null);
 if (!worst) {
-  console.log('inga sessioner hittade for', filter);
+  console.log('no sessions found for', filter);
 } else if (worst.pct >= THRESHOLD) {
   console.log(
-    `RIKTMARKE OVERSTIGET: ${worst.pct}% (${worst.label}). Fortsatt den pagaende uppgiften - avbryt den inte. Sammanfatta tidigt och skriv ut stora utskrifter med ctx_execute. Nar sessionen avslutas skriver du overlamningen i slutnoten - vad som ar gjort, vad som kvarstar, vilka filer och branch, nasta konkreta steg - och redovisar belaggningen i overlamningen (anvandning mot fonstret och procenten).`,
+    `MARKER EXCEEDED: ${worst.pct}% (${worst.label}). Continue the ongoing task - do not interrupt it. Summarise early and print large outputs with ctx_execute. When the session ends, write the handover in the closing note - what is done, what remains, which files and branch, the next concrete step - and report the usage in the handover (usage against the window and the percentage).`,
   );
 } else if (worst.pct >= PLAN) {
   console.log(
-    `FORBERED OVERLAMNING: ${worst.pct}% (${worst.label}). Fortsatt den pagaende uppgiften - avbryt den inte. Sammanfatta tidigt och skriv ut stora utskrifter med ctx_execute. Hall overlamningen aktuell: nar sessionen avslutas skriver du overlamningen i slutnoten - vad som ar gjort, vad som kvarstar, vilka filer och branch, nasta konkreta steg - och redovisar belaggningen i overlamningen (anvandning mot fonstret och procenten).`,
+    `HANDOVER PREPARED: ${worst.pct}% (${worst.label}). Continue the ongoing task - do not interrupt it. Summarise early and print large outputs with ctx_execute. Keep the handover up to date: when the session ends, write the handover in the closing note - what is done, what remains, which files and branch, the next concrete step - and report the usage in the handover (usage against the window and the percentage).`,
   );
 } else {
-  console.log(`OK: hoggsta belaggning ${worst.pct}% (${worst.label}) - mät bara, ingen rapportering.`);
+  console.log(`OK: highest usage ${worst.pct}% (${worst.label}) - measure only, no reporting.`);
 }
