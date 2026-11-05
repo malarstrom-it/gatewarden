@@ -833,6 +833,130 @@ test('the doctor tells a home where everything came over to remove the old direc
   assert.doesNotMatch(layout?.detail ?? '', /must not be removed/);
 });
 
+test('the doctor does not tell a home with an unreadable route store to remove it', async (t) => {
+  // A route store the doctor cannot read is a route store the doctor
+  // knows nothing about: it may hold routes that never came over. The
+  // doctor has to say that it cannot tell, and it must not tell the
+  // user that the old directory can go.
+  const dir = makeEmptyDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const legacy = path.join(dir, 'home', '.traefik-dev');
+  fs.mkdirSync(legacy, { recursive: true });
+  fs.writeFileSync(
+    path.join(legacy, 'config.json'),
+    JSON.stringify({
+      proxy: 'traefik',
+      registryPort: 45102,
+      relayPort: 45101,
+      zone: 'migrated.test',
+      stateDir: path.join(dir, 'state'),
+    }),
+  );
+  // A file that was cut in the middle: it does not hold JSON any more.
+  fs.writeFileSync(path.join(legacy, 'registrations.json'), '{"registrations":[{"fqdn":"only.migrated');
+
+  const migrate = await runCli(dir, ['migrate'], { configPath: false });
+  assert.equal(migrate.code, 0, `the migration failed: ${migrate.stdout}${migrate.stderr}`);
+
+  const run = await runCli(dir, ['doctor', '--json'], { configPath: false });
+  const report = JSON.parse(run.stdout) as Report;
+
+  const layout = report.checks.find((check) => check.name === 'legacy layout');
+  assert.equal(layout?.status, 'warn', `the doctor says: ${layout?.detail}`);
+  assert.match(layout?.detail ?? '', /cannot be read/);
+  assert.match(layout?.detail ?? '', /must not be removed/);
+  assert.doesNotMatch(layout?.detail ?? '', /can be left in place or removed by you/);
+});
+
+test('the doctor does not warn about a route that was registered on another port', async (t) => {
+  // A route that was registered on another port after the migration
+  // came over all the same: the route is in the new route store, and
+  // the port it had then belongs to a server that is gone. The doctor
+  // must not tell the user to add that route again.
+  const dir = makeEmptyDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const legacy = path.join(dir, 'home', '.traefik-dev');
+  fs.mkdirSync(legacy, { recursive: true });
+  fs.writeFileSync(
+    path.join(legacy, 'config.json'),
+    JSON.stringify({
+      proxy: 'traefik',
+      registryPort: 45102,
+      relayPort: 45101,
+      zone: 'migrated.test',
+      stateDir: path.join(dir, 'state'),
+    }),
+  );
+  fs.writeFileSync(
+    path.join(legacy, 'registrations.json'),
+    JSON.stringify({ version: 1, registrations: [aRoute('only', 'migrated.test', 3000)] }),
+  );
+
+  const migrate = await runCli(dir, ['migrate'], { configPath: false });
+  assert.equal(migrate.code, 0, `the migration failed: ${migrate.stdout}${migrate.stderr}`);
+
+  // The route is registered on another port, the way a dev server that
+  // moved is registered again.
+  fs.writeFileSync(
+    path.join(dir, 'state', 'routes.json'),
+    JSON.stringify({ version: 1, registrations: [aRoute('only', 'migrated.test', 3999)] }),
+  );
+
+  const run = await runCli(dir, ['doctor', '--json'], { configPath: false });
+  const report = JSON.parse(run.stdout) as Report;
+
+  const layout = report.checks.find((check) => check.name === 'legacy layout');
+  assert.equal(layout?.status, 'ok', `the doctor says: ${layout?.detail}`);
+  assert.match(layout?.detail ?? '', /everything the old layout held came over/);
+  assert.doesNotMatch(layout?.detail ?? '', /must not be removed/);
+  assert.doesNotMatch(layout?.detail ?? '', /add it to the new route store/);
+});
+
+test('the doctor does not warn about a setting that was changed after the migration', async (t) => {
+  // The zone of the new configuration file was changed by hand after
+  // the migration. The zone came over, and the user changed it after
+  // that: the doctor cannot tell the two apart, so it does not warn
+  // about it, and it does not tell the user to put the old zone back.
+  const dir = makeEmptyDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const legacy = path.join(dir, 'home', '.traefik-dev');
+  fs.mkdirSync(legacy, { recursive: true });
+  fs.writeFileSync(
+    path.join(legacy, 'config.json'),
+    JSON.stringify({
+      proxy: 'traefik',
+      registryPort: 45102,
+      relayPort: 45101,
+      zone: 'migrated.test',
+      stateDir: path.join(dir, 'state'),
+    }),
+  );
+  fs.writeFileSync(
+    path.join(legacy, 'registrations.json'),
+    JSON.stringify({ version: 1, registrations: [aRoute('only', 'migrated.test', 3000)] }),
+  );
+
+  const migrate = await runCli(dir, ['migrate'], { configPath: false });
+  assert.equal(migrate.code, 0, `the migration failed: ${migrate.stdout}${migrate.stderr}`);
+
+  // The zone of the new configuration file is changed by hand.
+  const configPath = path.join(dir, 'config', 'gatewarden', 'config.json');
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf8')) as Record<string, unknown>;
+  config['zone'] = 'other.test';
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
+
+  const run = await runCli(dir, ['doctor', '--json'], { configPath: false });
+  const report = JSON.parse(run.stdout) as Report;
+
+  const layout = report.checks.find((check) => check.name === 'legacy layout');
+  assert.equal(layout?.status, 'ok', `the doctor says: ${layout?.detail}`);
+  assert.doesNotMatch(layout?.detail ?? '', /must not be removed/);
+  assert.doesNotMatch(layout?.detail ?? '', /copy/);
+});
+
 test('the doctor does not warn about the state directory of the old layout', async (t) => {
   // The state directory is the one the new layout resolves for itself:
   // the migration writes the state directory of the new installation,

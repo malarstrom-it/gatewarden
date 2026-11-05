@@ -283,7 +283,7 @@ interface OldLayoutGap {
    * - `unreadable` — the doctor cannot read a file, so it cannot tell.
    */
   reason: 'no file' | 'content' | 'unreadable';
-  /** What did not come over: the routes or the settings. */
+  /** What did not come over: the routes of the route store. */
   missing: string[];
   /** The file the doctor could not read, when a file cannot be read. */
   unreadable?: string;
@@ -299,19 +299,23 @@ interface OldLayoutGap {
  * where it is, so a directory that is still there after a migration is
  * not a sign that the migration is waiting: it is the sign that the
  * migration has run.
- *
- * What came over is a question about the content and not about the
- * existence of the target file. A home that holds both old layouts is
- * the case that shows the difference: the newer layout is migrated
- * first, and the route store of the older one is left behind because the
- * target is taken — the file is in the new layout, and its routes are
- * not.
  */
 interface OldLayoutState {
   /** The files of the old layout whose content is in the new layout. */
   migrated: OldLayoutFile[];
   /** The files of the old layout that did not come over, and why. */
   pending: OldLayoutGap[];
+  /**
+   * The settings of the old configuration file that are not the ones in
+   * use.
+   *
+   * A setting that is not the one in use is not a warning: the user may
+   * have changed it in the new configuration file after the migration,
+   * and the doctor cannot tell that from a setting that never came
+   * over. The doctor says which settings differ, and says nothing more
+   * about them.
+   */
+  outdated?: { file: OldLayoutFile; settings: string[] };
 }
 
 /**
@@ -322,6 +326,13 @@ interface OldLayoutState {
  * daemon that runs, and they are never migrated, so they do not count
  * here: an old directory that holds nothing else has nothing left to
  * migrate.
+ *
+ * What came over is a question about the content and not about the
+ * existence of the target file. A home that holds both old layouts is
+ * the case that shows the difference: the newer layout is migrated
+ * first, and the route store of the older one is left behind because the
+ * target is taken — the file is in the new layout, and its routes are
+ * not.
  */
 function oldLayoutState(opts: {
   oldConfigFile: string;
@@ -331,6 +342,7 @@ function oldLayoutState(opts: {
 }): OldLayoutState {
   const migrated: OldLayoutFile[] = [];
   const pending: OldLayoutGap[] = [];
+  let outdated: OldLayoutState['outdated'];
 
   const files: OldLayoutFile[] = [
     { kind: 'settings', from: opts.oldConfigFile, to: opts.newConfigFile },
@@ -339,66 +351,76 @@ function oldLayoutState(opts: {
 
   for (const file of files) {
     if (!exists(file.from)) continue;
-    const gap = whatDidNotComeOver(file);
-    if (gap === undefined) migrated.push(file);
-    else pending.push(gap);
+
+    // The new layout does not have the file: the file did not come
+    // over, and it is only in the old layout.
+    if (!exists(file.to)) {
+      pending.push({ ...file, reason: 'no file', missing: [] });
+      continue;
+    }
+
+    const compared =
+      file.kind === 'routes' ? missingRoutes(file.from, file.to) : missingSettings(file.from, file.to);
+
+    // The doctor cannot read a file, so it cannot tell what came over.
+    // It must not tell the user that the old directory can go.
+    if ('unreadable' in compared) {
+      pending.push({ ...file, reason: 'unreadable', missing: [], unreadable: compared.unreadable });
+      continue;
+    }
+
+    if (file.kind === 'settings') {
+      // The configuration file came over: the new layout has one. The
+      // settings that are not the ones in use are not a gap — the user
+      // may have changed them after the migration.
+      migrated.push(file);
+      if (compared.missing.length > 0) outdated = { file, settings: compared.missing };
+      continue;
+    }
+
+    // A route that is not in the new route store is only in the old one.
+    if (compared.missing.length > 0) {
+      pending.push({ ...file, reason: 'content', missing: compared.missing });
+      continue;
+    }
+    migrated.push(file);
   }
 
-  return { migrated, pending };
+  return { migrated, pending, outdated };
 }
 
 /**
- * What of a file of an old layout did not come over.
+ * What a comparison of two files found.
  *
- * The doctor compares the content of the old file with the content of
- * the new one, and not the existence of the new file: the migration
- * copies a file or it skips it, and a file that was skipped is a file
- * that is in the new layout without its content being there. The
- * routes of a route store are compared one by one, and the settings of
- * a configuration file are compared one by one.
- *
- * `undefined` means that everything of the file came over.
+ * - `missing` — the parts of the old file that the new file does not
+ *   hold: the routes of a route store, or the settings of a
+ *   configuration file.
+ * - `unreadable` — a file the doctor cannot read, so the doctor cannot
+ *   tell what came over.
  */
-function whatDidNotComeOver(file: OldLayoutFile): OldLayoutGap | undefined {
-  const gap: OldLayoutGap = { ...file, reason: 'content', missing: [] };
-
-  if (!exists(file.to)) {
-    gap.reason = 'no file';
-    return gap;
-  }
-
-  if (file.kind === 'routes') {
-    const missing = missingRoutes(file.from, file.to);
-    if (missing.length === 0) return undefined;
-    gap.missing = missing;
-    return gap;
-  }
-
-  const settings = missingSettings(file.from, file.to);
-  if ('unreadable' in settings) {
-    gap.reason = 'unreadable';
-    gap.unreadable = settings.unreadable;
-    return gap;
-  }
-  if (settings.missing.length === 0) return undefined;
-  gap.missing = settings.missing;
-  return gap;
-}
+type Comparison = { missing: string[] } | { unreadable: string };
 
 /**
  * The routes of an old route store that the new route store does not hold.
  *
- * The identity of a route is the host name, the port and the zone, the
- * same identity the migration uses: two old layouts can hold a route
- * with the same id and a different host name and port, and then only
- * one of them came over. The doctor and the migration have to say the
- * same thing about the same routes.
+ * The identity of a route is the host name and the zone. The port is
+ * not part of it: a route that was registered on another port after the
+ * migration came over all the same, and the port it had then belongs
+ * to a server that is gone. The host name and the zone tell two routes
+ * apart that belong to two installations: two old layouts can hold a
+ * route with the same id and a different host name, and then only one
+ * of them came over.
  */
-function missingRoutes(from: string, to: string): string[] {
-  const newRoutes = new Set(routesOf(to).map((route) => route.identity));
-  return routesOf(from)
-    .filter((route) => !newRoutes.has(route.identity))
-    .map((route) => route.label);
+function missingRoutes(from: string, to: string): Comparison {
+  const oldRoutes = routesOf(from);
+  if (oldRoutes === undefined) return { unreadable: from };
+  const newRoutes = routesOf(to);
+  if (newRoutes === undefined) return { unreadable: to };
+
+  const identities = new Set(newRoutes.map((route) => route.identity));
+  return {
+    missing: oldRoutes.filter((route) => !identities.has(route.identity)).map((route) => route.label),
+  };
 }
 
 /**
@@ -416,18 +438,24 @@ interface StoreRoute {
  *
  * The zone of a route is the one the route holds, or the one its host
  * name carries, so that a store that was written before the route kept
- * its zone is not a store of other routes. This is the comparison the
- * migration makes, so that the doctor and the migration say the same
- * thing about the same routes.
+ * its zone is not a store of other routes.
+ *
+ * `undefined` means that the file cannot be read or does not hold JSON:
+ * the doctor cannot tell what is in it, and must not say that what it
+ * holds came over.
+ *
+ * The migration reads the routes of a store the same way. The two
+ * copies can drift apart, so a change to one of them has to change the
+ * other.
  */
-function routesOf(file: string): StoreRoute[] {
-  let registrations: unknown;
+function routesOf(file: string): StoreRoute[] | undefined {
+  let raw: unknown;
   try {
-    const raw = JSON.parse(fs.readFileSync(file, 'utf8')) as { registrations?: unknown };
-    registrations = raw.registrations;
+    raw = JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch {
-    return [];
+    return undefined;
   }
+  const registrations = (raw as { registrations?: unknown }).registrations;
   if (!Array.isArray(registrations)) return [];
 
   const routes: StoreRoute[] = [];
@@ -437,7 +465,7 @@ function routesOf(file: string): StoreRoute[] {
     const zone = typeof route.zone === 'string' && route.zone.length > 0 ? route.zone : zoneOfFqdn(fqdn);
     const port = typeof route.devPort === 'number' ? route.devPort : '';
     routes.push({
-      identity: `${fqdn}|${port}|${zone}`,
+      identity: `${fqdn}|${zone}`,
       label: port === '' ? fqdn : `${fqdn}:${port}`,
     });
   }
@@ -453,7 +481,7 @@ function routesOf(file: string): StoreRoute[] {
  * names the file that cannot be read when one of them cannot be read:
  * the doctor cannot tell what came over then.
  */
-function missingSettings(from: string, to: string): { missing: string[] } | { unreadable: string } {
+function missingSettings(from: string, to: string): Comparison {
   const oldSettings = settingsOf(from);
   if (oldSettings === undefined) return { unreadable: from };
   const newSettings = settingsOf(to);
@@ -547,6 +575,12 @@ function oldLayoutDirs(files: Array<{ from: string }>, fallback: string[]): stri
  * everything came over, the reason says so, and says that the old
  * directories may stay where they are or be removed by the user: the
  * migration leaves them there on purpose, and nothing is left in them.
+ *
+ * A setting of the old configuration file that is not the one in use is
+ * said and nothing more: the user may have changed it after the
+ * migration, and the doctor cannot tell that from a setting that never
+ * came over. The doctor does not tell the user to put the old value
+ * back.
  */
 function oldLayoutDetail(dirs: string[], state: OldLayoutState): string {
   const label = dirs.length === 1 ? dirs[0] : `${dirs[0]} and ${dirs[1]}`;
@@ -554,8 +588,18 @@ function oldLayoutDetail(dirs: string[], state: OldLayoutState): string {
 
   if (state.pending.length > 0) {
     const waiting = state.pending.map(gapSentence).join('; ');
+    const note = state.outdated === undefined ? '' : `; ${outdatedSentence(state.outdated)}`;
     const holds = dirs.length === 1 ? 'it holds' : 'they hold';
-    return `${label} is still there: ${waiting}; ${what} must not be removed: ${holds} what did not come over`;
+    return `${label} is still there: ${waiting}${note}; ${what} must not be removed: ${holds} what did not come over`;
+  }
+
+  if (state.outdated !== undefined) {
+    const came = state.migrated
+      .filter((file) => file.kind !== 'settings')
+      .map(cameOverSentence)
+      .join(' and ');
+    const parts = came.length > 0 ? `${came}; ` : '';
+    return `${label} is still there: ${parts}${outdatedSentence(state.outdated)}; ${what} can be left in place or removed by you`;
   }
 
   const came = state.migrated.map(cameOverSentence).join(' and ');
@@ -566,9 +610,8 @@ function oldLayoutDetail(dirs: string[], state: OldLayoutState): string {
  * The sentence about a file of an old layout that did not come over.
  *
  * The sentence names the file and says what is missing: the routes of
- * the route store, or the settings of the configuration file. The
- * migration does not overwrite a file that is there, so the advice is
- * what the user has to do by hand.
+ * the route store. The migration does not overwrite a file that is
+ * there, so the advice is what the user has to do by hand.
  */
 function gapSentence(gap: OldLayoutGap): string {
   const name = OLD_LAYOUT_NAMES[gap.kind];
@@ -580,17 +623,28 @@ function gapSentence(gap: OldLayoutGap): string {
     return `${name} (${gap.from}) has not been migrated to ${gap.to} yet (run "gatewarden migrate")`;
   }
 
+  // Only the route store has parts that can be missing: the routes.
   const names = gap.missing.join(', ');
   const one = gap.missing.length === 1;
-  if (gap.kind === 'routes') {
-    const routes = one ? `the route ${names}` : `the routes ${names}`;
-    const them = one ? 'it' : 'them';
-    return `${routes} of the route store (${gap.from}) ${one ? 'is' : 'are'} not in the route store (${gap.to}): add ${them} to the new route store`;
-  }
-  const settings = one ? `the setting ${names}` : `the settings ${names}`;
+  const routes = one ? `the route ${names}` : `the routes ${names}`;
   const them = one ? 'it' : 'them';
+  return `${routes} of the route store (${gap.from}) ${one ? 'is' : 'are'} not in the route store (${gap.to}): add ${them} to the new route store`;
+}
+
+/**
+ * The sentence about the settings of an old configuration file that are
+ * not the ones in use.
+ *
+ * The sentence says what differs and nothing else: the doctor cannot
+ * tell whether a setting was changed after the migration or never came
+ * over, and it must not tell the user to put the old value back.
+ */
+function outdatedSentence(outdated: { file: OldLayoutFile; settings: string[] }): string {
+  const names = outdated.settings.join(', ');
+  const one = outdated.settings.length === 1;
+  const settings = one ? `the setting ${names}` : `the settings ${names}`;
   const theirs = one ? 'the setting' : 'the settings';
-  return `${settings} of the configuration file (${gap.from}) ${one ? 'is' : 'are'} not ${theirs} of the configuration file (${gap.to}): copy ${them} by hand`;
+  return `${settings} of the configuration file (${outdated.file.from}) ${one ? 'is' : 'are'} not ${theirs} of the configuration file (${outdated.file.to})`;
 }
 
 /**
