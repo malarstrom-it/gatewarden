@@ -350,21 +350,31 @@ gatewarden unregister --project probe --branch main
 The doctor reads the installation and writes one line per check:
 
 ```text
-ok       config file        /home/user/.config/gatewarden/config.json
-ok       state directory    /home/user/.local/state/gatewarden
-ok       daemon             running (pid 4711)
-ok       dns zone           example.com
-ok       registry port      :::45002
-ok       relay port         :::45001
-ok       routes             1 registered
-ok       routes and zone    1 registered, the zone is example.com
-warn     proxy              no traefik API answered
-ok       trust list         the trust list (allowedCidrs): 127.0.0.1/32, ::1/128, 192.0.2.0/24
-ok       registry list      the trust list of the registry (registryAllowedCidrs) is empty: the registry serves the configuration document to the same addresses as the relay
-skipped  proxy address      the doctor does not know where the proxy is: the trust list holds addresses besides the loopback
-warn     service            not installed: run "gatewarden install-service" to survive a reboot
-nothing is broken (2 checks are not in place here: proxy, service)
+ok        config file         /tmp/hp-1000/e3184e/API-79/home/.config/gatewarden/config.json
+ok        state directory     /tmp/hp-1000/e3184e/API-79/home/.local/state/gatewarden
+warn      daemon              not running (pidfile /tmp/hp-1000/e3184e/API-79/home/.local/state/gatewarden/daemon.pid): it starts with the first route, or run "gatewarden start"
+warn      dns zone            not configured: the host names of the routes are built from it (run "gatewarden setup", or write it in the configuration file)
+warn      shared middlewares  the shared middlewares are on, but no provider owns them (run "gatewarden setup")
+warn      registry port       :::55002 (nothing listens there: the daemon has not started it)
+warn      relay port          :::55001 (nothing listens there: the daemon has not started it)
+ok        routes              0 registered
+skipped   routes and zone     no routes: there is no host name to build
+warn      proxy               no traefik API answered at http://127.0.0.1:8080: the proxy runs on another machine
+ok        trust list          the trust list (allowedCidrs): 127.0.0.1/32, ::1/128, 2001:db8:0:0::/64
+ok        registry list       the trust list of the registry (registryAllowedCidrs) is empty: the registry serves the configuration document to the same addresses as the relay
+warn      proxy address       the trust list (allowedCidrs) of the configuration file holds the loopback and nothing else: a proxy that runs on another machine is not in it, and the gateway answers it a 403 (add the address of your proxy to allowedCidrs)
+warn      service             not installed: run "gatewarden install-service" so the daemon survives a reboot
+skipped   old service         there is no unit of the old name
+skipped   legacy layout       there is no old layout to migrate
+skipped   old name layout     there is no old name layout to migrate
+nothing is broken (8 checks are not in place here: daemon, dns zone, shared middlewares, registry port, relay port, proxy, proxy address, service)
 ```
+
+This transcript is the output of `gatewarden doctor` in a clean installation
+— a configuration file with nothing in it but the shared middlewares on and
+ports of its own, a state directory of its own, no daemon — on a machine
+whose IPv6 network is in the documentation range of RFC 3849; the paths, the
+ports and the addresses are the ones of that installation.
 
 The columns are the status, the name of the check and what it saw. A check
 that does not apply to the installation is `skipped`.
