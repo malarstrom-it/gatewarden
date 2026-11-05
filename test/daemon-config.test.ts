@@ -18,6 +18,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { logFileFor } from '../src/core/paths.ts';
 import { openLogFile } from '../src/core/daemonControl.ts';
+import { registerSuiteDirectory, suiteEnv } from './helpers/daemons.ts';
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DAEMON = path.join(REPO_ROOT, 'bin', 'gatewarden-daemon.js');
 
@@ -70,13 +71,16 @@ function makeHome(registryPort: number, relayPort: number): string {
 
 /** The environment of a process that only knows its home directory. */
 function homeEnv(home: string): NodeJS.ProcessEnv {
-  return {
+  // The installation of the test is known to the cleanup of the suite:
+  // the daemon of the test is found by the directory it runs in.
+  registerSuiteDirectory(home);
+  return suiteEnv({
     PATH: process.env['PATH'] ?? '',
     HOME: home,
     XDG_CONFIG_HOME: path.join(home, '.config'),
     XDG_STATE_HOME: path.join(home, '.local', 'state'),
     XDG_CACHE_HOME: path.join(home, '.cache'),
-  };
+  });
 }
 
 async function waitForPort(port: number, timeoutMs = 15_000): Promise<boolean> {

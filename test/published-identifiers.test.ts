@@ -469,11 +469,11 @@ const SHIPPED_SCRIPTS = [
  *
  * The commands of the checkout are the exception, and they are named one
  * by one here: the build names the build configuration of the project,
- * the test command the pattern of the test files, the end-to-end
- * commands the tools of the end-to-end environment, and the clean
- * command the marker that says "this is a checkout". A script that is
- * not on this list names only files that the package ships — or no file
- * at all.
+ * the test command the pattern of the test files and the cleanup of the
+ * suite, the end-to-end commands the tools of the end-to-end
+ * environment, and the clean command the marker that says "this is a
+ * checkout". A script that is not on this list names only files that the
+ * package ships — or no file at all.
  *
  * The exception of the test command is the one that has to be earned
  * (S99): the package ships no test files, so a command that names them
@@ -485,7 +485,7 @@ const SHIPPED_SCRIPTS = [
 const CHECKOUT_FILES: Record<string, string[]> = {
   build: ['tsconfig.build.json'],
   clean: ['tsconfig.build.json'],
-  test: ['test/*.test.ts'],
+  test: ['test/*.test.ts', 'test/helpers/suite.ts'],
   'test:e2e': ['tools/testenv/run.ts'],
   'test:e2e:stop': ['tools/testenv/stop.ts'],
 };
