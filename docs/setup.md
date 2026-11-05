@@ -44,16 +44,39 @@ The short version is in the README: [What you need](../README.md#what-you-need).
 
 ## 2. Step one — install the package
 
-On the machine that runs the dev servers:
+On the machine that runs the dev servers, globally:
 
 ```bash
 npm install -g @malarstrom/gatewarden
 ```
 
+Or in the project the dev servers belong to:
+
+```bash
+npm install @malarstrom/gatewarden
+```
+
+The project install is the right one when a team wants the commands in the
+PATH of its own project rather than on the PATH of every machine, and when
+the installation should follow a project and go when the project goes.
+The global install is the right one when the commands should be there for
+every project on the machine.
+
+A project install puts the commands in the `node_modules/.bin` of the
+project. The commands of the steps below are written as they are run on the
+PATH of the machine; in a project install `npx` goes in front of them, or
+they run through a script in the `package.json` of the project.
+
 Check that it arrived:
 
 ```bash
 gatewarden --version
+```
+
+and, in a project install:
+
+```bash
+npx gatewarden --version
 ```
 
 It prints the version of the package. The install starts nothing: it writes
@@ -73,10 +96,10 @@ npm install-scripts approve @malarstrom/gatewarden
 ```
 
 These two commands work on a project: they read and write the `allowScripts`
-field in the `package.json` of the project. The install above is a global one,
-and a global install has no `package.json` of its own, so these two commands
-cannot approve it — with `-g` they stop with `EGLOBAL`. A global install is
-approved in one of two other ways:
+field in the `package.json` of the project. They approve the project install
+above. A global install has no `package.json` of its own, so these two
+commands cannot approve it — with `-g` they stop with `EGLOBAL`. A global
+install is approved in one of two other ways:
 
 ```bash
 npm install -g --allow-scripts=@malarstrom/gatewarden
