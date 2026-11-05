@@ -263,6 +263,54 @@ test('the daemon restarts after it was killed', async (t) => {
   assert.equal(await isHealthy(config), true);
 });
 
+/**
+ * The environment of the machine names an installation of its own.
+ *
+ * `GATEWARDEN_HOME` says that the configuration, the state and the log
+ * of the gateway live in that one directory. The daemon of a test
+ * belongs to the throwaway directory of the test and to nothing else,
+ * and the function that puts the name back is what the test gives to
+ * its cleanup.
+ */
+function nameAnInstallationOfTheMachine(installation: string): () => void {
+  const before = process.env['GATEWARDEN_HOME'];
+  process.env['GATEWARDEN_HOME'] = installation;
+  return () => {
+    if (before === undefined) delete process.env['GATEWARDEN_HOME'];
+    else process.env['GATEWARDEN_HOME'] = before;
+  };
+}
+
+test('the daemon serves the free ports, even when the environment names another installation', async (t) => {
+  const { dir, configPath, config, startDaemon } = await setup();
+  t.after(async () => {
+    await stopDaemon(configPath);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  // The installation of the machine: a directory of its own, outside the
+  // throwaway directory of the test, that does not exist.
+  const installation = path.join(os.tmpdir(), `gatewarden-machine-installation-${path.basename(dir)}`);
+  t.after(() => fs.rmSync(installation, { recursive: true, force: true }));
+  t.after(nameAnInstallationOfTheMachine(installation));
+
+  const result = await startDaemon();
+  assert.equal(result.started, true);
+  assert.ok(result.pid, 'the daemon should have a pid');
+
+  // The daemon listens on the free ports of the throwaway installation.
+  const health = await fetch(`http://127.0.0.1:${config.registryPort}/healthz`);
+  assert.equal((await health.text()).trim(), 'ok');
+
+  // The state of the daemon is in the throwaway directory.
+  assert.ok(fs.existsSync(path.join(dir, 'daemon.pid')));
+  assert.ok(fs.existsSync(path.join(dir, 'daemon.log')));
+
+  // The installation of the machine was not touched: it does not exist,
+  // and the daemon did not make it exist.
+  assert.equal(fs.existsSync(installation), false);
+});
+
 test('the daemon respawns a worker that dies, the other listener keeps serving', async (t) => {
   const { dir, configPath, config, startDaemon } = await setup();
   t.after(async () => {
