@@ -37,9 +37,23 @@ The name says gateway, and the expectation it raises is wrong in most cases.
 
 ## Install
 
+The package installs globally, for the commands on the PATH of the machine:
+
 ```bash
 npm install -g @malarstrom/gatewarden
 ```
+
+It installs in a project as well, as a dependency of that project:
+
+```bash
+npm install @malarstrom/gatewarden
+```
+
+The project install is the right one when a team wants the commands in the
+PATH of its own project rather than on the PATH of every machine, and when
+the installation should follow a project and go when the project goes.
+The global install is the right one when the commands should be there for
+every project on the machine.
 
 Node 20.11 or later. The package ships compiled JavaScript. Its runtime
 dependencies are `env-paths` and `proper-lockfile`. It is ESM-only, so a
@@ -55,8 +69,10 @@ The install script does nothing in these cases: npm runs with
 `GATEWARDEN_AUTOSTART=0` is set. Under npm 12 the script is blocked until the
 dependency is approved. The commands that approve it came with npm 11.18, and
 they need a project: they read and write the `allowScripts` field in the
-`package.json` of the project, so they cannot approve the global install
-above. A global install is approved in another way, with
+`package.json` of the project, so they approve the project install and they
+cannot approve a global install. The project install is approved with
+`npm install-scripts approve @malarstrom/gatewarden`. A global install is
+approved in another way, with
 `npm install -g --allow-scripts=@malarstrom/gatewarden` or with
 `npm config set allow-scripts='@malarstrom/gatewarden' --location=user`. The
 commands are in [docs/install-scripts.md](docs/install-scripts.md). The daemon
@@ -108,6 +124,13 @@ complete example file: [docs/setup.md](docs/setup.md).
 
 ```bash
 npm install -g @malarstrom/gatewarden
+```
+
+A team that wants the commands in the PATH of its own project installs the
+package in the project instead:
+
+```bash
+npm install @malarstrom/gatewarden
 ```
 
 **2. Set the gateway up.** The wizard reads your proxy, derives what it can, asks for
