@@ -84,6 +84,11 @@ the configuration file (if there is none) and leaves the machine the way it
 found it — no daemon, no open port, no process in the background. The daemon
 starts by itself the first time a command needs it (step four).
 
+`GATEWARDEN_AUTOSTART=0` turns the whole install script off: no configuration
+file is written and no daemon is started. An installation made with the
+variable set has no configuration file of its own; the wizard writes one, or
+you write it yourself in step three.
+
 npm 12 blocks the install scripts of a dependency until the dependency is
 approved, and it names the package in a warning while it does. npm 11 warns
 and lets the scripts run. The commands that review the scripts arrived in
