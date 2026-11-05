@@ -38,7 +38,7 @@ The short version is in the README: [What you need](../README.md#what-you-need).
 | `gatewarden setup` | writes the configuration file for you |
 | a shared secret (`"secret"`) | the proxy has to present it to the registry and to the relay |
 | the shared middlewares of your proxy | the dev routers get them too, when you name the provider that owns them |
-| `gatewarden install-service` | the daemon starts again after a reboot |
+| `gatewarden install-service` | the daemon starts again after a reboot, and it stays stopped after `gatewarden stop`, on macOS and on Linux; `--no-enable` writes the unit without enabling it, so the daemon does not start at a reboot |
 
 ---
 

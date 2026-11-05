@@ -186,9 +186,9 @@ project and the branch. Never compose it by hand.
 | `gatewarden config [--write]` | Show the configuration and every key. `--write` writes the file. |
 | `gatewarden setup` | Walk a new installation through the steps and write the configuration file. |
 | `gatewarden start` | Start the daemon and wait for it. |
-| `gatewarden stop` | Stop the daemon. |
+| `gatewarden stop` | Stop the daemon. The service does not start it again: it stays stopped, on macOS and on Linux. |
 | `gatewarden doctor [--strict]` | Report what is broken. `--strict` turns the warnings into errors. |
-| `gatewarden install-service [--no-enable]` | Install the daemon as a service, so it starts again after a reboot. |
+| `gatewarden install-service [--no-enable]` | Install the daemon as a service, so it starts again after a reboot. `--no-enable` writes the unit of the platform without enabling it, so the daemon does not start at a reboot. |
 | `gatewarden version` | Print the version of the package. |
 
 Global options: `--config <path>`, `--state-dir <path>`, `--json`, `--version`,
