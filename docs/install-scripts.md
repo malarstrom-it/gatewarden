@@ -16,8 +16,10 @@ The two install scripts:
   the three directories the gateway uses: the configuration directory, the
   state directory and the cache. It starts no daemon, opens no port and leaves
   no process behind.
-- `prepare` builds the package from the TypeScript it holds. The published package ships
-  the compiled output, so the build does not run for it.
+- `prepare` builds the package from the TypeScript it holds. The build empties
+  `dist/` on the way: it runs `npm run clean` first, which removes the directory,
+  and the compiler writes it again. The published package ships the compiled
+  output, so the build does not run for it.
 
 The two uninstall scripts:
 
@@ -56,10 +58,11 @@ The warning names the scripts of the package. What npm does with those scripts
 changed in npm 12.
 
 - npm 11 warns and lets the scripts run. The warning says that the scripts are
-  "not yet covered" by `allowScripts`. For a dependency that the field does not
-  mention the field is advisory: the scripts run anyway. An entry that denies
-  the dependency is not advisory: it skips the script in npm 11 too, and an
-  entry that approves the dependency silences the warning.
+  "not yet covered" by `allowScripts`. For a dependency that the `allowScripts`
+  field of the `package.json` does not mention, the field is advisory: the
+  scripts run anyway. An entry that denies the dependency is not advisory: it
+  skips the script in npm 11 too, and an entry that approves the dependency
+  silences the warning.
 - npm 12 blocks the scripts until the dependency is approved. The warning says
   that the scripts were "blocked", and the install script of the dependency
   does not run until the dependency is approved.
@@ -69,6 +72,7 @@ A global install from the registry says, with npm 11.19.0:
 ```text
 npm warn install-scripts 1 package has install scripts not yet covered by allowScripts:
 npm warn install-scripts   @malarstrom/gatewarden@0.1.1 (postinstall: node scripts/postinstall.mjs)
+npm warn install-scripts
 npm warn install-scripts Run `npm install -g --allow-scripts=@malarstrom/gatewarden` to allow these scripts once, or `npm config set allow-scripts=@malarstrom/gatewarden --location=user` to allow them for all global installs.
 ```
 
@@ -77,6 +81,7 @@ and with npm 12.2.1:
 ```text
 npm warn install-scripts 1 package had install scripts blocked because they are not covered by allowScripts:
 npm warn install-scripts   @malarstrom/gatewarden@0.1.1 (postinstall: node scripts/postinstall.mjs)
+npm warn install-scripts
 npm warn install-scripts Run `npm install -g --allow-scripts=@malarstrom/gatewarden` to allow these scripts once, or `npm config set allow-scripts=@malarstrom/gatewarden --location=user` to allow them for all global installs.
 ```
 
@@ -87,11 +92,19 @@ not for the registry. With npm 11.19.0:
 ```text
 npm warn install-scripts 1 package has install scripts not yet covered by allowScripts:
 npm warn install-scripts   @malarstrom/gatewarden@0.1.1 (postinstall: node scripts/postinstall.mjs; prepare: npm run build)
+npm warn install-scripts
 npm warn install-scripts Run `npm install -g --allow-scripts=@malarstrom/gatewarden` to allow these scripts once, or `npm config set allow-scripts=@malarstrom/gatewarden --location=user` to allow them for all global installs.
 ```
 
 With npm 12.2.1 the same install says "blocked" instead of "not yet covered",
-and it names the same scripts.
+and it names the same scripts:
+
+```text
+npm warn install-scripts 1 package had install scripts blocked because they are not covered by allowScripts:
+npm warn install-scripts   @malarstrom/gatewarden@0.1.1 (postinstall: node scripts/postinstall.mjs; prepare: npm run build)
+npm warn install-scripts
+npm warn install-scripts Run `npm install -g --allow-scripts=@malarstrom/gatewarden` to allow these scripts once, or `npm config set allow-scripts=@malarstrom/gatewarden --location=user` to allow them for all global installs.
+```
 
 An install in a project writes the same lines, and its last line names the
 commands that review the scripts:
@@ -133,21 +146,26 @@ list, `npm approve-scripts <pkg>` writes the approval, and `npm deny-scripts
 
 ## A global install
 
-A global install has no project to write the field into, so npm names two other
-ways instead. Both of them work in npm 11.19.0 and npm 12.2.1:
+A global install has no project of its own, so npm does not read the `allowScripts`
+field of a `package.json` for it: that field belongs to a project, and a global
+install has none. npm skips it even when the global install runs in the directory
+of a project. npm reads two other places instead, the `--allow-scripts` flag and
+the `allow-scripts` setting of an `.npmrc`. Every entry in either of them
+approves a package, and neither of them can carry a denial. Both of them work
+in npm 11.19.0 and npm 12.2.1:
 
 ```bash
 npm install -g --allow-scripts=@malarstrom/gatewarden
 npm config set allow-scripts='@malarstrom/gatewarden' --location=user
 ```
 
-Under npm 11 the scripts run with them and without them, unless the field denies
-the package. Under npm 12 they are what makes the scripts run again instead of
-staying blocked.
+Under npm 11 the scripts run with the approval and without it; the approval
+silences the warning, and nothing more. Under npm 12 the scripts stay blocked
+until the approval names the package; then they run, and the warning is gone.
 
-| Source of the package | What `--allow-scripts` has to name |
+| Source of the package | What the approval has to name |
 | --- | --- |
-| the registry | `@malarstrom/gatewarden` |
+| the registry | `@malarstrom/gatewarden`, or the pinned `@malarstrom/gatewarden@0.1.1` |
 | a tarball | the path of the tarball |
 
 A tarball is matched by its path, not by its name, so the name alone does not
