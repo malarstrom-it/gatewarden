@@ -25,9 +25,11 @@ after(() => {
 /**
  * The addresses of the tests below come from the ranges that RFC 5737
  * reserves for documentation: 192.0.2.0/24, 198.51.100.0/24 and
- * 203.0.113.0/24. An address from one of them names no network that
- * exists, and the ranges are the ones the documentation of the package
- * uses in its examples.
+ * 203.0.113.0/24, and from 2001:db8::/32, the range that RFC 3849
+ * reserves for documentation. An address from one of them names no
+ * network that exists, and the ranges are the ones the documentation
+ * of the package uses in its examples. The IPv6 addresses therefore
+ * never carry the prefix of the installation that runs the test.
  */
 test('IPv4 CIDRs match', () => {
   assert.equal(addressInCidr('192.0.2.6', '192.0.2.0/24'), true);
@@ -42,19 +44,19 @@ test('IPv4-mapped IPv6 addresses are matched as IPv4', () => {
 });
 
 test('IPv6 CIDRs match', () => {
-  assert.equal(ipv6ToBigInt('fdd0:0:0:2::d') !== null, true);
-  assert.equal(addressInCidr('fdd0:0:0:2::6', 'fdd0:0:0:2::/64'), true);
-  assert.equal(addressInCidr('fdd0:0:0:3::6', 'fdd0:0:0:2::/64'), false);
+  assert.equal(ipv6ToBigInt('2001:db8::d') !== null, true);
+  assert.equal(addressInCidr('2001:db8::6', '2001:db8::/64'), true);
+  assert.equal(addressInCidr('2001:db8:0:3::6', '2001:db8::/64'), false);
   assert.equal(addressInCidr('::1', '::1/128'), true);
   assert.equal(addressInCidr('::2', '::1/128'), false);
 });
 
 test('isAddressAllowed accepts any listed range', () => {
-  const cidrs = ['192.0.2.0/24', '127.0.0.1/32', '::1/128', 'fdd0:0:0:2::/64'];
+  const cidrs = ['192.0.2.0/24', '127.0.0.1/32', '::1/128', '2001:db8::/64'];
   assert.equal(isAddressAllowed('192.0.2.6', cidrs), true);
   assert.equal(isAddressAllowed('127.0.0.1', cidrs), true);
   assert.equal(isAddressAllowed('::1', cidrs), true);
-  assert.equal(isAddressAllowed('fdd0:0:0:2::6', cidrs), true);
+  assert.equal(isAddressAllowed('2001:db8::6', cidrs), true);
   assert.equal(isAddressAllowed('203.0.113.40', cidrs), false);
   assert.equal(isAddressAllowed(undefined, cidrs), false);
 });
