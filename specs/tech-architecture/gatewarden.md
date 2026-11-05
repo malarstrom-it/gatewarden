@@ -530,6 +530,14 @@ decides the state directory only when the configuration names none. The
 CLI and the daemon are two processes with two environments, and they have
 to agree on the state directory — the log file lives there.
 
+The daemon reads the name of the home installation only when it was given
+no configuration file of its own. A daemon that was given one — by the
+CLI, by the service unit, or by a user in a shell — runs with it, and the
+name in its environment belongs to whoever started it: the name is not
+read, and the state directory and the log file are the ones the
+configuration and the starter named. The CLI looks up an installation of
+its own, and there the name wins.
+
 ### 3.2 Configuration
 
 The configuration file keeps today's keys, minus the ones the web interface
