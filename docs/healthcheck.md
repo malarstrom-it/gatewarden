@@ -82,8 +82,8 @@ object, with a top-level `ok` that is `false` when a check failed:
 | `registry list` | the detail prints the whole list of the registry (`registryAllowedCidrs`); an empty list is not a warning: the registry then serves the configuration document to the same addresses as the relay | skipped when there is no installation on this machine | — |
 | `proxy address` | the doctor resolved the host of the proxy's API, and the trust list covers the addresses it found | the trust list does not cover the addresses of the host of the proxy's API: the gateway answers them a 403 — or the list is empty, or holds the loopback and nothing else; skipped when the doctor does not know where the proxy is: the trust list holds addresses besides the loopback | — |
 | `service` | the unit is installed | it is not installed: run `gatewarden install-service` | — |
-| `legacy layout` | — | there is nothing to migrate | — (it is still there: a warning) |
-| `old name layout` | — | there is nothing to migrate | — (it is still there: a warning) |
+| `legacy layout` | everything it held came over: the old directory can be left in place or removed by you | something did not come over: the detail names it, and the old directory must not be removed: it holds what did not come over; skipped when there is nothing to migrate | — |
+| `old name layout` | everything it held came over: the old directories can be left in place or removed by you | something did not come over: the detail names it, and the old directories must not be removed: they hold what did not come over; skipped when there is nothing to migrate | — |
 | `old service` | — | there is no unit of the old name | — (it is still there: a warning) |
 
 Three of them are worth reading twice:
