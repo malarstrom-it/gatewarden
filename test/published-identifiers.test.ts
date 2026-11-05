@@ -845,6 +845,17 @@ function gitServerTraps(file: string, text: string, publicHost: string = PUBLIC_
 interface InstallationOptions {
   /** The environment the paths of the installation are resolved in. */
   env?: NodeJS.ProcessEnv;
+  /**
+   * Does the rule ask the resolver of the machine about the zone?
+   *
+   * The values of the DNS of the zone are values of the installation,
+   * and the rule reads them for the installation that runs it. A probe
+   * installation asks no resolver: the zone of the probe names nobody,
+   * and the answer of the resolver would be the nameservers of a domain
+   * that is not the probe's - the proof would depend on the machine that
+   * runs it.
+   */
+  dns?: boolean;
 }
 
 /**
@@ -1137,6 +1148,11 @@ function isExampleAddress(value: string): boolean {
  * for every installation of the package, and the documentation of the
  * package names them in the home of the reader. The path of the reader
  * is not the path of this installation: it names no installation.
+ *
+ * The configuration file of an installation may name its paths in the
+ * short form (`~/.config/gatewarden/`), and the rule reads the value as
+ * it is written. The short form is the path of every reader, and the
+ * rule leaves it alone.
  */
 function isPathOfEveryReader(value: string): boolean {
   return value.startsWith('~/');
@@ -1252,14 +1268,14 @@ async function installationValues(opts: InstallationOptions = {}): Promise<Insta
     }
   }
 
-  // The paths of the installation: the absolute form and the short form
-  // a document uses (`~/.config/gatewarden/`).
+  // The paths of the installation: the absolute form, which names the
+  // machine of the installation. The short form a document uses
+  // (`~/.config/gatewarden/`) is the path of every reader and names no
+  // installation - the package publishes it on purpose - and the rule
+  // leaves it alone (see `isPathOfEveryReader`).
   addInstallationValue(values, configPath, PATH_OF_THE_INSTALLATION, 'substring');
   addInstallationValue(values, path.dirname(configPath), PATH_OF_THE_INSTALLATION, 'substring');
   addInstallationValue(values, stateDir, PATH_OF_THE_INSTALLATION, 'substring');
-  for (const value of [configPath, path.dirname(configPath), stateDir]) {
-    addInstallationValue(values, shortPath(value), PATH_OF_THE_INSTALLATION, 'substring');
-  }
 
   // The names of the services the installation registered in the proxy.
   for (const registration of new RegistrationStore(stateDir).list()) {
@@ -1268,7 +1284,7 @@ async function installationValues(opts: InstallationOptions = {}): Promise<Insta
   }
 
   // The values of the DNS of the zone.
-  values.push(...(await zoneDnsValues(zone)));
+  if (opts.dns !== false) values.push(...(await zoneDnsValues(zone)));
 
   return values;
 }
@@ -1291,11 +1307,24 @@ async function installationValues(opts: InstallationOptions = {}): Promise<Insta
  * a route store of its own — and the values of that installation are
  * planted in the files the rule reads.
  *
- * The values of the probe installation are the values of the standards:
- * a zone under a domain that belongs to nobody, a host name that is an
- * ordinary word, an address of the range of RFC 5737. They name no
- * installation of this project and no machine of it, and they may be
- * written down here in a public repository.
+ * The values of the probe installation name nothing of this project:
+ *
+ *   - the zone of the probe (`probe.installation`), a name no registry
+ *     serves;
+ *   - the host name of the probe (`probe-host`) and the name of the
+ *     machine that runs the test;
+ *   - the paths of the probe: the configuration file, the directory it
+ *     is in and the state directory;
+ *   - the name of a service of the probe and the host name of that
+ *     service (`probeapp.main.probe.installation`).
+ *
+ * The probe asks no resolver: the zone of the probe names nobody, and
+ * the answer of the resolver would be the nameservers of a domain that
+ * is not the probe's - the proof would depend on the machine that runs
+ * it. The probe writes no address: an address of the range of RFC 5737
+ * belongs to nobody, and the rule leaves such an address out on
+ * purpose. The values of the probe may be written down here in a public
+ * repository.
  */
 interface ProbeInstallation {
   /** The directory of the probe installation. */
@@ -1322,14 +1351,11 @@ function probeInstallation(): ProbeInstallation {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-probe-installation-'));
   const configFile = path.join(home, 'config.json');
   const stateDir = path.join(home, 'state');
-  const zone = 'probe.zone';
+  const zone = 'probe.installation';
   const host = 'probe-host';
 
   fs.mkdirSync(stateDir, { recursive: true });
-  fs.writeFileSync(
-    configFile,
-    JSON.stringify({ zone, advertisedHost: host, advertisedIp: '192.0.2.13', stateDir }),
-  );
+  fs.writeFileSync(configFile, JSON.stringify({ zone, advertisedHost: host, stateDir }));
   fs.writeFileSync(
     path.join(stateDir, 'routes.json'),
     JSON.stringify({
@@ -1341,7 +1367,7 @@ function probeInstallation(): ProbeInstallation {
           branch: 'main',
           projectSlug: 'probeapp',
           branchSlug: 'main',
-          fqdn: 'probeapp.main.probe.zone',
+          fqdn: `probeapp.main.${zone}`,
           zone,
           devPort: 3000,
           createdAt: '2026-01-01T00:00:00.000Z',
@@ -1361,7 +1387,7 @@ function probeInstallation(): ProbeInstallation {
   return {
     home,
     env,
-    values: () => installationValues({ env }),
+    values: () => installationValues({ env, dns: false }),
     zone,
     host,
     remove: () => fs.rmSync(home, { recursive: true, force: true }),
@@ -1482,22 +1508,6 @@ function wordOfThePackage(
   }
 
   return false;
-}
-
-/**
- * The short form of a path of the installation.
- *
- * A document of the repository writes the path of the installation in
- * the home of the reader (`~/.config/gatewarden/`) and not in the
- * absolute form. The short form is the path of the installation as
- * well, and the guard catches it — unless the package publishes it, for
- * the short form of the path of the configuration is the path of every
- * installation of the package.
- */
-function shortPath(value: string): string | undefined {
-  const home = os.homedir();
-  if (!value.startsWith(home + path.sep)) return undefined;
-  return `~${value.slice(home.length)}`;
 }
 
 /**
