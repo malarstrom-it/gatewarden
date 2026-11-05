@@ -127,6 +127,22 @@ async function writeConfig(dir: string, values: Record<string, unknown> = {}): P
   );
 }
 
+/** A route of a route store, as the store writes it. */
+function aRoute(name: string, zone: string, devPort: number): Record<string, unknown> {
+  return {
+    id: name,
+    project: name,
+    branch: 'main',
+    projectSlug: name,
+    branchSlug: 'main',
+    fqdn: `${name}.${zone}`,
+    zone,
+    devPort,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  };
+}
+
 test('the doctor reports where it stands in an empty environment and exits 0', async (t) => {
   // Nothing is set up here: no configuration file, no state directory,
   // no daemon, no proxy, no zone. The doctor still has to say where it
@@ -656,7 +672,7 @@ test('the doctor does not warn about the old layout after a migration', async (t
 
   const layout = report.checks.find((check) => check.name === 'legacy layout');
   assert.equal(layout?.status, 'ok', `the doctor says: ${layout?.detail}`);
-  assert.match(layout?.detail ?? '', /the migration copied the files/);
+  assert.match(layout?.detail ?? '', /everything the old layout held came over/);
   assert.match(layout?.detail ?? '', /can be left in place or removed by you/);
   assert.doesNotMatch(layout?.detail ?? '', /gatewarden migrate/);
 });
@@ -705,6 +721,278 @@ test('the doctor still warns about the old files that were not migrated', async 
   assert.match(layout?.detail ?? '', /gatewarden migrate/);
 });
 
+test('the doctor does not tell a home with both layouts to remove the old directory', async (t) => {
+  // A home that holds both old layouts. The layout of the old name is
+  // the newer one, so the migration moves it first and leaves the route
+  // store of the older layout behind: the target is taken. The file is
+  // in the new layout and its routes are not, so the doctor must not
+  // tell the user to remove a directory that holds the only copy of
+  // routes that never came over.
+  const dir = makeEmptyDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const oldConfigDir = path.join(dir, 'config', 'dev-gateway');
+  const oldStateDir = path.join(dir, 'state', 'dev-gateway');
+  const legacy = path.join(dir, 'home', '.traefik-dev');
+  fs.mkdirSync(oldConfigDir, { recursive: true });
+  fs.mkdirSync(oldStateDir, { recursive: true });
+  fs.mkdirSync(legacy, { recursive: true });
+  fs.writeFileSync(
+    path.join(oldConfigDir, 'config.json'),
+    JSON.stringify({
+      proxy: 'traefik',
+      registryPort: 45102,
+      relayPort: 45101,
+      zone: 'new.test',
+      stateDir: path.join(dir, 'state'),
+    }),
+  );
+  fs.writeFileSync(
+    path.join(oldStateDir, 'routes.json'),
+    JSON.stringify({ version: 1, registrations: [aRoute('new', 'new.test', 3000)] }),
+  );
+  fs.writeFileSync(
+    path.join(legacy, 'config.json'),
+    JSON.stringify({
+      proxy: 'traefik',
+      registryPort: 45102,
+      relayPort: 45101,
+      zone: 'legacy.test',
+      stateDir: path.join(dir, 'state'),
+    }),
+  );
+  fs.writeFileSync(
+    path.join(legacy, 'registrations.json'),
+    JSON.stringify({ version: 1, registrations: [aRoute('old', 'legacy.test', 3001)] }),
+  );
+
+  const migrate = await runCli(dir, ['migrate'], { configPath: false });
+  assert.equal(migrate.code, 0, `the migration failed: ${migrate.stdout}${migrate.stderr}`);
+
+  const run = await runCli(dir, ['doctor', '--json'], { configPath: false });
+  const report = JSON.parse(run.stdout) as Report;
+
+  // The route store of the older layout holds a route that the new route
+  // store does not hold: the doctor names it and keeps the old
+  // directory where it is.
+  const layout = report.checks.find((check) => check.name === 'legacy layout');
+  assert.equal(layout?.status, 'warn', `the doctor says: ${layout?.detail}`);
+  assert.match(layout?.detail ?? '', /old\.legacy\.test:3001/);
+  assert.match(layout?.detail ?? '', /must not be removed/);
+  assert.doesNotMatch(layout?.detail ?? '', /can be left in place or removed by you/);
+
+  // The newer layout came over whole: its directories may go.
+  const oldName = report.checks.find((check) => check.name === 'old name layout');
+  assert.equal(oldName?.status, 'ok', `the doctor says: ${oldName?.detail}`);
+  assert.match(oldName?.detail ?? '', /can be left in place or removed by you/);
+});
+
+test('the doctor tells a home where everything came over to remove the old directory', async (t) => {
+  // The same home, with the older layout holding what the newer one
+  // holds: the routes of the older layout are in the new route store,
+  // and its settings are the settings of the new configuration file.
+  // Nothing was left behind, so the doctor may tell the user that the
+  // old directories can go.
+  const dir = makeEmptyDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const oldConfigDir = path.join(dir, 'config', 'dev-gateway');
+  const oldStateDir = path.join(dir, 'state', 'dev-gateway');
+  const legacy = path.join(dir, 'home', '.traefik-dev');
+  fs.mkdirSync(oldConfigDir, { recursive: true });
+  fs.mkdirSync(oldStateDir, { recursive: true });
+  fs.mkdirSync(legacy, { recursive: true });
+  const settings = {
+    proxy: 'traefik',
+    registryPort: 45102,
+    relayPort: 45101,
+    zone: 'same.test',
+    stateDir: path.join(dir, 'state'),
+  };
+  fs.writeFileSync(path.join(oldConfigDir, 'config.json'), JSON.stringify(settings));
+  fs.writeFileSync(
+    path.join(oldStateDir, 'routes.json'),
+    JSON.stringify({ version: 1, registrations: [aRoute('same', 'same.test', 3000)] }),
+  );
+  fs.writeFileSync(path.join(legacy, 'config.json'), JSON.stringify(settings));
+  fs.writeFileSync(
+    path.join(legacy, 'registrations.json'),
+    JSON.stringify({ version: 1, registrations: [aRoute('same', 'same.test', 3000)] }),
+  );
+
+  const migrate = await runCli(dir, ['migrate'], { configPath: false });
+  assert.equal(migrate.code, 0, `the migration failed: ${migrate.stdout}${migrate.stderr}`);
+
+  const run = await runCli(dir, ['doctor', '--json'], { configPath: false });
+  const report = JSON.parse(run.stdout) as Report;
+
+  const layout = report.checks.find((check) => check.name === 'legacy layout');
+  assert.equal(layout?.status, 'ok', `the doctor says: ${layout?.detail}`);
+  assert.match(layout?.detail ?? '', /everything the old layout held came over/);
+  assert.match(layout?.detail ?? '', /can be left in place or removed by you/);
+  assert.doesNotMatch(layout?.detail ?? '', /must not be removed/);
+});
+
+test('the doctor does not tell a home with an unreadable route store to remove it', async (t) => {
+  // A route store the doctor cannot read is a route store the doctor
+  // knows nothing about: it may hold routes that never came over. The
+  // doctor has to say that it cannot tell, and it must not tell the
+  // user that the old directory can go.
+  const dir = makeEmptyDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const legacy = path.join(dir, 'home', '.traefik-dev');
+  fs.mkdirSync(legacy, { recursive: true });
+  fs.writeFileSync(
+    path.join(legacy, 'config.json'),
+    JSON.stringify({
+      proxy: 'traefik',
+      registryPort: 45102,
+      relayPort: 45101,
+      zone: 'migrated.test',
+      stateDir: path.join(dir, 'state'),
+    }),
+  );
+  // A file that was cut in the middle: it does not hold JSON any more.
+  fs.writeFileSync(path.join(legacy, 'registrations.json'), '{"registrations":[{"fqdn":"only.migrated');
+
+  const migrate = await runCli(dir, ['migrate'], { configPath: false });
+  assert.equal(migrate.code, 0, `the migration failed: ${migrate.stdout}${migrate.stderr}`);
+
+  const run = await runCli(dir, ['doctor', '--json'], { configPath: false });
+  const report = JSON.parse(run.stdout) as Report;
+
+  const layout = report.checks.find((check) => check.name === 'legacy layout');
+  assert.equal(layout?.status, 'warn', `the doctor says: ${layout?.detail}`);
+  assert.match(layout?.detail ?? '', /cannot be read/);
+  assert.match(layout?.detail ?? '', /must not be removed/);
+  assert.doesNotMatch(layout?.detail ?? '', /can be left in place or removed by you/);
+});
+
+test('the doctor does not warn about a route that was registered on another port', async (t) => {
+  // A route that was registered on another port after the migration
+  // came over all the same: the route is in the new route store, and
+  // the port it had then belongs to a server that is gone. The doctor
+  // must not tell the user to add that route again.
+  const dir = makeEmptyDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const legacy = path.join(dir, 'home', '.traefik-dev');
+  fs.mkdirSync(legacy, { recursive: true });
+  fs.writeFileSync(
+    path.join(legacy, 'config.json'),
+    JSON.stringify({
+      proxy: 'traefik',
+      registryPort: 45102,
+      relayPort: 45101,
+      zone: 'migrated.test',
+      stateDir: path.join(dir, 'state'),
+    }),
+  );
+  fs.writeFileSync(
+    path.join(legacy, 'registrations.json'),
+    JSON.stringify({ version: 1, registrations: [aRoute('only', 'migrated.test', 3000)] }),
+  );
+
+  const migrate = await runCli(dir, ['migrate'], { configPath: false });
+  assert.equal(migrate.code, 0, `the migration failed: ${migrate.stdout}${migrate.stderr}`);
+
+  // The route is registered on another port, the way a dev server that
+  // moved is registered again.
+  fs.writeFileSync(
+    path.join(dir, 'state', 'routes.json'),
+    JSON.stringify({ version: 1, registrations: [aRoute('only', 'migrated.test', 3999)] }),
+  );
+
+  const run = await runCli(dir, ['doctor', '--json'], { configPath: false });
+  const report = JSON.parse(run.stdout) as Report;
+
+  const layout = report.checks.find((check) => check.name === 'legacy layout');
+  assert.equal(layout?.status, 'ok', `the doctor says: ${layout?.detail}`);
+  assert.match(layout?.detail ?? '', /everything the old layout held came over/);
+  assert.doesNotMatch(layout?.detail ?? '', /must not be removed/);
+  assert.doesNotMatch(layout?.detail ?? '', /add it to the new route store/);
+});
+
+test('the doctor does not warn about a setting that was changed after the migration', async (t) => {
+  // The zone of the new configuration file was changed by hand after
+  // the migration. The zone came over, and the user changed it after
+  // that: the doctor cannot tell the two apart, so it does not warn
+  // about it, and it does not tell the user to put the old zone back.
+  const dir = makeEmptyDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const legacy = path.join(dir, 'home', '.traefik-dev');
+  fs.mkdirSync(legacy, { recursive: true });
+  fs.writeFileSync(
+    path.join(legacy, 'config.json'),
+    JSON.stringify({
+      proxy: 'traefik',
+      registryPort: 45102,
+      relayPort: 45101,
+      zone: 'migrated.test',
+      stateDir: path.join(dir, 'state'),
+    }),
+  );
+  fs.writeFileSync(
+    path.join(legacy, 'registrations.json'),
+    JSON.stringify({ version: 1, registrations: [aRoute('only', 'migrated.test', 3000)] }),
+  );
+
+  const migrate = await runCli(dir, ['migrate'], { configPath: false });
+  assert.equal(migrate.code, 0, `the migration failed: ${migrate.stdout}${migrate.stderr}`);
+
+  // The zone of the new configuration file is changed by hand.
+  const configPath = path.join(dir, 'config', 'gatewarden', 'config.json');
+  const config = JSON.parse(fs.readFileSync(configPath, 'utf8')) as Record<string, unknown>;
+  config['zone'] = 'other.test';
+  fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n');
+
+  const run = await runCli(dir, ['doctor', '--json'], { configPath: false });
+  const report = JSON.parse(run.stdout) as Report;
+
+  const layout = report.checks.find((check) => check.name === 'legacy layout');
+  assert.equal(layout?.status, 'ok', `the doctor says: ${layout?.detail}`);
+  assert.doesNotMatch(layout?.detail ?? '', /must not be removed/);
+  assert.doesNotMatch(layout?.detail ?? '', /copy/);
+});
+
+test('the doctor does not warn about the state directory of the old layout', async (t) => {
+  // The state directory is the one the new layout resolves for itself:
+  // the migration writes the state directory of the new installation,
+  // and not the one the old file names. An old file that names another
+  // one does not hold a setting that was left behind.
+  const dir = makeEmptyDir();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  const legacy = path.join(dir, 'home', '.traefik-dev');
+  fs.mkdirSync(legacy, { recursive: true });
+  fs.writeFileSync(
+    path.join(legacy, 'config.json'),
+    JSON.stringify({
+      proxy: 'traefik',
+      registryPort: 45102,
+      relayPort: 45101,
+      zone: 'migrated.test',
+      stateDir: path.join(dir, 'other-state'),
+    }),
+  );
+  fs.writeFileSync(
+    path.join(legacy, 'registrations.json'),
+    JSON.stringify({ version: 1, registrations: [aRoute('only', 'migrated.test', 3000)] }),
+  );
+
+  const migrate = await runCli(dir, ['migrate'], { configPath: false });
+  assert.equal(migrate.code, 0, `the migration failed: ${migrate.stdout}${migrate.stderr}`);
+
+  const run = await runCli(dir, ['doctor', '--json'], { configPath: false });
+  const report = JSON.parse(run.stdout) as Report;
+
+  const layout = report.checks.find((check) => check.name === 'legacy layout');
+  assert.equal(layout?.status, 'ok', `the doctor says: ${layout?.detail}`);
+  assert.match(layout?.detail ?? '', /everything the old layout held came over/);
+});
+
 test('the doctor does not warn about the layout of the old name after a migration', async (t) => {
   // The same as the old layout: the migration copies the files into the
   // new layout and leaves the directories of the old name where they
@@ -737,7 +1025,7 @@ test('the doctor does not warn about the layout of the old name after a migratio
 
   const layout = report.checks.find((check) => check.name === 'old name layout');
   assert.equal(layout?.status, 'ok', `the doctor says: ${layout?.detail}`);
-  assert.match(layout?.detail ?? '', /the migration copied the files/);
+  assert.match(layout?.detail ?? '', /everything the old layout held came over/);
   assert.match(layout?.detail ?? '', /can be left in place or removed by you/);
   assert.doesNotMatch(layout?.detail ?? '', /gatewarden migrate/);
 });
