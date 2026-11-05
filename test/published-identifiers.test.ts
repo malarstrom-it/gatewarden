@@ -184,13 +184,23 @@
  * zone of the DNS, the name of a host, the name of a service and the
  * path of an installation are ordinary words, and no rule of a shape
  * catches a word. The values are therefore read from the installation
- * itself: its own configuration file and its own route store, both of
- * them outside the repository. They are never written down here, and
- * the rule reads nothing on a machine that has no installation.
+ * itself: its own configuration file, its own route store and the DNS of
+ * its zone. They are never written down here, and the rule reads
+ * nothing on a machine that has no installation.
+ *
+ * The third half reads the generic rules of private data over the
+ * documents of the repository as well: an address of a private network,
+ * the address of an account and the host of a git server are private in
+ * a document of the repository as much as they are in the tarball. The
+ * rules that are about the reader of the *package* — the internal
+ * numbering and the pointers at files the package does not ship — are
+ * not read there: the specification is the internal numbering, and it
+ * names the files of the repository by design.
  */
 
 import assert from 'node:assert/strict';
 import { execFile, execFileSync, spawn } from 'node:child_process';
+import dns from 'node:dns';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -632,18 +642,70 @@ function privateNetworkTraps(file: string, text: string): string[] {
  * support address of the package is public by the decision of its
  * maintainer. Every other address names an account, and the guard catches
  * it.
+ *
+ * The allowance is a parameter: the tarball of the package allows the
+ * support address of the package, and the files of the repository allow
+ * the addresses the repository names on purpose (see
+ * `REPOSITORY_ALLOWED_ADDRESSES`).
  */
-function accountAddressTraps(file: string, text: string): string[] {
+function accountAddressTraps(
+  file: string,
+  text: string,
+  allowed: string[] = PUBLIC_CONTACT_ADDRESSES,
+): string[] {
   const hits: string[] = [];
   for (const match of text.matchAll(EMAIL)) {
     // The support address is public on purpose and is allowed.
-    if (PUBLIC_CONTACT_ADDRESSES.includes(match[0].toLowerCase())) continue;
+    if (allowed.includes(match[0].toLowerCase())) continue;
     const domain = (match[0].split('@')[1] ?? '').toLowerCase();
     const last = domain.split('.').pop() ?? '';
     if (EXAMPLE_DOMAINS.has(domain) || EXAMPLE_DOMAINS.has(last)) continue;
     hits.push(`${file}:${lineOf(text, match.index ?? 0)}: "${match[0]}" — the address of an account`);
   }
   return hits;
+}
+
+/**
+ * The addresses of accounts that the files of the repository name on
+ * purpose.
+ *
+ * The specification names the address of the vendor of the proxy in the
+ * record of the questions the human answered: it says that the address
+ * was removed from the configuration channels. The address belongs to
+ * the vendor and not to the installation, and the rule of the addresses
+ * of accounts does not catch it.
+ *
+ * The allowance is narrow on purpose: it is the address itself and
+ * nothing else, and every other address of an account is caught by the
+ * rule of the reserved domains.
+ */
+const REPOSITORY_ALLOWED_ADDRESSES: string[] = ['api@traefik.io'];
+
+/**
+ * The generic rules of the guard, read over a file of the repository.
+ *
+ * The rules that are about private data are rules about every file of
+ * the repository: an address of a private network, the address of an
+ * account and the host of a git server are private in a file of the
+ * repository as much as they are in the tarball, and the repository is
+ * about to become public.
+ *
+ * Two of the rules of the guard are not read here, and the reason is
+ * that they are rules about the reader of the *package*:
+ *
+ *   - the internal numbering is the numbering of the specification
+ *     itself, and a file of the repository that names a paragraph of the
+ *     specification points into a document the reader of the repository
+ *     has;
+ *   - a pointer at a file the package does not ship is a pointer at a
+ *     file of the repository, and the reader of the repository has it.
+ */
+function repositoryFileTraps(file: string, text: string): string[] {
+  return [
+    ...privateNetworkTraps(file, text),
+    ...gitServerTraps(file, text),
+    ...accountAddressTraps(file, text, [...PUBLIC_CONTACT_ADDRESSES, ...REPOSITORY_ALLOWED_ADDRESSES]),
+  ];
 }
 
 /**
@@ -696,6 +758,58 @@ function gitServerTraps(file: string, text: string, publicHost: string = PUBLIC_
 }
 
 /**
+ * Where the values of the installation are read from.
+ */
+interface InstallationOptions {
+  /** The environment the paths of the installation are resolved in. */
+  env?: NodeJS.ProcessEnv;
+  /** The directory of the unpacked package. */
+  packageDir?: string;
+  /** The files the package holds. */
+  packageFiles?: string[];
+}
+
+/**
+ * Escape the characters of a value that mean something in a regular
+ * expression.
+ */
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Does the package publish the value?
+ *
+ * The words of the package are the package's own: the name of the
+ * package, the name of the organisation, the names of the commands and
+ * the words of the documentation. A value the package publishes is
+ * public, and the guard does not have to catch it in the repository: an
+ * installation whose host name is `build` would otherwise make the
+ * guard report every `build` of the repository, and the guard would
+ * report the words of the package as the values of an installation.
+ *
+ * The test is the same everywhere: the value stands in the text of the
+ * package as it stands in the text of the repository, and not as a part
+ * of a longer name.
+ */
+function packageUsesValue(value: string, packageDir: string, files: string[]): boolean {
+  const pattern = new RegExp(`(?<![A-Za-z0-9_])${escapeRegExp(value)}(?![A-Za-z0-9_])`, 'i');
+
+  for (const file of files) {
+    if (!/\.(?:md|json|js|mjs|ts|txt|yml|yaml)$/.test(file)) continue;
+    let text = '';
+    try {
+      text = fs.readFileSync(path.join(packageDir, file), 'utf8');
+    } catch {
+      continue;
+    }
+    if (pattern.test(text)) return true;
+  }
+
+  return false;
+}
+
+/**
  * A value that names the installation.
  *
  * The value is read from the installation itself and is never written
@@ -708,7 +822,7 @@ interface InstallationValue {
   value: string;
   /** What the value names of the installation. */
   what: string;
-  /** Does the value have to stand as a whole word? */
+  /** Does the value have to stand as a word, and not as a part of a longer name? */
   whole: boolean;
 }
 
@@ -796,35 +910,31 @@ function addInstallationValue(
  * installation in a public repository publish the very values the guard
  * keeps out of it (S80).
  *
- * The installation knows its own values. It writes them down in its own
- * configuration file — the file the package reads and writes, in the home
- * of the reader — and it keeps the routes it registered in its own route
- * store. The guard reads both, and takes four kinds of value out of
- * them:
+ * The installation knows its own values, and the guard asks it:
  *
- *   1. **the zone of the DNS** — the zone the FQDNs of the installation
- *      are built from. Every name under the zone carries it, so one
- *      value catches the names of the installation and the names of its
- *      services;
- *   2. **the host name of the installation** — the name the proxy reaches
- *      the machine under, and the name the machine has;
- *   3. **the names of the services** — the names the installation gave
- *      the services it registered in the proxy;
- *   4. **the path of the installation** — the configuration file, its
- *      directory and the state directory.
- *
- * The address of the installation and the networks it trusts are values
- * of the installation too, and they are read as well. The addresses of
- * the loopback are not: they are the loopback of every machine, and they
- * name nothing.
+ *   1. **the configuration file of the installation** — the file the
+ *      package reads and writes, in the home of the reader. It names the
+ *      zone, the host name, the address, the networks the installation
+ *      trusts and the paths of the installation;
+ *   2. **the route store of the installation** — the routes it
+ *      registered in the proxy, with the names of the services;
+ *   3. **the DNS of the zone** — the addresses the zone points at and
+ *      the nameservers that serve it. The zone is often a part of a
+ *      bigger domain, and the nameservers of that domain are the
+ *      nameservers of the zone.
  *
  * The values are read on the machine the guard runs on. A machine
  * without an installation has no values of an installation, and the rule
  * reads nothing there: the guard protects the repository of this
  * installation against the values of this installation, and there is
  * nothing of an installation to protect on a machine that has none.
+ *
+ * A value that the package publishes is not a value of the installation:
+ * the words of the package are the package's own, and an installation
+ * whose host name is `build` would otherwise make the guard report every
+ * `build` of the repository.
  */
-function installationValues(opts: { env?: NodeJS.ProcessEnv } = {}): InstallationValue[] {
+async function installationValues(opts: InstallationOptions = {}): Promise<InstallationValue[]> {
   const values: InstallationValue[] = [];
   const env = opts.env ?? process.env;
 
@@ -839,13 +949,21 @@ function installationValues(opts: { env?: NodeJS.ProcessEnv } = {}): Installatio
       ? config['stateDir']
       : resolvePaths({ env }).stateDir;
 
+  const zone = typeof config['zone'] === 'string' ? config['zone'] : '';
+  const host = typeof config['advertisedHost'] === 'string' ? config['advertisedHost'] : '';
+
   // The zone of the DNS.
-  addInstallationValue(values, config['zone'], 'the DNS zone of the installation', false);
+  addInstallationValue(values, zone, 'the DNS zone of the installation', false);
 
   // The host names of the installation: the name the proxy reaches the
-  // machine under, and the name the machine has.
-  addInstallationValue(values, config['advertisedHost'], 'the host name of the installation', true);
-  addInstallationValue(values, os.hostname(), 'the host name of the installation', true);
+  // machine under, and the name the machine has. The name of the machine
+  // is a value of the installation only when the installation names
+  // something: a machine with no installation of its own is not a value
+  // of anything.
+  if (zone !== '' || host !== '') {
+    addInstallationValue(values, host, 'the host name of the installation', true);
+    addInstallationValue(values, os.hostname(), 'the host name of the installation', true);
+  }
 
   // The address of the installation.
   addInstallationValue(values, config['advertisedIp'], 'the address of the installation', true);
@@ -858,10 +976,14 @@ function installationValues(opts: { env?: NodeJS.ProcessEnv } = {}): Installatio
     }
   }
 
-  // The paths of the installation.
+  // The paths of the installation: the absolute form and the short form
+  // a document uses (`~/.config/gatewarden/`).
   addInstallationValue(values, configPath, 'the path of the installation', false);
   addInstallationValue(values, path.dirname(configPath), 'the path of the installation', false);
   addInstallationValue(values, stateDir, 'the path of the installation', false);
+  for (const value of [configPath, path.dirname(configPath), stateDir]) {
+    addInstallationValue(values, shortPath(value), 'the path of the installation', false);
+  }
 
   // The names of the services the installation registered in the proxy.
   for (const registration of new RegistrationStore(stateDir).list()) {
@@ -869,7 +991,127 @@ function installationValues(opts: { env?: NodeJS.ProcessEnv } = {}): Installatio
     addInstallationValue(values, registration.fqdn, 'the host name of a service of the installation', true);
   }
 
+  // The values of the DNS of the zone.
+  values.push(...(await zoneDnsValues(zone)));
+
+  // A value that the package publishes is public. The guard does not
+  // have to catch a value that every reader of the package has already:
+  // the words of the package are the package's own, and an installation
+  // whose host name is `build` would otherwise make the guard report
+  // every `build` of the repository.
+  if (opts.packageDir !== undefined && opts.packageFiles !== undefined) {
+    return values.filter(
+      (entry) => !packageUsesValue(entry.value, opts.packageDir as string, opts.packageFiles as string[]),
+    );
+  }
+
   return values;
+}
+
+/**
+ * The short form of a path of the installation.
+ *
+ * A document of the repository writes the path of the installation in
+ * the home of the reader (`~/.config/gatewarden/`) and not in the
+ * absolute form. The short form is the path of the installation as
+ * well, and the guard catches it — unless the package publishes it, for
+ * the short form of the path of the configuration is the path of every
+ * installation of the package.
+ */
+function shortPath(value: string): string | undefined {
+  const home = os.homedir();
+  if (!value.startsWith(home + path.sep)) return undefined;
+  return `~${value.slice(home.length)}`;
+}
+
+/**
+ * The values of the installation that the DNS of the zone holds (S105).
+ *
+ * The zone of the installation points at the machine that runs the proxy,
+ * and it is served by nameservers. Both are values of the installation,
+ * and both are in the DNS: the guard asks the resolver of the machine.
+ *
+ * The zone of the installation is often a part of a bigger domain: the
+ * zone `home.example.com` is served by the nameservers of
+ * `example.com`. The guard asks the zone first and then the domain above
+ * it, and stops there — the nameservers of the top-level domain are the
+ * nameservers of the world.
+ *
+ * A resolver that does not answer, or a zone that does not resolve, gives
+ * no values. The rule then knows less, and it knows no wrong thing.
+ */
+async function zoneDnsValues(zone: string): Promise<InstallationValue[]> {
+  const values: InstallationValue[] = [];
+  const host = zone.replace(/\.$/, '');
+  if (host === '') return values;
+
+  const addresses = await resolveAll([
+    () => dns.promises.resolve4(host),
+    () => dns.promises.resolve6(host),
+  ]);
+  for (const address of addresses) {
+    addInstallationValue(values, address, 'the address of the installation', true);
+  }
+
+  for (const server of await nameserversOf(host)) {
+    addInstallationValue(values, server, 'the nameserver of the installation', true);
+  }
+
+  return values;
+}
+
+/**
+ * The nameservers that serve a host.
+ *
+ * The nameservers of the host itself, or — when the host has none of its
+ * own — the nameservers of the domain above it. The walk stops at the
+ * domain: the nameservers of the top-level domain are not the
+ * nameservers of the installation.
+ */
+async function nameserversOf(host: string): Promise<string[]> {
+  const labels = host.split('.');
+  for (let count = labels.length; count >= 2; count -= 1) {
+    const servers = await resolveAll([() => dns.promises.resolveNs(labels.slice(labels.length - count).join('.'))]);
+    if (servers.length > 0) return servers;
+  }
+  return [];
+}
+
+/**
+ * Ask the resolver for the answers, and wait no longer than it may.
+ *
+ * A resolver that does not answer must not hold the test: the answers
+ * come back, or they do not, and the rule reads what it got.
+ */
+async function resolveAll(lookups: Array<() => Promise<string[]>>): Promise<string[]> {
+  const answers: string[] = [];
+
+  for (const lookup of lookups) {
+    const answer = await withTimeout(lookup(), 2000);
+    if (answer !== undefined) answers.push(...answer);
+  }
+
+  return answers;
+}
+
+/**
+ * The answer of the resolver, or nothing when it takes too long.
+ */
+function withTimeout<T>(answer: Promise<T>, ms: number): Promise<T | undefined> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(undefined), ms);
+    if (typeof timer.unref === 'function') timer.unref();
+    answer.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(undefined);
+      },
+    );
+  });
 }
 
 /**
@@ -878,10 +1120,15 @@ function installationValues(opts: { env?: NodeJS.ProcessEnv } = {}): Installatio
  * The rule is the rule of the words: a value of the installation is
  * caught where it stands, and the file and the line it stands on are
  * named. A value that names a whole thing — a host name, a service name
- * — has to stand as a whole word, so that the name of one service does
- * not catch the name of another. A value that names a part of a bigger
- * name — the zone, a path — is caught wherever it stands, because every
- * name under the zone carries it.
+ * — has to stand as a word: the name of one service does not catch the
+ * name of another. The name of the machine is a part of the names it
+ * carries, though — the path of the installation on the machine and the
+ * name of the machine on its network both carry it — so the name is
+ * caught when a dash or a dot follows it.
+ *
+ * A value that names a part of a bigger name — the zone, a path — is
+ * caught wherever it stands, because every name under the zone carries
+ * it.
  *
  * The case does not matter: the zone of the DNS does not care about it,
  * and a name that differs in its case is the same name.
@@ -890,9 +1137,9 @@ function installationValueTraps(file: string, text: string, values: Installation
   const hits: string[] = [];
 
   for (const { value, what, whole } of values) {
-    const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escaped = escapeRegExp(value);
     const pattern = whole
-      ? new RegExp(`(?<![A-Za-z0-9_-])${escaped}(?![A-Za-z0-9_-])`, 'gi')
+      ? new RegExp(`(?<![A-Za-z0-9_])${escaped}(?![A-Za-z0-9_])`, 'gi')
       : new RegExp(escaped, 'gi');
     for (const match of text.matchAll(pattern)) {
       hits.push(`${file}:${lineOf(text, match.index ?? 0)}: "${match[0]}" — ${what}`);
@@ -905,11 +1152,11 @@ function installationValueTraps(file: string, text: string, values: Installation
 /**
  * The values of the installation on this machine.
  *
- * They are read once, when this file is loaded: the guard and its probes
- * have to read the same values, and the installation of the machine does
- * not change while the test runs.
+ * They are read when the package is packed: the rule has to know the
+ * words of the package before it can tell a value of the installation
+ * from a word of the package.
  */
-const INSTALLATION_VALUES: InstallationValue[] = installationValues();
+let INSTALLATION_VALUES: InstallationValue[] = [];
 
 /**
  * The fields of the manifest that point at a repository.
@@ -1153,7 +1400,6 @@ const RULE_PROBES: RuleProbe[] = [
     file: 'bin/gatewarden.js',
     find: (file, text, context) => codePathTraps(file, text, context),
   },
-  ...installationProbes(),
 ];
 
 /**
@@ -1683,6 +1929,11 @@ describe('the published package', () => {
     });
 
     files = filesUnder(packageDir);
+
+    // The values of the installation are read now: the rule has to know
+    // the words of the package before it can tell a value of the
+    // installation from a word of the package.
+    INSTALLATION_VALUES = await installationValues({ packageDir, packageFiles: files });
   });
 
   after(async () => {
@@ -2213,7 +2464,10 @@ describe('the published package', () => {
     // down here either.
     const context = guardContext(files);
 
-    for (const probe of RULE_PROBES) {
+    // The values of the installation are probes of the rule as well. They
+    // are read from the installation itself, so they are not written
+    // down here.
+    for (const probe of [...RULE_PROBES, ...installationProbes()]) {
       const text = probe.inRepository
         ? plantRepositoryFile(probe.file, probe.value)
         : plant(probe.file, probe.value);
@@ -2290,7 +2544,7 @@ describe('the published package', () => {
     );
   });
 
-  test('the files the package does not ship hold no value of the installation', () => {
+  test('the files the package does not ship hold no private value', () => {
     // The tarball is not the whole of the repository. The specification,
     // the memory of the project, the code of the project and the
     // documents of the repository are not in the tarball — and S101 took
@@ -2299,52 +2553,97 @@ describe('the published package', () => {
     // the values could come back into `specs/` and `memory/` without
     // anything falling.
     //
-    // The values are read from the installation itself: its own
-    // configuration file and its own route store, both of them outside
-    // the repository. A machine without an installation has no values,
+    // The values of the installation are read from the installation
+    // itself: its own configuration file, its own route store and the
+    // DNS of its zone. A machine without an installation has no values,
     // and the rule reads nothing there.
+    //
+    // The generic rules of private data are read over the documents of
+    // the repository as well: an address of a private network, the
+    // address of an account and the host of a git server are private in
+    // a document of the repository as much as they are in the tarball.
+    // They are not read over the code of the project: the code carries
+    // the addresses of the examples and the values of the probes of the
+    // guard itself, and a rule of a shape would read them as private
+    // data.
     const unshipped = unshippedRepositoryFiles(files);
+    const documents = unshipped.filter((file) => file.endsWith('.md'));
 
     assert.ok(
       unshipped.length > 20,
       `the repository holds ${unshipped.length} files the package does not ship — the rule would read nothing`,
     );
+    assert.ok(documents.length > 5, `the repository holds ${documents.length} documents — the rule would read nothing`);
     for (const file of ['specs/tech-architecture/naming.md', 'memory/boarden.md', 'MEMORY.md', 'CONTRIBUTING.md']) {
       assert.ok(unshipped.includes(file), `the rule does not read ${file}`);
     }
 
-    const hits: string[] = [];
+    const privateHits: string[] = [];
+    const installationHits: string[] = [];
 
     for (const file of unshipped) {
       const text = fs.readFileSync(path.join(REPO_ROOT, file), 'utf8');
-      hits.push(...installationValueTraps(file, text, INSTALLATION_VALUES));
+      installationHits.push(...installationValueTraps(file, text, INSTALLATION_VALUES));
+    }
+
+    for (const file of documents) {
+      const text = fs.readFileSync(path.join(REPO_ROOT, file), 'utf8');
+      privateHits.push(...repositoryFileTraps(file, text));
     }
 
     assert.deepEqual(
-      hits,
+      privateHits,
       [],
-      'the files the package does not ship hold a value of the installation:\n' + hits.join('\n'),
+      'the documents of the repository hold private data:\n' + privateHits.join('\n'),
+    );
+    assert.deepEqual(
+      installationHits,
+      [],
+      'the files the package does not ship hold a value of the installation:\n' + installationHits.join('\n'),
     );
   });
 
-  test('the rule of the values of the installation catches the values of an installation', () => {
+  test('the rule of the values of the installation catches the values of an installation', async () => {
     // A rule that cannot fail guards nothing. The rule is run against an
     // installation of its own — a configuration file of its own, in a
-    // directory of its own — and the values of that installation have to
-    // be caught where they stand. The values of that installation are
-    // values of the standards: they name nothing of this installation,
-    // and they may be written here in a public repository.
+    // directory of its own, with a route store of its own — and the
+    // values of that installation have to be caught where they stand. The
+    // values of that installation are values of the standards: they name
+    // nothing of this installation, and they may be written here in a
+    // public repository.
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-installation-'));
 
     try {
       const configFile = path.join(home, 'config.json');
+      const stateDir = path.join(home, 'state');
+      fs.mkdirSync(stateDir, { recursive: true });
       fs.writeFileSync(
         configFile,
         JSON.stringify({
           zone: 'probe.zone',
           advertisedHost: 'probe-host',
           advertisedIp: '192.0.2.13',
-          stateDir: path.join(home, 'state'),
+          stateDir,
+        }),
+      );
+      fs.writeFileSync(
+        path.join(stateDir, 'routes.json'),
+        JSON.stringify({
+          version: 1,
+          registrations: [
+            {
+              id: 'probe-app-main',
+              project: 'Probe App',
+              branch: 'main',
+              projectSlug: 'probeapp',
+              branchSlug: 'main',
+              fqdn: 'probeapp.main.probe.zone',
+              zone: 'probe.zone',
+              devPort: 3000,
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+            },
+          ],
         }),
       );
 
@@ -2352,7 +2651,7 @@ describe('the published package', () => {
       delete env['GATEWARDEN_HOME'];
       delete env['DEV_GATEWAY_HOME'];
 
-      const values = installationValues({ env });
+      const values = await installationValues({ env, packageDir, packageFiles: files });
 
       const zone = values.find((entry) => entry.what === 'the DNS zone of the installation');
       assert.ok(zone !== undefined, 'the rule did not read the zone of the installation');
@@ -2370,6 +2669,20 @@ describe('the published package', () => {
         'the rule did not catch the host name of the installation',
       );
 
+      const service = values.find((entry) => entry.what === 'the name of a service of the installation');
+      assert.ok(service !== undefined, 'the rule did not read the name of a service of the installation');
+      assert.ok(
+        installationValueTraps('memory/boarden.md', `The service is ${service.value}.`, values).length > 0,
+        'the rule did not catch the name of a service of the installation',
+      );
+
+      const serviceHost = values.find((entry) => entry.what === 'the host name of a service of the installation');
+      assert.ok(serviceHost !== undefined, 'the rule did not read the host name of a service of the installation');
+      assert.ok(
+        installationValueTraps('memory/boarden.md', `The service answers at ${serviceHost.value}.`, values).length > 0,
+        'the rule did not catch the host name of a service of the installation',
+      );
+
       const installationPath = values.find((entry) => entry.what === 'the path of the installation');
       assert.ok(installationPath !== undefined, 'the rule did not read the path of the installation');
       assert.ok(
@@ -2382,7 +2695,11 @@ describe('the published package', () => {
       const without: NodeJS.ProcessEnv = { ...process.env, GATEWARDEN_CONFIG: path.join(home, 'no-such-file.json') };
       delete without['GATEWARDEN_HOME'];
       delete without['DEV_GATEWAY_HOME'];
-      assert.deepEqual(installationValues({ env: without }), [], 'the rule read values without an installation');
+      assert.deepEqual(
+        await installationValues({ env: without }),
+        [],
+        'the rule read values without an installation',
+      );
     } finally {
       fs.rmSync(home, { recursive: true, force: true });
     }
