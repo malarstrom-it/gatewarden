@@ -55,6 +55,12 @@ the installation should follow a project and go when the project goes.
 The global install is the right one when the commands should be there for
 every project on the machine.
 
+A global install puts the commands on the PATH of the machine, and that is
+how they are written in this README. A project install puts them in the
+`node_modules/.bin` of the project, where they are run with `npx` in front
+of them — `npx gatewarden setup` — or through a script in the `package.json`
+of the project.
+
 Node 20.11 or later. The package ships compiled JavaScript. Its runtime
 dependencies are `env-paths` and `proper-lockfile`. It is ESM-only, so a
 CommonJS consumer cannot `require()` it. Node 22.12 and later can.
@@ -132,6 +138,11 @@ package in the project instead:
 ```bash
 npm install @malarstrom/gatewarden
 ```
+
+The commands of the steps below are written as they are run on the PATH of
+the machine. After a project install they are in the `node_modules/.bin` of
+the project, and `npx` goes in front of them — `npx gatewarden setup` — or
+they run through a script in the `package.json` of the project.
 
 **2. Set the gateway up.** The wizard reads your proxy, derives what it can, asks for
 the rest, writes the configuration file and starts the daemon:
