@@ -13,12 +13,13 @@
  */
 
 import { loadConfig, configPathFromArgv, listenHost } from './config.ts';
+import { logFileFor } from './paths.ts';
 import type { Config } from './types.ts';
 import type { ProxyAdapter } from './proxy.ts';
 import { RegistrationStore } from './state.ts';
 import { createRegistryServer } from './registry.ts';
 import { createRelayServer } from './relay.ts';
-import { log, setLogLevel } from './log.ts';
+import { log, setLogFile, setLogLevel } from './log.ts';
 
 const SCOPE = 'worker';
 
@@ -40,6 +41,10 @@ export async function runWorker(role: WorkerRole, adapter: ProxyAdapter, config:
       : 'info',
   );
   const store = new RegistrationStore(config.stateDir);
+  // The worker writes to the log file of the installation: the daemon
+  // that runs as a service writes to the journal of the platform, and the
+  // file the CLI points at shall hold the log of the workers too.
+  setLogFile(logFileFor(config.stateDir));
 
   const server = role === 'registry' ? createRegistryServer(store, config, adapter) : createRelayServer(store, config);
   const port = role === 'registry' ? config.registryPort : config.relayPort;

@@ -27,7 +27,7 @@ import {
   isCheckoutInstallation,
   removeInstallationFiles,
 } from './installation.ts';
-import { log, setLogLevel } from './log.ts';
+import { log, setLogFile, setLogLevel } from './log.ts';
 import type { Config } from './types.ts';
 import { relativeModulePath } from './util/module.ts';
 
@@ -262,6 +262,11 @@ export async function runDaemon(): Promise<void> {
   // directory is there.
   ensureLogDirectory(logFile);
   rotateLog(logFile, config.logMaxBytes, config.logKeep);
+  // The daemon writes to the log file of the installation, and to the
+  // standard output as well: the standard output is the journal of the
+  // platform when the daemon runs as a service, and the journal is not a
+  // file the reader of the log can open.
+  setLogFile(logFile);
 
   const pidFile = path.join(config.stateDir, 'daemon.pid');
   fs.writeFileSync(pidFile, `${process.pid}\n`);

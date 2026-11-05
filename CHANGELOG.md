@@ -107,6 +107,14 @@ names. Every release gets a section, newest first.
   file: the file wins over it, and the workers the daemon starts read the
   same file. The line the daemon writes when it starts says which
   configuration file it runs with.
+- **The daemon of a service writes to the log file.** The unit of the
+  platform starts the daemon with its standard output on the journal, and
+  the journal is not a file a reader can open: the log file the CLI points
+  at stayed empty for an installation with a service, and the reader found
+  an empty file where the log should be. The daemon writes to the log file
+  as well as to the standard output, and the workers write to it too. The
+  journal of the platform keeps what it had.
+
 
 - **The CLI and the daemon open the same log file.** The log file was
   resolved with the environment of the process that asked for it, so a
