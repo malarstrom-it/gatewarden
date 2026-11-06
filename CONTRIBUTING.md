@@ -361,11 +361,13 @@ publish, and not before.
 ## Moving the repository to GitHub
 
 The repository lives on GitHub: it is `github.com/malarstrom-it/gatewarden`,
-in an organisation of its own, and it stays private while the migration runs.
+in an organisation of its own. The move of the repository is done, and it
+is public since 2026-11-05.
 
-The private server it left becomes an archive: no new work is developed on
-it, and no new repository is created on it. Everything that was specific
-to that server has been turned into GitHub.
+The server it left is an archive and is not written to any more: no new
+work is developed on it, and no new repository is created on it. It was
+the private server of the project, and everything that was specific to
+that server has been turned into GitHub.
 
 ### The three decisions
 
@@ -380,37 +382,41 @@ automation of the project may create repositories in. The package is
 folder keeps the name it has today; only the repository on GitHub is
 renamed.
 
-**2. The repository is private while the migration runs.** The reason is
-the repository itself: it still holds the data of the installation — the
-zone of the installation, the private addresses, the names of the
-machines and the containers — in the history of the branch. The tip of
-the branch does not hold them any more: the working tree was scrubbed, so
-the values in `memory/` and in `specs/` are examples now, and the memory
-of the installation itself lives outside the repository. The history of
-the branch still carries the zone in 279 lines. The counts are recounted
-before the repository goes public:
+**2. The repository was private while the migration ran.** It is public
+since 2026-11-05. The reason for the privacy was the repository itself:
+it held the data of the installation — the zone of the installation, the
+private addresses, the names of the machines and the containers — in the
+history of the branch. The tip of the branch does not hold them any more:
+the working tree was scrubbed, so the values in `memory/` and in `specs/`
+are examples now, and the memory of the installation itself lives outside
+the repository. The history of the branch carried the zone in 279 lines.
+The counts were recounted before the repository went public:
 
 ```bash
 git grep -c -F '<the zone>' feat/npm-package -- . | awk -F: '{s += $NF} END {print s}'
 git log feat/npm-package -p -U0 | grep -c '^+.*<the zone>'
 ```
 
-Making the repository public is a decision of its own and a work of its
-own: it has to scrub the history. It is not part of this migration.
+Making the repository public was a decision of its own and a work of its
+own: it was not part of this migration. The rewrite of the history was a
+work of its own as well.
 
 **3. The default branch on GitHub is `feat/npm-package`.** That is
-where the development happens. `master` is pushed as well, so that the
-whole history is kept. The worktrees of the project are created from the
-default branch, so the base branch of a worktree is set explicitly to
-`feat/npm-package` instead of being resolved from the checkout. That
-setting is not in place yet: it is one of the steps that are left.
+where the development happens. `master` was pushed as well, so that the
+whole history was kept, and the rewrite of the history came later: it
+holds the same root commit as `feat/npm-package` now. The worktrees of
+the project are created from the default branch, so the base branch of a
+worktree is set explicitly to `feat/npm-package` instead of being
+resolved from the checkout. That setting is not in place yet: it is one
+of the steps that are left.
 
 ### What is different from the earlier plan
 
 The earlier plan moved the repository to a public repository with a
-scrubbed history. That is not part of this migration. The move to a
-public repository comes after the migration is done and the package is
-published from GitHub, and it is a decision of its own.
+scrubbed history. That was not part of this migration. The move to a
+public repository was a decision of its own, after the migration, and it
+is done: the repository is public since 2026-11-05. The publish of the
+package goes through GitHub, and it is still to come.
 
 ### What npm asks for by hand
 
@@ -440,9 +446,11 @@ not publish another one.
   `0.1.1` with the token, and it is the workflow that npm is to be
   connected to for the releases after it.
 - The repository exists on GitHub: `github.com/malarstrom-it/gatewarden`,
-  private, with the history pushed to it and `feat/npm-package` as its
-  default branch. The `master` of the private server is pushed as well,
-  so that the whole history is kept.
+  public since 2026-11-05, with the history pushed to it and
+  `feat/npm-package` as its default branch. The `master` of the server it
+  left was pushed as well, so that the whole history was kept; the
+  rewrite of the history came later, and it holds the same root commit as
+  `feat/npm-package` now.
 - The manifest names the repository: `repository`, `homepage` and `bugs`
   point at the public repository, and npm checks the `repository` field
   against the repository the workflow runs in.
@@ -460,7 +468,7 @@ not publish another one.
   left the private server, and that is not a leak.
 - The README points at the source. The README is in the tarball, so it
   names the host of the repository on GitHub and nothing else.
-- The workflows of the private server are gone: the directory with them
+- The workflows of the server it left are gone: the directory with them
   is removed, and there is one CI and one publish workflow.
 - The CI runs on a push to `feat/npm-package`. The work of the project
   happens on that branch, and a push to it starts the CI, so that a merge
@@ -493,15 +501,20 @@ not publish another one.
 
 ### Later: making the repository public
 
-That is the next decision after the migration, and it is not this one.
-It is a work of its own: the working tree has to be scrubbed, and so
-does the history — a value that is deleted in the working tree is still
-in the history, and the push takes the history with it.
+The repository is public since 2026-11-05. That was the decision after
+the migration, and it was not part of it. It was a work of its own: the
+working tree had to be scrubbed — a value that is deleted in the
+working tree is still in the history, and the push takes the history
+with it. The rewrite came later: the branch starts at the root commit
+now, which carries the version `0.1.1`, and no branch and no tag
+reaches an earlier commit. The earlier commits are still reachable on
+GitHub through the references of the pull requests, and a copy of them is
+kept in an archive outside the repository.
 
 The guard does not know the values of the installation: it protects the
 package with rules, and the rules do not carry the values. The
-maintainer does, and searches the working tree and the history for each
-of them before the repository goes public:
+maintainer does, and searched the working tree and the history for each
+of them before the repository went public:
 
 ```bash
 git grep -Il -F '<the value>'

@@ -15,6 +15,12 @@ names. Every release gets a section, newest first.
 
 ### Changed
 
+- **The contributing guide does not call the repository private.** The
+  repository has been public since 2026-11-05, and the guide still told
+  the reader that it was private while the migration ran. The guide says
+  now that the repository is public, that the server it left is an
+  archive and that the move is done.
+
 - **The first release of the package goes out with a token.** The package
   was not on the registry yet, and npm accepts a trusted publisher only
   for a package that is already there, so the publish of `0.1.1` uses the

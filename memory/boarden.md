@@ -29,7 +29,7 @@ in the board's own files, not in the repository.
 - `memory/traefik-namespace.md` — the confirmed facts about the installation (the DNS namespace,
   the FQDN template, the routing model, the container facts, the TLS rules) plus a chronological
   log of the index page and the decisions that followed. The file left the repository here: the
-  repository is to become public, and these values belong to the installation, not to the package.
+  repository is public since 2026-11-05, and these values belong to the installation, not to the package.
 
 ## Where the backlog lives
 
