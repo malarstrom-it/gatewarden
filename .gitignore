@@ -1,0 +1,13 @@
+node_modules/
+*.log
+dist/
+__pycache__/
+
+# The Traefik binary the test environment downloads (tools/testenv).
+tools/testenv/.cache/
+
+# The screenshots of the review rounds. They are outputs of a run against
+# the live system, and the live system is the installation: the zone, the
+# host names and the live routes of the installation are in the pixels of
+# the images. They do not belong in a repository that becomes public.
+artifacts/

@@ -1,0 +1,42 @@
+http:
+  routers:
+    dev-alpha-feature-login-6e282c:
+      rule: "Host(`feature-login.alpha.example.com`)"
+      entryPoints:
+        - "websecure"
+      service: "dev-alpha-feature-login-6e282c"
+      middlewares:
+        - "devhdr-alpha-feature-login-6e282c"
+        - "compress@file"
+        - "default-security-headers@file"
+      tls:
+        certResolver: "cloudflare"
+    dev-beta-main-f6c585:
+      rule: "Host(`main.beta.example.com`)"
+      entryPoints:
+        - "websecure"
+      service: "dev-beta-main-f6c585"
+      middlewares:
+        - "devhdr-beta-main-f6c585"
+        - "compress@file"
+        - "default-security-headers@file"
+      tls:
+        certResolver: "cloudflare"
+  services:
+    dev-alpha-feature-login-6e282c:
+      loadBalancer:
+        servers:
+          - url: "http://gateway:45001"
+    dev-beta-main-f6c585:
+      loadBalancer:
+        servers:
+          - url: "http://gateway:45001"
+  middlewares:
+    devhdr-alpha-feature-login-6e282c:
+      headers:
+        customRequestHeaders:
+          X-Dev-Target: "alpha/feature-login"
+    devhdr-beta-main-f6c585:
+      headers:
+        customRequestHeaders:
+          X-Dev-Target: "beta/main"
