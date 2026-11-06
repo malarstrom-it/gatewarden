@@ -11,7 +11,81 @@ The names under "Added", "Changed", "Deprecated", "Removed", "Fixed" and
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/#types-of-changes)
 names. Every release gets a section, newest first.
 
-## Unreleased
+## 0.1.1 - 2026-11-06
+
+The version before this one, `0.1.0`, was published on the registry and
+withdrawn on the same day. It was installable during the hours it was
+there, it is not in the registry now, and the version number `0.1.0` is not
+used again. This release is therefore the first one of the package that
+stays on the registry, and the one to install.
+
+### Added
+
+- **A proxy-agnostic core.** The registry, the relay, the route state, the
+  configuration and the daemon lifecycle live in one core that knows
+  nothing about Traefik. The proxy is an adapter behind the `ProxyAdapter`
+  contract, and the adapter is picked by the `proxy` key of the
+  configuration.
+- **A Traefik adapter.** The adapter renders the dynamic configuration
+  document that Traefik polls, and it knows the entry points, the
+  middlewares and the certificate resolver.
+- **A registry.** One HTTP listener that serves the dynamic configuration
+  document (`GET /<proxy>`) and a health probe (`GET /healthz`). It has no
+  write path: the web interface is gone, and the other surfaces write the
+  state file directly.
+- **A relay.** One HTTP listener that dispatches a request to the dev server
+  that the proxy named in the `X-Dev-Target` header. It only ever connects
+  to `127.0.0.1`, and it tunnels WebSocket upgrades byte for byte.
+- **A daemon.** The two listeners are supervised by a background process
+  that outlives the command that started it, with a pid file, a lock and a
+  restart. It starts itself the first time a command needs it, and
+  `gatewarden start` starts it by hand.
+- **A CLI** — `gatewarden` with `register`, `unregister`, `list`, `status`,
+  `config`, `setup`, `start`, `stop`, `doctor`, `install-service` and
+  `migrate`.
+- **An MCP server** — `gatewarden-mcp`, with the tools `publish_dev_server`,
+  `remove_dev_server`, `list_dev_servers` and `dev_gateway_status`.
+- **A pi extension, an Agent Skill and a block for the agents**
+  (`docs/AGENTS.md`), so that an agent can publish a dev server without
+  being told the host name twice.
+- **A setup wizard** (`gatewarden setup`): it reads the proxy, derives what
+  it can, asks for the rest and writes the configuration file.
+- **A health check that reports instead of failing.** `gatewarden doctor`
+  names every check it made, with the reason and the way out, and changes
+  nothing. A thing that is missing but not broken is a warning, not a
+  failure, and `--strict` turns the warnings into failures for the one who
+  wants that.
+- **A migration** (`gatewarden migrate`) from the old layout to the current
+  one. It is never run on its own during an install.
+- **A service unit** for Linux (systemd), macOS (launchd) and Windows (a
+  scheduled task), installed by `gatewarden install-service`.
+- **The package itself**: the compiled JavaScript, the type declarations,
+  the three binaries and the documentation. The documentation is
+  `README.md` — what the package is and how to use it — and `docs/setup.md`
+  (the setup, by hand and through the wizard), `docs/traefik.md` (the proxy
+  side of the wiring), `docs/healthcheck.md` (what every line of
+  `gatewarden doctor` means), `docs/AGENTS.md` (the block an agent reads)
+  and `docs/install-scripts.md` (the install scripts of the package, the
+  warning npm prints for them, and the commands that review and approve
+  them). The install writes the configuration file with the default values
+  and creates the three directories the gateway uses. It opens no port,
+  starts no process and leaves nothing behind.
+- **The manifest of the package is complete.** The files the package ships
+  are named one by one in the manifest, the entry points name their type
+  declarations before their JavaScript, the binaries are named, the version
+  of node is declared, and the package is ESM-only.
+- **A release is gated.** A version that does not typecheck, does not build
+  or does not pass the tests never reaches the registry: the build and the
+  tests are the gate of the release.
+- **The doctor warns about a proxy that is not in the trust list.** The
+  proxy polls the configuration document and sends the dispatch header, and
+  an address that is not in `allowedCidrs` is answered with a `403` — the
+  most common reason for one. The doctor resolves the host of the proxy's
+  API and compares the addresses it finds with the trust list: a proxy
+  that the list does not cover is a warning with the way out, never a
+  failure. The doctor prints the trust list it uses as well, so a reader
+  can see which addresses may talk to the gateway. The address of the
+  proxy's API is read from `GATEWARDEN_PROXY_API_URL`.
 
 ### Changed
 
@@ -100,6 +174,48 @@ names. Every release gets a section, newest first.
   quoted fragment of the specification said the other language; they say
   English now. The file names, the paths and the names of the things they
   point at are the same as they were.
+
+- **The README is written for a reader who has never seen the tool.** It
+  says what the tool does, what it needs, how to install it, how to
+  configure it and what to do when something does not work. It does not
+  describe the installation it was written for any more.
+- **The published package names no repository.** The manifest fields
+  `repository`, `homepage`, `bugs` and `funding` are gone, and the README,
+  the changelog and the contributing guide no longer name a private host.
+  The package is installed from the public npm registry, and a package that
+  everybody can install does not point a reader at a private host. The
+  public name of the package is unchanged: the name in the npm scope, the
+  names of the binaries, the names of the MCP tools, the commands and the
+  ports stay what they were.
+- **The package says where its source lives.** The manifest names the
+  repository of the project in `repository`, `homepage` and `bugs`, and
+  the README has a section that names it too. A reader on npmjs.org
+  reaches the source from the page of the package now, and the page of
+  the package no longer asks a question it could not answer.
+
+- **The package names one address everywhere.** The security policy named
+  another address than the readme, and the package names one address now:
+  the support address, which the readme named already. A report that goes
+  to the address of the package reaches the maintainer of the package, and
+  the guard reads the documents of the repository too.
+
+- **The message about a missing build names one command.** A launcher
+  without a build told the reader to reinstall the package the way it
+  was installed, and named the command of a project install and the
+  command of a global install, so the reader had to choose one of the
+  two. The launcher knows which installation it is in — a dependency of
+  a project lives in the `node_modules` of that project, and a global
+  installation lives in the global root of npm — and the message names
+  the command of that installation now: `npm install @malarstrom/gatewarden`
+  for a project, `npm install -g @malarstrom/gatewarden` for a global one.
+
+### Deprecated
+
+- **The names of the environment variables before the rename are deprecated.**
+  `DEV_GATEWAY_HOME`, `DEV_GATEWAY_CONFIG` and `DEV_GATEWAY_STATE_DIR`
+  still work, but the CLI reads them and says once that they are on their
+  way out. `GATEWARDEN_HOME`, `GATEWARDEN_CONFIG` and
+  `GATEWARDEN_STATE_DIR` are the names to use.
 
 ### Fixed
 
@@ -201,128 +317,6 @@ names. Every release gets a section, newest first.
   layout that still has to be migrated? When everything the old layout held
   came over, the doctor says so and says that the old directory can be left
   in place or removed by the reader.
-
-## 0.1.1 - 2026-11-01
-
-The version before this one, `0.1.0`, was published on the registry and
-withdrawn on the same day. It was installable during the hours it was
-there, it is not in the registry now, and the version number `0.1.0` is not
-used again. This release is therefore the first one of the package that
-stays on the registry, and the one to install.
-
-### Added
-
-- **A proxy-agnostic core.** The registry, the relay, the route state, the
-  configuration and the daemon lifecycle live in one core that knows
-  nothing about Traefik. The proxy is an adapter behind the `ProxyAdapter`
-  contract, and the adapter is picked by the `proxy` key of the
-  configuration.
-- **A Traefik adapter.** The adapter renders the dynamic configuration
-  document that Traefik polls, and it knows the entry points, the
-  middlewares and the certificate resolver.
-- **A registry.** One HTTP listener that serves the dynamic configuration
-  document (`GET /<proxy>`) and a health probe (`GET /healthz`). It has no
-  write path: the web interface is gone, and the other surfaces write the
-  state file directly.
-- **A relay.** One HTTP listener that dispatches a request to the dev server
-  that the proxy named in the `X-Dev-Target` header. It only ever connects
-  to `127.0.0.1`, and it tunnels WebSocket upgrades byte for byte.
-- **A daemon.** The two listeners are supervised by a background process
-  that outlives the command that started it, with a pid file, a lock and a
-  restart. It starts itself the first time a command needs it, and
-  `gatewarden start` starts it by hand.
-- **A CLI** — `gatewarden` with `register`, `unregister`, `list`, `status`,
-  `config`, `setup`, `start`, `stop`, `doctor`, `install-service` and
-  `migrate`.
-- **An MCP server** — `gatewarden-mcp`, with the tools `publish_dev_server`,
-  `remove_dev_server`, `list_dev_servers` and `dev_gateway_status`.
-- **A pi extension, an Agent Skill and a block for the agents**
-  (`docs/AGENTS.md`), so that an agent can publish a dev server without
-  being told the host name twice.
-- **A setup wizard** (`gatewarden setup`): it reads the proxy, derives what
-  it can, asks for the rest and writes the configuration file.
-- **A health check that reports instead of failing.** `gatewarden doctor`
-  names every check it made, with the reason and the way out, and changes
-  nothing. A thing that is missing but not broken is a warning, not a
-  failure, and `--strict` turns the warnings into failures for the one who
-  wants that.
-- **A migration** (`gatewarden migrate`) from the old layout to the current
-  one. It is never run on its own during an install.
-- **A service unit** for Linux (systemd), macOS (launchd) and Windows (a
-  scheduled task), installed by `gatewarden install-service`.
-- **The package itself**: the compiled JavaScript, the type declarations,
-  the three binaries and the documentation. The documentation is
-  `README.md` — what the package is and how to use it — and `docs/setup.md`
-  (the setup, by hand and through the wizard), `docs/traefik.md` (the proxy
-  side of the wiring), `docs/healthcheck.md` (what every line of
-  `gatewarden doctor` means), `docs/AGENTS.md` (the block an agent reads)
-  and `docs/install-scripts.md` (the install scripts of the package, the
-  warning npm prints for them, and the commands that review and approve
-  them). The install writes the configuration file with the default values
-  and creates the three directories the gateway uses. It opens no port,
-  starts no process and leaves nothing behind.
-- **The manifest of the package is complete.** The files the package ships
-  are named one by one in the manifest, the entry points name their type
-  declarations before their JavaScript, the binaries are named, the version
-  of node is declared, and the package is ESM-only.
-- **A release is gated.** A version that does not typecheck, does not build
-  or does not pass the tests never reaches the registry: the build and the
-  tests are the gate of the release.
-- **The doctor warns about a proxy that is not in the trust list.** The
-  proxy polls the configuration document and sends the dispatch header, and
-  an address that is not in `allowedCidrs` is answered with a `403` — the
-  most common reason for one. The doctor resolves the host of the proxy's
-  API and compares the addresses it finds with the trust list: a proxy
-  that the list does not cover is a warning with the way out, never a
-  failure. The doctor prints the trust list it uses as well, so a reader
-  can see which addresses may talk to the gateway. The address of the
-  proxy's API is read from `GATEWARDEN_PROXY_API_URL`.
-
-### Changed
-
-- **The README is written for a reader who has never seen the tool.** It
-  says what the tool does, what it needs, how to install it, how to
-  configure it and what to do when something does not work. It does not
-  describe the installation it was written for any more.
-- **The published package names no repository.** The manifest fields
-  `repository`, `homepage`, `bugs` and `funding` are gone, and the README,
-  the changelog and the contributing guide no longer name a private host.
-  The package is installed from the public npm registry, and a package that
-  everybody can install does not point a reader at a private host. The
-  public name of the package is unchanged: the name in the npm scope, the
-  names of the binaries, the names of the MCP tools, the commands and the
-  ports stay what they were.
-- **The package says where its source lives.** The manifest names the
-  repository of the project in `repository`, `homepage` and `bugs`, and
-  the README has a section that names it too. A reader on npmjs.org
-  reaches the source from the page of the package now, and the page of
-  the package no longer asks a question it could not answer.
-
-- **The package names one address everywhere.** The security policy named
-  another address than the readme, and the package names one address now:
-  the support address, which the readme named already. A report that goes
-  to the address of the package reaches the maintainer of the package, and
-  the guard reads the documents of the repository too.
-
-- **The message about a missing build names one command.** A launcher
-  without a build told the reader to reinstall the package the way it
-  was installed, and named the command of a project install and the
-  command of a global install, so the reader had to choose one of the
-  two. The launcher knows which installation it is in — a dependency of
-  a project lives in the `node_modules` of that project, and a global
-  installation lives in the global root of npm — and the message names
-  the command of that installation now: `npm install @malarstrom/gatewarden`
-  for a project, `npm install -g @malarstrom/gatewarden` for a global one.
-
-### Deprecated
-
-- **The names of the environment variables before the rename are deprecated.**
-  `DEV_GATEWAY_HOME`, `DEV_GATEWAY_CONFIG` and `DEV_GATEWAY_STATE_DIR`
-  still work, but the CLI reads them and says once that they are on their
-  way out. `GATEWARDEN_HOME`, `GATEWARDEN_CONFIG` and
-  `GATEWARDEN_STATE_DIR` are the names to use.
-
-### Fixed
 
 - **The relay closes its upgraded WebSocket sockets.** An upgraded socket is
   not closed by `server.close()`, and the relay never closed it either: the
