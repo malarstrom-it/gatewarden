@@ -97,6 +97,17 @@ names. Every release gets a section, newest first.
 
 ### Fixed
 
+- **The daemon runs with the configuration it was given.** The daemon
+  resolved its own home from its environment, and the name of the home
+  installation wins over every other name. A daemon that was started by
+  hand — by the service unit, or by a user in a shell — with that name in
+  its environment kept its state and its log in the directory of that
+  installation, while the configuration file it was given said something
+  else. The name is not read by a daemon that was given a configuration
+  file: the file wins over it, and the workers the daemon starts read the
+  same file. The line the daemon writes when it starts says which
+  configuration file it runs with.
+
 - **The CLI and the daemon open the same log file.** The log file was
   resolved with the environment of the process that asked for it, so a
   `GATEWARDEN_HOME` in the environment of the CLI sent it to a log file the

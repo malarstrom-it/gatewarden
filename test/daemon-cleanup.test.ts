@@ -11,9 +11,8 @@
  *
  *   - the cleanup stops a daemon of the suite;
  *   - the cleanup finds a daemon whose pidfile does not lie where the
- *     test expects it — the name `GATEWARDEN_HOME` wins over every
- *     other name, so the pidfile of such a daemon lies in the directory
- *     the name points at;
+ *     test expects it — a daemon that was started by hand resolves its
+ *     state directory itself, and the pidfile lies there;
  *   - the cleanup leaves a daemon that is not the suite's alone. The
  *     gateway of the machine is a daemon like that one, and the cleanup
  *     must never touch it.
@@ -84,6 +83,31 @@ async function waitForFile(file: string, timeoutMs = 15_000): Promise<boolean> {
   return false;
 }
 
+/**
+ * The pidfiles of a directory, in the directories below it.
+ *
+ * @param directory The directory to look in.
+ * @returns The paths of the pidfiles.
+ */
+function pidFilesIn(directory: string): string[] {
+  const found: string[] = [];
+  let entries: fs.Dirent[] = [];
+  try {
+    entries = fs.readdirSync(directory, { withFileTypes: true });
+  } catch {
+    return found;
+  }
+  for (const entry of entries) {
+    const full = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      found.push(...pidFilesIn(full));
+      continue;
+    }
+    if (entry.name === 'daemon.pid') found.push(full);
+  }
+  return found;
+}
+
 test('the cleanup stops the daemon the suite started', async (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-cleanup-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -108,7 +132,7 @@ test('the cleanup stops the daemon the suite started', async (t) => {
   assert.deepEqual(result.remaining, [], 'the cleanup left a daemon behind');
 });
 
-test('the cleanup finds the daemon whose pidfile lies in the directory GATEWARDEN_HOME names', async (t) => {
+test('the cleanup finds the daemon whose pidfile lies where the test does not expect it', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-cleanup-home-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const dir = path.join(root, 'installation');
@@ -117,14 +141,16 @@ test('the cleanup finds the daemon whose pidfile lies in the directory GATEWARDE
   fs.mkdirSync(home, { recursive: true });
   const configPath = writeConfig(dir, await freePort(), await freePort(), '');
   // The daemon is started by hand, with the name of another
-  // installation in its environment: the configuration names no state
-  // directory, and the name decides where the state lives, so the daemon
-  // writes its pidfile in the directory the name points at, and not in
-  // the state directory of the configuration file.
+  // installation in its environment. The name is not read: the daemon
+  // was given a configuration file, and it resolves the state directory
+  // itself. The pidfile lies where the daemon resolved it, and not in
+  // the directory the name points at.
   const daemon = spawn(process.execPath, [DAEMON, '--config', configPath], {
     env: {
       PATH: process.env['PATH'] ?? '',
       HOME: dir,
+      APPDATA: path.join(dir, 'AppData', 'Roaming'),
+      LOCALAPPDATA: path.join(dir, 'AppData', 'Local'),
       GATEWARDEN_HOME: home,
       [SUITE_VARIABLE]: suiteMarker(),
     },
@@ -134,13 +160,22 @@ test('the cleanup finds the daemon whose pidfile lies in the directory GATEWARDE
   daemon.unref();
   registerSuiteDirectory(dir);
   registerSuiteDirectory(home);
-  const pidFile = path.join(home, 'daemon.pid');
-  assert.equal(await waitForFile(pidFile), true, 'the daemon did not write its pidfile');
+
+  // The pidfile is somewhere below the throwaway directory, and not in
+  // the directory the name of the home installation points at.
+  let pidFiles: string[] = [];
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline && pidFiles.length === 0) {
+    pidFiles = pidFilesIn(root);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.equal(pidFiles.length, 1, 'the daemon did not write its pidfile');
   assert.equal(
-    fs.existsSync(path.join(dir, 'daemon.pid')),
+    pidFiles.some((file) => path.dirname(file) === home),
     false,
-    'the pidfile should not be in the state directory of the configuration file',
+    'the pidfile should not be in the directory the name of the home installation points at',
   );
+
   // The cleanup finds the daemon anyway: the pidfile is not where the
   // test expects it.
   const result = await stopDaemonsOfTheSuite();

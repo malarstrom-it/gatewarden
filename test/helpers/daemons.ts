@@ -18,13 +18,12 @@
  * starts carries it, and the cleanup stops the processes that carry it.
  *
  * The pidfile is not the way to find a daemon. A daemon that is started
- * by hand resolves its state directory the way the package does, and
- * the name `GATEWARDEN_HOME` wins over every other name: the pidfile
- * of such a daemon lies in the directory the name points at, and not in
- * the directory the test knows. The cleanup therefore finds the
- * *process*, and not the file. The pidfiles are read as well, so that a
- * daemon that is not running any more leaves no file behind, and so
- * that a daemon whose pidfile lies elsewhere is found anyway.
+ * by hand resolves its state directory itself, and the pidfile of such a
+ * daemon lies where it resolved it, and not in the directory the test
+ * knows. The cleanup therefore finds the *process*, and not the file.
+ * The pidfiles are read as well, so that a daemon that is not running
+ * any more leaves no file behind, and so that a daemon whose pidfile
+ * lies elsewhere is found anyway.
  *
  * ## What the cleanup does not touch
  *
@@ -221,8 +220,8 @@ export function daemonsOfTheSuite(): MachineProcess[] {
  *
  * The directories of the suite are the ones the tests made. The name of
  * the home installation of the machine is one more: a daemon that was
- * started by hand with the name in its environment writes its pidfile
- * there, and not in the directory of the test.
+ * started by hand without a configuration file of its own writes its
+ * pidfile there, and not in the directory of the test.
  */
 function pidFileDirectories(): string[] {
   const found = new Set(directories);
