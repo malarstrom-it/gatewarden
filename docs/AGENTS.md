@@ -13,3 +13,14 @@ directory, both slugified.
 
 The full instructions, with the commands for a harness that has no MCP support,
 are in the `gatewarden` skill.
+
+## CodeRabbit
+
+CodeRabbit reviews every pull request in this repository, automatically.
+
+Read its comments and answer them before the pull request is merged. No thread
+is closed without a reply that says why. A comment that is wrong is answered
+with the reason, not silently ignored.
+
+The review of CodeRabbit does not replace the review of the board: that
+reviewer still runs. CodeRabbit never merges anything.
