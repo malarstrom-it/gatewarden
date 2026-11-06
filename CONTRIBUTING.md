@@ -391,22 +391,25 @@ git log feat/npm-package -p -U0 | grep -c '^+.*<the zone>'
 ```
 
 Making the repository public was a decision of its own and a work of its
-own: it had to scrub the history. It was not part of this migration.
+own: it was not part of this migration. The rewrite of the history was a
+work of its own as well.
 
 **3. The default branch on GitHub is `feat/npm-package`.** That is
-where the development happens. `master` is pushed as well, so that the
-whole history was kept. The worktrees of the project are created from the
-default branch, so the base branch of a worktree is set explicitly to
-`feat/npm-package` instead of being resolved from the checkout. That
-setting is not in place yet: it is one of the steps that are left.
+where the development happens. `master` was pushed as well, so that the
+whole history was kept, and the rewrite of the history came later: it
+holds the same root commit as `feat/npm-package` now. The worktrees of
+the project are created from the default branch, so the base branch of a
+worktree is set explicitly to `feat/npm-package` instead of being
+resolved from the checkout. That setting is not in place yet: it is one
+of the steps that are left.
 
 ### What is different from the earlier plan
 
 The earlier plan moved the repository to a public repository with a
 scrubbed history. That was not part of this migration. The move to a
-public repository came after the migration was done, and the package is
-published from GitHub. It was a decision of its own, and it is done: the
-repository is public since 2026-11-05.
+public repository was a decision of its own, after the migration, and it
+is done: the repository is public since 2026-11-05. The publish of the
+package goes through GitHub, and it is still to come.
 
 ### What npm asks for by hand
 
@@ -438,7 +441,9 @@ not publish another one.
 - The repository exists on GitHub: `github.com/malarstrom-it/gatewarden`,
   public since 2026-11-05, with the history pushed to it and
   `feat/npm-package` as its default branch. The `master` of the server it
-  left was pushed as well, so that the whole history was kept.
+  left was pushed as well, so that the whole history was kept; the
+  rewrite of the history came later, and it holds the same root commit as
+  `feat/npm-package` now.
 - The manifest names the repository: `repository`, `homepage` and `bugs`
   point at the public repository, and npm checks the `repository` field
   against the repository the workflow runs in.
@@ -453,7 +458,7 @@ not publish another one.
   The pattern needs the `g` flag, because the test takes it with
   `matchAll`. The pattern matches the host of a git server and not the
   word: the prose of the repository says in words that the repository
-  left the server it came from, and that is not a leak.
+  left the private server, and that is not a leak.
 - The README points at the source. The README is in the tarball, so it
   names the host of the repository on GitHub and nothing else.
 - The workflows of the server it left are gone: the directory with them
@@ -491,11 +496,13 @@ not publish another one.
 
 The repository is public since 2026-11-05. That was the decision after
 the migration, and it was not part of it. It was a work of its own: the
-working tree had to be scrubbed, and so did the history — a value that
-is deleted in the working tree is still in the history, and the push
-takes the history with it. The history was scrubbed in a work of its
-own: the branch starts at the release of `v0.1.1` now, and the earlier
-commits are kept outside the repository.
+working tree had to be scrubbed — a value that is deleted in the
+working tree is still in the history, and the push takes the history
+with it. The rewrite came later: the branch starts at the root commit
+now, which carries the version `0.1.1`, and no branch and no tag
+reaches an earlier commit. The earlier commits are still reachable on
+GitHub through the references of the pull requests, and a copy of them is
+kept in an archive outside the repository.
 
 The guard does not know the values of the installation: it protects the
 package with rules, and the rules do not carry the values. The
