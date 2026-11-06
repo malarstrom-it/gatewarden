@@ -1,0 +1,399 @@
+/**
+ * The configuration layer (§3.2).
+ *
+ * The layout of the configuration file, the precedence of the environment
+ * overrides and the migration from the old layout.
+ */
+
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import test from 'node:test';
+import { DEFAULT_CONFIG, configFileContent, loadConfig, requireZone, resolveConfigPath, resolveStateDir, writeConfigFile } from '../src/core/config.ts';
+import { logFilePath } from '../src/core/daemonControl.ts';
+import { logFileFor, resolvePaths } from '../src/core/paths.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
+
+function isolatedHome(): string {
+  return makeTempDir('gatewarden-config-');
+}
+
+function configPathIn(home: string): string {
+  return path.join(home, '.config', 'gatewarden', 'config.json');
+}
+
+test('the configuration file is read from the XDG configuration directory', () => {
+  const home = isolatedHome();
+  try {
+    fs.mkdirSync(path.dirname(configPathIn(home)), { recursive: true });
+    fs.writeFileSync(configPathIn(home), JSON.stringify({ zone: 'from.the.file' }));
+
+    const config = loadConfig({ home, env: {} });
+
+    assert.equal(config.zone, 'from.the.file');
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('a state directory named by the configuration file is kept', () => {
+  const home = isolatedHome();
+  const stateDir = path.join(home, 'somewhere', 'state');
+  try {
+    fs.mkdirSync(path.dirname(configPathIn(home)), { recursive: true });
+    fs.writeFileSync(configPathIn(home), JSON.stringify({ stateDir }));
+
+    const config = loadConfig({ home, env: {} });
+
+    assert.equal(config.stateDir, stateDir);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('GATEWARDEN_STATE_DIR wins over the state directory of the configuration file', () => {
+  const home = isolatedHome();
+  const stateDir = path.join(home, 'from', 'the', 'environment');
+  try {
+    fs.mkdirSync(path.dirname(configPathIn(home)), { recursive: true });
+    fs.writeFileSync(configPathIn(home), JSON.stringify({ stateDir: path.join(home, 'from', 'the', 'file') }));
+
+    const config = loadConfig({ home, env: { GATEWARDEN_STATE_DIR: stateDir } });
+
+    assert.equal(config.stateDir, stateDir);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('an explicit state directory wins over the environment', () => {
+  const home = isolatedHome();
+  try {
+    const config = loadConfig({
+      home,
+      env: { GATEWARDEN_STATE_DIR: path.join(home, 'from', 'the', 'environment') },
+      stateDir: path.join(home, 'from', 'the', 'flag'),
+    });
+
+    assert.equal(config.stateDir, path.join(home, 'from', 'the', 'flag'));
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('the configuration file path is the same, whichever function asks for it', () => {
+  // `resolveConfigPath` and `resolvePaths` must answer the same, or the
+  // daemon and the CLI end up reading different files (§3.1).
+  const environments = [
+    {},
+    { GATEWARDEN_HOME: path.join(path.sep, 'h') },
+    { GATEWARDEN_CONFIG: path.join(path.sep, 'c.json') },
+    { GATEWARDEN_HOME: path.join(path.sep, 'h'), GATEWARDEN_CONFIG: path.join(path.sep, 'c.json') },
+    { GATEWARDEN_STATE_DIR: path.join(path.sep, 's') },
+    { TRAEFIK_DEV_CONFIG: path.join(path.sep, 'old.json') },
+  ];
+
+  for (const env of environments) {
+    const resolved = resolvePaths({ env, home: path.join(path.sep, 'home', 'user') });
+    const asked = resolveConfigPath({ env, home: path.join(path.sep, 'home', 'user') });
+    assert.equal(asked, resolved.configFile, `${JSON.stringify(env)}`);
+  }
+});
+
+test('GATEWARDEN_HOME wins over GATEWARDEN_CONFIG, as the order of §3.1 says', () => {
+  const env = {
+    GATEWARDEN_HOME: path.join(path.sep, 'h'),
+    GATEWARDEN_CONFIG: path.join(path.sep, 'c.json'),
+  };
+
+  assert.equal(resolveConfigPath({ env }), path.join(path.sep, 'h', 'config.json'));
+});
+
+test('the daemon that was given a configuration file does not read the name of the home installation', () => {
+  const env = {
+    GATEWARDEN_HOME: path.join(path.sep, 'h'),
+    GATEWARDEN_CONFIG: path.join(path.sep, 'c.json'),
+    GATEWARDEN_STATE_DIR: path.join(path.sep, 's'),
+  };
+
+  // The CLI looks up an installation of its own: the name of the home
+  // installation wins, as the order of §3.1 says.
+  assert.equal(resolveConfigPath({ env }), path.join(path.sep, 'h', 'config.json'));
+  assert.equal(resolveStateDir({ env }), path.join(path.sep, 'h'));
+
+  // A process that was given a configuration file does not read the
+  // name: the other names of the environment decide.
+  assert.equal(resolveConfigPath({ env, ignoreHome: true }), path.join(path.sep, 'c.json'));
+  assert.equal(resolveStateDir({ env, ignoreHome: true }), path.join(path.sep, 's'));
+});
+
+test('the state directory follows XDG_STATE_HOME, even when the file names one', () => {
+  const home = isolatedHome();
+  const first = path.join(home, '.state1');
+  const second = path.join(home, '.state2');
+  try {
+    fs.mkdirSync(path.dirname(configPathIn(home)), { recursive: true });
+    fs.writeFileSync(configPathIn(home), JSON.stringify({ stateDir: path.join(first, 'gatewarden') }));
+
+    const config = loadConfig({ home, env: { XDG_STATE_HOME: second } });
+
+    assert.equal(config.stateDir, path.join(second, 'gatewarden'));
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('the state directory of the configuration file is kept when the environment names none', () => {
+  const home = isolatedHome();
+  const stateDir = path.join(home, 'somewhere', 'state');
+  try {
+    fs.mkdirSync(path.dirname(configPathIn(home)), { recursive: true });
+    fs.writeFileSync(configPathIn(home), JSON.stringify({ stateDir }));
+
+    const config = loadConfig({ home, env: {} });
+
+    assert.equal(config.stateDir, stateDir);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('the new layout has the keys of §3.2', () => {
+  const home = isolatedHome();
+  try {
+    const config = loadConfig({ home, env: {} });
+
+    assert.equal(config.proxy, 'traefik');
+    assert.equal(config.autostart, true);
+    assert.equal(config.registryPort, 45002);
+    assert.equal(config.relayPort, 45001);
+    assert.deepEqual(config.entryPoints, ['websecure']);
+    assert.equal(config.tlsMode, 'wildcard');
+    assert.equal(config.securityHeaders, false);
+    assert.equal(config.compressMiddleware, false);
+    assert.equal(config.documentFormat, 'yaml');
+    assert.equal(config.logMaxBytes, 5242880);
+    assert.equal(config.logKeep, 3);
+    assert.equal(config.secret, '');
+    assert.deepEqual(config.registryAllowedCidrs, []);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('the built-in defaults carry no value of one installation', () => {
+  // The package is for anybody: the defaults name nobody's zone, nobody's
+  // certificate resolver, nobody's host name and nobody's network
+  // (§3.2). The setup wizard derives them or asks for them (§9.2).
+  assert.equal(DEFAULT_CONFIG.zone, '');
+  assert.equal(DEFAULT_CONFIG.certResolver, '');
+  assert.equal(DEFAULT_CONFIG.middlewareProvider, '');
+  assert.equal(DEFAULT_CONFIG.advertisedHost, '');
+  assert.equal(DEFAULT_CONFIG.advertisedIp, '');
+  assert.deepEqual(DEFAULT_CONFIG.allowedCidrs, ['127.0.0.1/32', '::1/128']);
+  // The list of the registry is empty: the registry is trusted by the
+  // list of the relay unless the installation says otherwise (D15).
+  assert.deepEqual(DEFAULT_CONFIG.registryAllowedCidrs, []);
+
+  // Nothing in the defaults names a host, a zone or a network that is
+  // not the loopback of every machine. The rule is about the shape of the
+  // value and not about the values of one installation: a name of the
+  // maintainer, a name of a vendor and any address of an IPv4 network.
+  for (const value of Object.values(DEFAULT_CONFIG)) {
+    if (typeof value !== 'string') continue;
+    assert.doesNotMatch(value, /malarstrom|cloudflare|\d+\.\d+\.\d+/, `${value} is a value of one installation`);
+  }
+});
+
+test('a configuration without a zone says that the zone is missing', () => {
+  const home = isolatedHome();
+  try {
+    const config = loadConfig({ home, env: {} });
+
+    assert.equal(config.zone, '');
+    assert.throws(() => requireZone(config), /no DNS zone is configured/);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('a value of the wrong type falls back to the default', () => {
+  const home = isolatedHome();
+  try {
+    fs.mkdirSync(path.dirname(configPathIn(home)), { recursive: true });
+    fs.writeFileSync(
+      configPathIn(home),
+      JSON.stringify({
+        zone: null,
+        allowedCidrs: '127.0.0.1/32',
+        registryPort: '46002',
+        entryPoints: ['web', 5],
+        secret: 7,
+      }),
+    );
+
+    const config = loadConfig({ home, env: {} });
+
+    // A zone that is not a string is no zone.
+    assert.equal(config.zone, '');
+    assert.throws(() => requireZone(config), /no DNS zone is configured/);
+    // A list that is not a list is the default list.
+    assert.deepEqual(config.allowedCidrs.slice(0, 2), ['127.0.0.1/32', '::1/128']);
+    // A number written as a string is the number it names.
+    assert.equal(config.registryPort, 46002);
+    // A list holds the strings of it.
+    assert.deepEqual(config.entryPoints, ['web']);
+    // A secret that is not a string is no secret.
+    assert.equal(config.secret, '');
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('the list of the registry is read from the configuration file', () => {
+  const home = isolatedHome();
+  try {
+    fs.mkdirSync(path.dirname(configPathIn(home)), { recursive: true });
+    fs.writeFileSync(
+      configPathIn(home),
+      JSON.stringify({ registryAllowedCidrs: ['192.0.2.0/24'], allowedCidrs: ['127.0.0.1/32'] }),
+    );
+
+    const config = loadConfig({ home, env: {} });
+
+    assert.deepEqual(config.registryAllowedCidrs, ['192.0.2.0/24']);
+    assert.ok(config.allowedCidrs.includes('127.0.0.1/32'), 'the list of the relay is gone');
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('a list of the registry that is not a list is the default list', () => {
+  const home = isolatedHome();
+  try {
+    fs.mkdirSync(path.dirname(configPathIn(home)), { recursive: true });
+    fs.writeFileSync(configPathIn(home), JSON.stringify({ registryAllowedCidrs: '192.0.2.0/24' }));
+
+    const config = loadConfig({ home, env: {} });
+
+    assert.deepEqual(config.registryAllowedCidrs, []);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('unknown keys of the configuration file are dropped', () => {
+  const home = isolatedHome();
+  try {
+    fs.mkdirSync(path.dirname(configPathIn(home)), { recursive: true });
+    fs.writeFileSync(configPathIn(home), JSON.stringify({ zone: 'kept.example', nonsense: 'dropped' }));
+
+    const config = loadConfig({ home, env: {} });
+
+    assert.equal(config.zone, 'kept.example');
+    assert.equal((config as unknown as Record<string, unknown>)['nonsense'], undefined);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('the written configuration file holds every key of the layout', () => {
+  const home = isolatedHome();
+  try {
+    const config = loadConfig({ home, env: {} });
+    const file = configPathIn(home);
+    writeConfigFile(file, config);
+
+    const written = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assert.deepEqual(Object.keys(written), Object.keys(DEFAULT_CONFIG));
+    assert.equal(written.proxy, 'traefik');
+    assert.equal(written.autostart, true);
+    assert.equal(written.stateDir, config.stateDir);
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('the content of the configuration file keeps the auto-detected prefixes out', () => {
+  const home = isolatedHome();
+  try {
+    const config = loadConfig({ home, env: {} });
+    const content = configFileContent(config) as { allowedCidrs: string[] };
+
+    for (const cidr of content.allowedCidrs) {
+      if (!cidr.includes(':')) continue;
+      assert.ok(DEFAULT_CONFIG.allowedCidrs.includes(cidr), `${cidr} is derived and must not be written`);
+    }
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('the detected address is not written to the configuration file', () => {
+  const home = isolatedHome();
+  try {
+    const config = loadConfig({ home, env: {} });
+    const content = configFileContent(config) as { advertisedIp: string; advertisedHost: string };
+
+    // The address of this machine is derived on every run. A file that
+    // pins the address of the moment it was written keeps advertising an
+    // address the machine does not have any more.
+    assert.equal(content.advertisedIp, '', 'the detected address was written to the file');
+    assert.equal(content.advertisedHost, '', 'the derived host name was written to the file');
+
+    // A value that is not the detected address belongs to the
+    // installation, and it is written.
+    const own = configFileContent({ ...config, advertisedIp: '10.9.8.7', advertisedHost: 'myhost' });
+    assert.equal(own['advertisedIp'], '10.9.8.7');
+    assert.equal(own['advertisedHost'], 'myhost');
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+test('the CLI and the daemon open the same log file, also when the environment of the CLI names a home directory', () => {
+  // The CLI and the daemon are two processes with two environments. The
+  // environment of the CLI names the home directory of the installation;
+  // the environment of the daemon names the state directory of the
+  // installation. The installation is one: the same configuration file,
+  // and the state directory that the file names.
+  const home = isolatedHome();
+  const installationHome = path.join(home, 'home-of-the-installation');
+  const stateDir = path.join(home, 'state', 'of-the-installation');
+  const configPath = path.join(installationHome, 'config.json');
+  try {
+    fs.mkdirSync(installationHome, { recursive: true });
+    fs.writeFileSync(configPath, JSON.stringify({ stateDir }));
+
+    // The CLI: its environment names the home directory of the
+    // installation, and the configuration file is the one of that
+    // directory.
+    const cli = loadConfig({
+      configPath,
+      home: installationHome,
+      env: { GATEWARDEN_HOME: installationHome },
+    });
+    // The daemon: the environment of the service unit names the state
+    // directory of the installation.
+    const daemon = loadConfig({
+      configPath,
+      home: installationHome,
+      env: { GATEWARDEN_STATE_DIR: stateDir },
+    });
+    // The daemon that was started by hand: its environment names nothing.
+    const bare = loadConfig({ configPath, home: installationHome, env: {} });
+
+    assert.equal(cli.stateDir, stateDir, 'the CLI does not use the state directory of the installation');
+    assert.equal(daemon.stateDir, stateDir, 'the daemon does not use the state directory of the installation');
+    assert.equal(bare.stateDir, stateDir, 'the daemon does not use the state directory of the installation');
+
+    // The log file is the one the daemon writes to, and the one the CLI
+    // opens: the same file, in every process.
+    const cliLog = logFilePath(cli);
+    assert.equal(cliLog, logFileFor(daemon.stateDir), 'the CLI and the daemon do not open the same log file');
+    assert.equal(cliLog, logFileFor(bare.stateDir), 'the CLI and the daemon do not open the same log file');
+    assert.equal(cliLog, path.join(stateDir, 'daemon.log'));
+  } finally {
+    fs.rmSync(home, { recursive: true, force: true });
+  }
+});

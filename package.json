@@ -1,0 +1,109 @@
+{
+  "name": "@malarstrom/gatewarden",
+  "version": "0.1.1",
+  "license": "MIT",
+  "type": "module",
+  "description": "Give a local development server an https address on your own domain: an MCP server, a pi extension, a CLI and an Agent Skill over one proxy-agnostic core",
+  "author": {
+    "name": "malarstrom"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/malarstrom-it/gatewarden.git"
+  },
+  "homepage": "https://github.com/malarstrom-it/gatewarden",
+  "bugs": {
+    "url": "https://github.com/malarstrom-it/gatewarden/issues"
+  },
+  "main": "./dist/core/index.js",
+  "types": "./dist/core/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core/index.js",
+      "default": "./dist/core/index.js"
+    },
+    "./adapters": {
+      "types": "./dist/adapters/index.d.ts",
+      "import": "./dist/adapters/index.js",
+      "default": "./dist/adapters/index.js"
+    }
+  },
+  "typesVersions": {
+    "*": {
+      "adapters": [
+        "./dist/adapters/index.d.ts"
+      ]
+    }
+  },
+  "bin": {
+    "gatewarden": "bin/gatewarden.js",
+    "gatewarden-mcp": "bin/gatewarden-mcp.js",
+    "gatewarden-daemon": "bin/gatewarden-daemon.js"
+  },
+  "files": [
+    "dist",
+    "bin/gatewarden.js",
+    "bin/gatewarden-mcp.js",
+    "bin/gatewarden-daemon.js",
+    "bin/entry.mjs",
+    "scripts/paths.mjs",
+    "scripts/postinstall.mjs",
+    "scripts/preuninstall.mjs",
+    "scripts/postuninstall.mjs",
+    "skills",
+    "docs",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "clean": "node -e \"const fs=require('node:fs');if(fs.existsSync('tsconfig.build.json')){fs.rmSync('dist',{recursive:true,force:true});console.error('removed dist')}\"",
+    "build": "npm run clean && tsc -p tsconfig.build.json",
+    "test": "node -e \"const fs=require('node:fs'),path=require('node:path'),{spawnSync}=require('node:child_process');const args=process.argv.slice(1);const pattern=args.length===1&&args[0].includes('*')?args[0]:'';const slash=pattern.lastIndexOf('/'),star=pattern.indexOf('*');const dir=pattern.slice(0,slash),prefix=pattern.slice(slash+1,star),suffix=pattern.slice(star+1);const found=pattern&&fs.existsSync(dir)?fs.readdirSync(dir).filter((name)=>name.startsWith(prefix)&&name.endsWith(suffix)).sort():[];const files=pattern?found.map((name)=>dir+'/'+name):args;if(files.length===0){console.log('no test files: this is an installation, not a checkout');process.exit(0)}const env={...process.env};delete env.NODE_TEST_CONTEXT;const hook=path.join(process.cwd(),'test/helpers/suite.ts');const runner=fs.existsSync(hook)?['--test','--import',hook,'--test-concurrency=1',...files]:['--test','--test-concurrency=1',...files];let status=spawnSync(process.execPath,runner,{stdio:'inherit',env}).status??1;const cleanup=path.join(process.cwd(),'test/helpers/cleanup.ts');if(fs.existsSync(cleanup)){const result=spawnSync(process.execPath,[cleanup],{stdio:'inherit',env});if(result.status!==0)status=1}process.exit(status)\" test/*.test.ts",
+    "test:e2e": "node -e \"const fs=require('node:fs'),{pathToFileURL}=require('node:url');const file=process.argv[1];if(!fs.existsSync(file)){console.log('the end-to-end tools need a checkout of the repository: this is an installation, not a checkout');process.exit(0)}import(pathToFileURL(file).href).catch((error)=>{console.error(error);process.exit(1)})\" tools/testenv/run.ts",
+    "test:e2e:stop": "node -e \"const fs=require('node:fs'),{pathToFileURL}=require('node:url');const file=process.argv[1];if(!fs.existsSync(file)){console.log('the end-to-end tools need a checkout of the repository: this is an installation, not a checkout');process.exit(0)}import(pathToFileURL(file).href).catch((error)=>{console.error(error);process.exit(1)})\" tools/testenv/stop.ts",
+    "typecheck": "tsc --noEmit",
+    "prepare": "npm run build",
+    "prepublishOnly": "npm run build && npm test",
+    "publish:dry-run": "npm publish --dry-run",
+    "postinstall": "node scripts/postinstall.mjs",
+    "preuninstall": "node scripts/preuninstall.mjs",
+    "postuninstall": "node scripts/postuninstall.mjs",
+    "start": "node ./bin/gatewarden-daemon.js"
+  },
+  "engines": {
+    "node": ">=20.11"
+  },
+  "dependencies": {
+    "env-paths": "^3.0.0",
+    "proper-lockfile": "^4.1.2"
+  },
+  "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "@types/node": "^22.10.0",
+    "@types/proper-lockfile": "^4.1.4",
+    "typescript": "^5.7.0"
+  },
+  "pi": {
+    "extensions": [
+      "dist/integrations/pi/extension.js"
+    ],
+    "skills": [
+      "./skills"
+    ]
+  },
+  "keywords": [
+    "pi-package",
+    "mcp",
+    "gatewarden",
+    "gateway",
+    "dev-server",
+    "local-development",
+    "https",
+    "traefik"
+  ]
+}
