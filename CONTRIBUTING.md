@@ -260,6 +260,17 @@ The maintainer cuts the releases, not the contributors.
 Never publish, never tag a release, and never touch the registry from a
 pull request.
 
+### The rewritten history and the CodeRabbit review
+The history of the repository starts at `v0.1.1`: one root commit, and no
+earlier commit. The history was rewritten on 2026-11-06 and the rewrite went
+straight to the default branch, so no pull request carried it.
+Pull requests are reviewed as usual after that. CodeRabbit reads the diff of
+every pull request, and the rewrite changes nothing for it.
+A pull request that carries a rewrite of the history is handled with care,
+because CodeRabbit reads the whole diff against the old history. Such a pull
+request is read by a human before it is merged. Reading that large diff is
+not a review of the change: the change is still reviewed on its own.
+
 ### The release of `0.1.1`: the publish goes with a token
 
 `0.1.1` is the first version of the package that stays on the registry,
