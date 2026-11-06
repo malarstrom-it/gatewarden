@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+# The language of the review comments.
+language: "en-US"
+
+reviews:
+  # The review covers the source, the tests, the documentation and the
+  # workflows. The build output, the installed packages and the coverage
+  # report stay out of the review.
+  path_filters:
+    - "src/**"
+    - "test/**"
+    - "docs/**"
+    - ".github/workflows/**"
+    - "!dist/**"
+    - "!node_modules/**"
+    - "!coverage/**"
+
+  # What the review shall do, and how its findings are handled.
+  path_instructions:
+    - path: "**"
+      instructions: |
+        CodeRabbit reviews every pull request in this repository.
+        Every comment is read and answered before the pull request is merged.
+        No thread is closed without a reply that says why.
+        A comment that is wrong is answered with the reason, it is not ignored.
+        The CodeRabbit review does not replace the board's own reviewer.
+        CodeRabbit never merges anything.
