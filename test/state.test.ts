@@ -9,13 +9,13 @@
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { RegistrationStore, ROUTES_FILE } from '../src/core/state.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
 
 function tempDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-state-'));
+  return makeTempDir('gatewarden-state-');
 }
 
 test('the routes live in routes.json in the state directory', (t) => {

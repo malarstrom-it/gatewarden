@@ -12,7 +12,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import net from 'node:net';
-import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import zlib from 'node:zlib';
@@ -21,6 +20,7 @@ import { classifyCmdline } from '../tools/testenv/leftovers.ts';
 import { certificatesDocument, traefikStaticConfig } from '../tools/testenv/proxy-config.ts';
 import { extractFromTarGz, sha256, binaryPath } from '../tools/testenv/traefik.ts';
 import { pidsOnPort, portIsFree, snapshotOf, snapshotsAreEqual } from '../tools/testenv/ports.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
 import {
   DEFAULT_SETTINGS,
   testEnvPaths,
@@ -128,7 +128,7 @@ test('the name of the route is slugified, like the name the store builds', () =>
 });
 
 test('the teardown removes the files of an interrupted run, and keeps the files of the user', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-testenv-'));
+  const root = makeTempDir('gatewarden-testenv-');
   try {
     fs.writeFileSync(path.join(root, 'keep.txt'), 'precious');
     // The files of an earlier run: they carry the names of the
@@ -145,7 +145,7 @@ test('the teardown removes the files of an interrupted run, and keeps the files 
 });
 
 test('the teardown removes the directory it created itself', () => {
-  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-testenv-'));
+  const base = makeTempDir('gatewarden-testenv-');
   const root = path.join(base, 'environment');
   try {
     fs.mkdirSync(root);
@@ -211,7 +211,7 @@ test('a port that nothing listens on is free', async () => {
 });
 
 test('the environment writes nothing outside its own directory', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-testenv-'));
+  const root = makeTempDir('gatewarden-testenv-');
   try {
     const settings = testEnvSettings({ GATEWARDEN_TESTENV_ROOT: root });
     const paths = testEnvPaths(settings);

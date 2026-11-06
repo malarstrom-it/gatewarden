@@ -1,15 +1,13 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import type http from 'node:http';
 import net from 'node:net';
-import os from 'node:os';
-import path from 'node:path';
 import test, { type TestContext } from 'node:test';
 import { RegistrationStore } from '../src/core/state.ts';
 import { createRelayServer } from '../src/core/relay.ts';
 import { DISPATCH_HEADER } from '../src/core/protocol.ts';
 import { close, listen, makeConfig } from './helpers/fixtures.ts';
 import { openUpgrade, startEchoServer, wsRoundTrip, type EchoServer, type WsConnection, type WsRoundTrip } from './helpers/ws.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
 
 /**
  * Every test gets its own time limit.
@@ -102,7 +100,7 @@ function sweepSockets(): void {
 }
 
 function tempStore(): RegistrationStore {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'traefik-dev-ws-'));
+  const dir = makeTempDir('traefik-dev-ws-');
   return new RegistrationStore(dir);
 }
 

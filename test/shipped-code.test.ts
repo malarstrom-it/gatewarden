@@ -33,13 +33,13 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import test, { after, before, describe } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 
 import { copyDependencyClosure, unpackTarball } from './helpers/install.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -183,7 +183,7 @@ describe('the code the package ships', () => {
   let modules: string[] = [];
 
   before(async () => {
-    workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-shipped-'));
+    workdir = makeTempDir('gatewarden-shipped-');
     home = path.join(workdir, 'home');
     install = path.join(workdir, 'install');
     fs.mkdirSync(home, { recursive: true });

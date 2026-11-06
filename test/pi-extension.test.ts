@@ -16,7 +16,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import net from 'node:net';
-import os from 'node:os';
 import path from 'node:path';
 import test, { after, before } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -26,6 +25,7 @@ import { renderRouteTable } from '../src/integrations/pi/table.ts';
 import { PI_TOOL_NAMES } from '../src/integrations/pi/tools.ts';
 import { loadConfig } from '../src/core/config.ts';
 import { isHealthy } from '../src/core/daemonControl.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
 import type {
   PiCommandContext,
   PiComponentFactory,
@@ -148,7 +148,7 @@ interface Fixture {
  * ports it uses.
  */
 async function makeInstallation(): Promise<{ dir: string; configPath: string }> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-pi-'));
+  const dir = makeTempDir('gatewarden-pi-');
   const registryPort = await freePort();
   const relayPort = await freePort();
   const configPath = path.join(dir, 'config.json');
@@ -190,7 +190,7 @@ before(async () => {
 
   // The working directory of the session: a throwaway one, so that the
   // inferred project and branch do not depend on the repository.
-  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-pi-session-'));
+  const cwd = makeTempDir('gatewarden-pi-session-');
 
   // The whole installation lives in the temporary directory (§11.1).
   process.env['GATEWARDEN_HOME'] = dir;

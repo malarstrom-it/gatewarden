@@ -1,16 +1,14 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import test from 'node:test';
 import { RegistrationStore } from '../src/core/state.ts';
 import { buildDynamicConfig, objectName, middlewareName, renderDocument, findEmptyMapPaths, pruneEmptyMaps, type DynamicConfig } from '../src/adapters/traefik.ts';
 import { DISPATCH_HEADER } from '../src/core/protocol.ts';
 import { parseYaml } from './helpers/yaml.ts';
 import { makeConfig } from './helpers/fixtures.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
 
 function tempStore(): { store: RegistrationStore; dir: string } {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'traefik-dev-doc-'));
+  const dir = makeTempDir('traefik-dev-doc-');
   return { store: new RegistrationStore(dir), dir };
 }
 

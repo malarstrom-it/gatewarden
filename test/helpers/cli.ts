@@ -10,13 +10,13 @@
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { loadConfig, listenHost } from '../../src/core/config.ts';
 import { isHealthy } from '../../src/core/daemonControl.ts';
 import { registerSuiteDirectory, SUITE_VARIABLE, suiteMarker } from './daemons.ts';
+import { makeTempDir } from './tempdir.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -88,7 +88,7 @@ export interface FixtureOptions {
  * A throwaway installation the CLI can be run against.
  */
 export async function makeCliFixture(options: FixtureOptions = {}): Promise<CliFixture> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-cli-'));
+  const dir = makeTempDir('gatewarden-cli-');
   const registryPort = await freePort();
   const relayPort = await freePort();
   const configPath = path.join(dir, 'config.json');

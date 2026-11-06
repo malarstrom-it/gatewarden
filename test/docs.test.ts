@@ -25,7 +25,6 @@ import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
-import os from 'node:os';
 import path from 'node:path';
 import test, { after, before, describe } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -42,6 +41,7 @@ import {
 } from './helpers/commands.ts';
 import { promisify } from 'node:util';
 import { listenHost } from '../src/core/config.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -261,7 +261,7 @@ test('the command check falls on a document outside the README', () => {
   // does not have, and the check has to fall on it. The document lives
   // outside the package, so the check of the package is not changed by
   // the test.
-  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-command-check-'));
+  const directory = makeTempDir('gatewarden-command-check-');
   const file = path.join(directory, 'healthcheck.md');
 
   try {
@@ -551,7 +551,7 @@ describe('the quick start from a clean install', () => {
       version: string;
     };
 
-    workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-docs-'));
+    workdir = makeTempDir('gatewarden-docs-');
 
     // 1. Pack the package. `prepare` builds it, so the tarball carries the
     //    compiled output the package ships.

@@ -19,7 +19,6 @@
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { spawn } from 'node:child_process';
@@ -29,6 +28,7 @@ import type { Config } from '../src/core/types.ts';
 import { DAEMON, freePort } from './helpers/cli.ts';
 import { registerSuiteDirectory, stopDaemonsOfTheSuite, SUITE_VARIABLE, suiteMarker } from './helpers/daemons.ts';
 import { isolate } from './helpers/isolation.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
 
 /**
  * The configuration of a throwaway installation.
@@ -109,7 +109,7 @@ function pidFilesIn(directory: string): string[] {
 }
 
 test('the cleanup stops the daemon the suite started', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-cleanup-'));
+  const dir = makeTempDir('gatewarden-cleanup-');
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const configPath = writeConfig(dir, await freePort(), await freePort());
   const config = loadConfig({ configPath, stateDir: dir });
@@ -133,7 +133,7 @@ test('the cleanup stops the daemon the suite started', async (t) => {
 });
 
 test('the cleanup finds the daemon whose pidfile lies where the test does not expect it', async (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-cleanup-home-'));
+  const root = makeTempDir('gatewarden-cleanup-home-');
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const dir = path.join(root, 'installation');
   const home = path.join(root, 'home');
@@ -185,7 +185,7 @@ test('the cleanup finds the daemon whose pidfile lies where the test does not ex
 });
 
 test('the cleanup does not stop the daemon of the installation of the machine', async (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-cleanup-machine-'));
+  const root = makeTempDir('gatewarden-cleanup-machine-');
   const home = path.join(root, 'home');
   fs.mkdirSync(home, { recursive: true });
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -242,7 +242,7 @@ test('the cleanup does not stop the daemon of the installation of the machine', 
 });
 
 test('the cleanup leaves a daemon that is not the suite\'s alone', async (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-cleanup-foreign-'));
+  const root = makeTempDir('gatewarden-cleanup-foreign-');
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const dir = path.join(root, 'installation');
   fs.mkdirSync(dir, { recursive: true });

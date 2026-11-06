@@ -14,12 +14,12 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { loadConfig } from '../src/core/config.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -33,7 +33,7 @@ interface Legacy {
 }
 
 function makeLegacy(): Legacy {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-home-'));
+  const home = makeTempDir('gatewarden-home-');
   const dir = path.join(home, '.traefik-dev');
   fs.mkdirSync(dir, { recursive: true });
   const configFile = path.join(dir, 'config.json');
@@ -162,7 +162,7 @@ test('the state directory of the old layout is not kept: the routes move to the 
 
 test('a state directory outside the old layout is kept', () => {
   const legacy = makeLegacy();
-  const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-state-'));
+  const elsewhere = makeTempDir('gatewarden-state-');
   try {
     const raw = JSON.parse(fs.readFileSync(legacy.configFile, 'utf8'));
     raw.stateDir = elsewhere;
@@ -245,7 +245,7 @@ test('gatewarden migrate --dry-run moves nothing', async () => {
 });
 
 test('gatewarden migrate says when there is nothing to migrate', async () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-home-'));
+  const home = makeTempDir('gatewarden-home-');
   try {
     const { stdout } = await execFileAsync(process.execPath, [CLI, 'migrate'], {
       env: {
@@ -275,7 +275,7 @@ interface OldName {
  * the rename.
  */
 function makeOldName(): OldName {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-old-name-'));
+  const home = makeTempDir('gatewarden-old-name-');
   const configDir = path.join(home, '.config', 'dev-gateway');
   const stateDir = path.join(home, '.local', 'state', 'dev-gateway');
   fs.mkdirSync(configDir, { recursive: true });
@@ -439,7 +439,7 @@ function registration(project: string, port: number): Record<string, unknown> {
  * it is the one the first run reads, and the command has to agree.
  */
 function makeBothLayouts(): { home: string } {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-both-'));
+  const home = makeTempDir('gatewarden-both-');
 
   const legacy = path.join(home, '.traefik-dev');
   fs.mkdirSync(legacy, { recursive: true });
@@ -684,7 +684,7 @@ test('migrate --json says what happened to the older layout too', async () => {
  * not the same. Only one of them can be in the store.
  */
 function makeBothLayoutsWithTheSameRoute(): { home: string } {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-same-route-'));
+  const home = makeTempDir('gatewarden-same-route-');
   const shared = (fqdn: string, port: number): Record<string, unknown> => ({
     id: 'shared/main',
     project: 'shared',

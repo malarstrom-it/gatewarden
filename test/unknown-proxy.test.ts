@@ -23,7 +23,6 @@
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fork, spawn } from 'node:child_process';
@@ -34,6 +33,7 @@ import { McpServer } from '../src/integrations/mcp/server.ts';
 import { answersUnknownProxy, TOOLS } from '../src/integrations/mcp/tools.ts';
 import { freePort, makeCliFixture, REPO_ROOT, type CliFixture } from './helpers/cli.ts';
 import { isolate } from './helpers/isolation.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
 
 /** The daemon of the package. */
 const DAEMON = path.join(REPO_ROOT, 'bin', 'gatewarden-daemon.js');
@@ -134,7 +134,7 @@ test('the daemon stops with the code zero every time', async (t) => {
 });
 
 test('stopping a worker that is already gone does not raise', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-stop-worker-'));
+  const dir = makeTempDir('gatewarden-stop-worker-');
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
   const script = path.join(dir, 'worker.mjs');
@@ -155,7 +155,7 @@ test('stopping a worker that is already gone does not raise', async (t) => {
 });
 
 test('stopping a worker that is still there stops it', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-stop-live-worker-'));
+  const dir = makeTempDir('gatewarden-stop-live-worker-');
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
   const script = path.join(dir, 'worker.mjs');
@@ -310,7 +310,7 @@ test('the status --json says why the proxy does not answer', async (t) => {
 });
 
 test('the MCP status tool says why the proxy does not answer, and does not fail', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-unknown-proxy-mcp-'));
+  const dir = makeTempDir('gatewarden-unknown-proxy-mcp-');
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
   const configPath = path.join(dir, 'config.json');

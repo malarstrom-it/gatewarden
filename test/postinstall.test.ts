@@ -25,10 +25,10 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import test, { type TestContext } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { makeTempDir } from './helpers/tempdir.ts';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SCRIPT = path.join(REPO_ROOT, 'scripts', 'postinstall.mjs');
@@ -231,7 +231,7 @@ function runScript(script: string, env: NodeJS.ProcessEnv, user: ScriptUser): Pr
 
 /** A throwaway installation the script may work on. */
 function makeHome(user: ScriptUser): { home: string; configPath: string; stateDir: string } {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-postinstall-'));
+  const home = makeTempDir('gatewarden-postinstall-');
   const stateDir = path.join(home, 'state');
   fs.mkdirSync(stateDir, { recursive: true });
   giveTo(user, home);
@@ -274,7 +274,7 @@ function copyDependencies(from: string, to: string, names: string[], done = new 
  * dependencies, and a manifest that is not private.
  */
 function makeInstalledPackage(user: ScriptUser): { dir: string; script: string; cleanup: () => void } {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-package-'));
+  const dir = makeTempDir('gatewarden-package-');
   fs.cpSync(path.join(REPO_ROOT, 'src'), path.join(dir, 'src'), { recursive: true });
   fs.cpSync(path.join(REPO_ROOT, 'scripts'), path.join(dir, 'scripts'), { recursive: true });
   fs.writeFileSync(

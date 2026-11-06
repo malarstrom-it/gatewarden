@@ -7,15 +7,15 @@
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { DEFAULT_CONFIG, configFileContent, loadConfig, requireZone, resolveConfigPath, resolveStateDir, writeConfigFile } from '../src/core/config.ts';
 import { logFilePath } from '../src/core/daemonControl.ts';
 import { logFileFor, resolvePaths } from '../src/core/paths.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
 
 function isolatedHome(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-config-'));
+  return makeTempDir('gatewarden-config-');
 }
 
 function configPathIn(home: string): string {

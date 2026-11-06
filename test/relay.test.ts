@@ -1,17 +1,16 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import http from 'node:http';
 import net from 'node:net';
-import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { RegistrationStore } from '../src/core/state.ts';
 import { createRelayServer } from '../src/core/relay.ts';
 import { DISPATCH_HEADER, RELAY_SECRET_HEADER } from '../src/core/protocol.ts';
 import { close, listen, makeConfig, startDevServer } from './helpers/fixtures.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
 
 function tempStore(): RegistrationStore {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'traefik-dev-relay-'));
+  const dir = makeTempDir('traefik-dev-relay-');
   return new RegistrationStore(dir);
 }
 

@@ -127,6 +127,7 @@ jobs:
           - slug.test.ts
           - source-paths.test.ts
           - state.test.ts
+          - tempdir.test.ts
           - testenv.test.ts
           - trust.test.ts
           - uninstall.test.ts

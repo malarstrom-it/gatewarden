@@ -270,6 +270,7 @@ import { objectName } from '../src/adapters/traefik.ts';
 import { resolveConfigPath } from '../src/core/config.ts';
 import { resolvePaths } from '../src/core/paths.ts';
 import { RegistrationStore } from '../src/core/state.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -485,7 +486,7 @@ const SHIPPED_SCRIPTS = [
 const CHECKOUT_FILES: Record<string, string[]> = {
   build: ['tsconfig.build.json'],
   clean: ['tsconfig.build.json'],
-  test: ['test/*.test.ts', 'test/helpers/suite.ts'],
+  test: ['test/*.test.ts', 'test/helpers/suite.ts', 'test/helpers/cleanup.ts'],
   'test:e2e': ['tools/testenv/run.ts'],
   'test:e2e:stop': ['tools/testenv/stop.ts'],
 };
@@ -1347,7 +1348,7 @@ interface ProbeInstallation {
  * the proof is done: nothing of it reaches the disk of the repository.
  */
 function probeInstallation(): ProbeInstallation {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-probe-installation-'));
+  const home = makeTempDir('gatewarden-probe-installation-');
   const configFile = path.join(home, 'config.json');
   const stateDir = path.join(home, 'state');
   const zone = 'probe.installation';
@@ -2517,7 +2518,7 @@ describe('the published package', () => {
   let files: string[] = [];
 
   before(async () => {
-    workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-identifiers-'));
+    workdir = makeTempDir('gatewarden-identifiers-');
 
     // 1. Pack the package, the way `test/packaging.test.ts` does. The
     //    `prepare` script builds it, so the tarball carries the compiled
@@ -2564,7 +2565,7 @@ describe('the published package', () => {
    * a tarball that has been broken on purpose.
    */
   const plant = (file: string, line: string): string => {
-    const copy = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-code-probe-'));
+    const copy = makeTempDir('gatewarden-code-probe-');
     try {
       fs.cpSync(packageDir, copy, { recursive: true });
       fs.appendFileSync(path.join(copy, file), `\n${line}\n`);
@@ -2585,7 +2586,7 @@ describe('the published package', () => {
    * rule has been run over it.
    */
   const plantInTarball = (plantings: Array<{ file: string; line: string }>): string => {
-    const copy = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-tarball-probe-'));
+    const copy = makeTempDir('gatewarden-tarball-probe-');
     try {
       fs.cpSync(packageDir, copy, { recursive: true });
       for (const planting of plantings) {

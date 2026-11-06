@@ -12,13 +12,13 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
-import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { logFileFor } from '../src/core/paths.ts';
 import { openLogFile } from '../src/core/daemonControl.ts';
 import { registerSuiteDirectory, suiteEnv } from './helpers/daemons.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DAEMON = path.join(REPO_ROOT, 'bin', 'gatewarden-daemon.js');
 
@@ -35,7 +35,7 @@ async function freePort(): Promise<number> {
 
 /** A home directory of its own, with a configuration file in it. */
 function makeHome(registryPort: number, relayPort: number): string {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-daemon-'));
+  const home = makeTempDir('gatewarden-daemon-');
   const configDir = path.join(home, '.config', 'gatewarden');
   fs.mkdirSync(configDir, { recursive: true });
   fs.writeFileSync(
@@ -148,7 +148,7 @@ test('a daemon that is started by hand gives its workers the configuration file'
 });
 
 test('the log file is opened, and the directory it lives in is created', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-log-'));
+  const dir = makeTempDir('gatewarden-log-');
   try {
     const logFile = path.join(dir, 'logs', 'of', 'the', 'platform', 'daemon.log');
     const handle = openLogFile(logFile);
@@ -161,7 +161,7 @@ test('the log file is opened, and the directory it lives in is created', () => {
 });
 
 test('the log directory is the state directory', () => {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-log-'));
+  const home = makeTempDir('gatewarden-log-');
   try {
     const stateDir = path.join(home, 'state');
     const logFile = logFileFor(stateDir);

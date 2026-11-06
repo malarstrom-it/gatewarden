@@ -41,7 +41,6 @@ import assert from 'node:assert/strict';
 import { execFile, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
-import os from 'node:os';
 import path from 'node:path';
 import test, { after, before, describe, type TestContext } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -50,6 +49,7 @@ import { listenHost } from '../src/core/config.ts';
 
 import { noBuildText, resolveEntry } from '../bin/entry.mjs';
 import { copyDependencyClosure, linkBinaries, unpackTarball } from './helpers/install.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -278,7 +278,7 @@ function runNpm(args: string[], cwd: string): Promise<{ code: number; output: st
  * @returns the directory of the installation
  */
 function installationWithoutBuild(packageDir: string, kind: 'project' | 'pnpm' | 'global', t: TestContext): string {
-  const broken = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-nobuild-'));
+  const broken = makeTempDir('gatewarden-nobuild-');
   t.after(() => fs.rmSync(broken, { recursive: true, force: true }));
 
   const root = kind === 'global' ? path.join(broken, 'prefix', 'lib') : path.join(broken, 'project');
@@ -311,7 +311,7 @@ describe('the published package', () => {
   let relayPort = 0;
 
   before(async () => {
-    workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-packaging-'));
+    workdir = makeTempDir('gatewarden-packaging-');
     home = path.join(workdir, 'home');
     install = path.join(workdir, 'install');
     fs.mkdirSync(home, { recursive: true });
@@ -536,7 +536,7 @@ describe('the published package', () => {
     // runs the command in a directory that looks like a checkout — the
     // manifest of the package and one test file — and the test file has
     // to run.
-    const checkout = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-test-command-'));
+    const checkout = makeTempDir('gatewarden-test-command-');
     t.after(() => fs.rmSync(checkout, { recursive: true, force: true }));
 
     fs.writeFileSync(
@@ -640,7 +640,7 @@ describe('the published package', () => {
     // The tool of the test is not the tool of the repository: it writes
     // one line and stops. The real tool brings up a proxy, and a test
     // that brings up a proxy is not a test of the packaging.
-    const checkout = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-e2e-command-'));
+    const checkout = makeTempDir('gatewarden-e2e-command-');
     t.after(() => fs.rmSync(checkout, { recursive: true, force: true }));
 
     fs.writeFileSync(
@@ -678,7 +678,7 @@ describe('the published package', () => {
     // repository. The compiled output is not in the repository, so the
     // clone has to build itself — npm does that with `prepare`, when it
     // installs a package that comes from a git repository.
-    const clone = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-git-'));
+    const clone = makeTempDir('gatewarden-git-');
     t.after(() => fs.rmSync(clone, { recursive: true, force: true }));
 
     // The clone: the working tree, without the files that are not in
@@ -946,7 +946,7 @@ describe('the published package', () => {
     // A checkout without the sources is a checkout all the same: the
     // compiled output is the fallback of the source, and the launcher
     // runs it.
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-checkout-'));
+    const root = makeTempDir('gatewarden-checkout-');
     t.after(() => fs.rmSync(root, { recursive: true, force: true }));
     fs.mkdirSync(path.join(root, 'bin'), { recursive: true });
     fs.mkdirSync(path.join(root, 'dist', 'cli'), { recursive: true });

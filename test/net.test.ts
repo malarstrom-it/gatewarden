@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import test, { after } from 'node:test';
 import { addressInCidr, isAddressAllowed, ipv6ToBigInt, normaliseAddress } from '../src/core/util/net.ts';
 import { detectIpv6Prefixes, listenHost, loadConfig } from '../src/core/config.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
 
 /**
  * A home directory of its own, so that a configuration load never reaches
@@ -13,7 +12,7 @@ import { detectIpv6Prefixes, listenHost, loadConfig } from '../src/core/config.t
 const homes: string[] = [];
 
 function isolatedHome(): string {
-  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-net-'));
+  const home = makeTempDir('gatewarden-net-');
   homes.push(home);
   return home;
 }

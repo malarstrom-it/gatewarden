@@ -16,19 +16,19 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { ROUTES_LOCK_FILE, withRouteLock } from '../src/core/lock.ts';
 import { RegistrationStore } from '../src/core/state.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const WRITER = path.join(REPO_ROOT, 'test', 'helpers', 'lock-writer.ts');
 
 function makeStateDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-lock-'));
+  return makeTempDir('gatewarden-lock-');
 }
 
 /** Spawn a writer and wait for it to finish. */

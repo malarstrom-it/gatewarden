@@ -13,7 +13,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -27,6 +26,7 @@ import {
 } from '../src/integrations/mcp/server.ts';
 import { inferBranch, inferProject } from '../src/integrations/mcp/inference.ts';
 import { TOOLS } from '../src/integrations/mcp/tools.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -166,7 +166,7 @@ test('the source does not import the MCP SDK (D5)', () => {
 });
 
 test('the project is the name of the working directory', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-project-'));
+  const dir = makeTempDir('gatewarden-project-');
   try {
     assert.equal(inferProject(dir), path.basename(dir).toLowerCase());
     assert.equal(inferProject('/tmp/My Project'), 'my-project');
@@ -176,7 +176,7 @@ test('the project is the name of the working directory', () => {
 });
 
 test('the branch is the branch of the working directory', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-branch-'));
+  const dir = makeTempDir('gatewarden-branch-');
   try {
     execFileSync('git', ['init', '--quiet'], { cwd: dir, stdio: 'ignore' });
     execFileSync('git', ['checkout', '--quiet', '-b', 'feature/One'], { cwd: dir, stdio: 'ignore' });
@@ -189,7 +189,7 @@ test('the branch is the branch of the working directory', () => {
 });
 
 test('a directory that is not a repository falls back to main', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-nogit-'));
+  const dir = makeTempDir('gatewarden-nogit-');
   try {
     // A directory that is not inside a repository: git answers with an
     // error, and the fallback is used.

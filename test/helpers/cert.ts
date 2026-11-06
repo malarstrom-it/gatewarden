@@ -9,8 +9,8 @@
 
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
+import { makeTempDir } from './tempdir.ts';
 
 export interface TestCertificate {
   /** The private key, in PEM. */
@@ -41,7 +41,7 @@ export function hasOpenssl(): boolean {
  */
 export function makeCertificate(hostName: string): TestCertificate | undefined {
   if (!hasOpenssl()) return undefined;
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-cert-'));
+  const dir = makeTempDir('gatewarden-cert-');
   const keyFile = path.join(dir, 'key.pem');
   const certFile = path.join(dir, 'cert.pem');
   try {

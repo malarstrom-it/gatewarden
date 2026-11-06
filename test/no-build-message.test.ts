@@ -21,6 +21,7 @@ import test, { describe, type TestContext } from 'node:test';
 import { pathToFileURL } from 'node:url';
 
 import { noBuildText, reinstallCommand } from '../bin/entry.mjs';
+import { makeTempDir } from './helpers/tempdir.ts';
 
 /** The command of a project install, as the message writes it. */
 const PROJECT_COMMAND = '"npm install @malarstrom/gatewarden"';
@@ -74,7 +75,7 @@ function launcherInStore(project: string, reference: string): string {
  * @returns the directory of the project
  */
 function projectDirectory(t: TestContext): string {
-  const project = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-project-'));
+  const project = makeTempDir('gatewarden-project-');
   t.after(() => fs.rmSync(project, { recursive: true, force: true }));
   fs.writeFileSync(path.join(project, 'package.json'), '{ "name": "reader" }\n');
   return project;
@@ -153,7 +154,7 @@ describe('the message about a missing build', () => {
     // down, so the message carries the command of the installation and
     // nothing else.
     const project = projectDirectory(t);
-    const other = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-other-'));
+    const other = makeTempDir('gatewarden-other-');
     t.after(() => fs.rmSync(other, { recursive: true, force: true }));
 
     for (const root of [project, other]) {

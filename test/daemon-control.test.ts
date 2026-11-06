@@ -41,10 +41,11 @@ import {
 import type { Config } from '../src/core/types.ts';
 import { CLI, DAEMON, freePort } from './helpers/cli.ts';
 import { isolate, type Isolation } from './helpers/isolation.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
 
 /** A throwaway installation with a configuration file of its own. */
 async function makeConfig(): Promise<{ dir: string; configPath: string; config: Config; isolation: Isolation }> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-control-'));
+  const dir = makeTempDir('gatewarden-control-');
   const configPath = path.join(dir, 'config.json');
   fs.writeFileSync(
     configPath,
@@ -235,7 +236,7 @@ test('the daemon writes the log where the CLI opens it, also when the environmen
   // file that names a state directory somewhere else. The environment of
   // the CLI names the home directory, the environment of the daemon names
   // the state directory, and the log file is one file.
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-log-file-'));
+  const dir = makeTempDir('gatewarden-log-file-');
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
   const installationHome = path.join(dir, 'home');
@@ -430,7 +431,7 @@ test(
 );
 
 test('the daemon does not inherit GATEWARDEN_HOME', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-control-'));
+  const dir = makeTempDir('gatewarden-control-');
   const config = loadConfig({ configPath: path.join(dir, 'config.json'), stateDir: dir });
 
   const env = daemonEnv(config, path.join(dir, 'config.json'), {
@@ -442,7 +443,7 @@ test('the daemon does not inherit GATEWARDEN_HOME', () => {
 });
 
 test('the daemon does not inherit the name GATEWARDEN_HOME had before the rename', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-control-'));
+  const dir = makeTempDir('gatewarden-control-');
   const config = loadConfig({ configPath: path.join(dir, 'config.json'), stateDir: dir });
 
   const env = daemonEnv(config, path.join(dir, 'config.json'), {
@@ -454,7 +455,7 @@ test('the daemon does not inherit the name GATEWARDEN_HOME had before the rename
 });
 
 test('the daemon reads the configuration it was given', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-control-'));
+  const dir = makeTempDir('gatewarden-control-');
   const configPath = path.join(dir, 'config.json');
   const config = loadConfig({ configPath, stateDir: dir });
 
@@ -471,7 +472,7 @@ test('the daemon reads the configuration it was given', () => {
 });
 
 test('the other names of the environment are left as they are', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-control-'));
+  const dir = makeTempDir('gatewarden-control-');
   const configPath = path.join(dir, 'config.json');
   const config = loadConfig({ configPath, stateDir: dir });
 
@@ -494,7 +495,7 @@ test('the other names of the environment are left as they are', () => {
 });
 
 test('the environment of the caller is not changed', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-control-'));
+  const dir = makeTempDir('gatewarden-control-');
   const configPath = path.join(dir, 'config.json');
   const config = loadConfig({ configPath, stateDir: dir });
   const baseEnv: NodeJS.ProcessEnv = {

@@ -8,6 +8,11 @@
  * A suite that leaves a daemon behind leaves a process behind, and the
  * process holds the ports of the gateway.
  *
+ * The suite also makes temporary directories: every test that makes a
+ * fixture makes one. A temporary directory that is left behind stays in
+ * the temporary directory of the machine, and the directories pile up on
+ * the machine the suite runs on.
+ *
  * This module is the cleanup of the suite, and it runs in every test
  * file:
  *
@@ -17,7 +22,9 @@
  *     a daemon a file before left behind cannot be mistaken for one of
  *     this file;
  *   - it stops the daemons of the suite after the file is over, and says
- *     so when one of them is still running.
+ *     so when one of them is still running;
+ *   - it removes the temporary directories of the file after the file is
+ *     over, and says so when one of them is still there.
  *
  * The file is loaded with `--import`, the same way in every run of the
  * suite: `npm test` and the CI both name it. A checkout that has no
@@ -26,6 +33,7 @@
  */
 import { after, before } from 'node:test';
 import { SUITE_VARIABLE, stopDaemonsOfTheSuite, suiteMarker } from './daemons.ts';
+import { removeOwnTempDirs } from './tempdir.ts';
 
 // Every process the file starts carries the marker of the suite: the
 // daemon it starts, the workers that daemon starts, and the commands
@@ -53,6 +61,15 @@ after(async () => {
   if (remaining.length > 0) {
     throw new Error(
       `the test file left ${remaining.length} daemon process(es) behind: ${remaining.join(', ')}`,
+    );
+  }
+  // The daemons are gone, and the directories of the file can go with
+  // them: a daemon that holds a file of a directory keeps the directory
+  // from being removed on some machines.
+  const directories = removeOwnTempDirs();
+  if (directories.failed.length > 0) {
+    throw new Error(
+      `the test file left ${directories.failed.length} temporary directory(ies) behind: ${directories.failed.join(', ')}`,
     );
   }
 });

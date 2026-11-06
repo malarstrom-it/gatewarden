@@ -11,13 +11,13 @@ import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import http from 'node:http';
-import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { promisify } from 'node:util';
 import { CLI, freePort, makeCliFixture } from './helpers/cli.ts';
 import { makeCertificate } from './helpers/cert.ts';
 import { FakeTraefik } from './helpers/proxy.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -42,7 +42,7 @@ interface Report {
 
 /** A throwaway directory that holds nothing. */
 function makeEmptyDir(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-health-'));
+  return makeTempDir('gatewarden-health-');
 }
 
 /**

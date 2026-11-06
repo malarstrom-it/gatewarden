@@ -13,7 +13,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
-import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { PassThrough } from 'node:stream';
@@ -29,6 +28,7 @@ import { makeCertificate } from './helpers/cert.ts';
 import { close, listen } from './helpers/fixtures.ts';
 import { FakeTraefik, type FakeRouter, type FakeService } from './helpers/proxy.ts';
 import { parseYaml } from './helpers/yaml.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
 
 interface SetupReport {
   environment: { container: boolean; platform: string; stateDir: string; daemonRunning: boolean };
@@ -310,7 +310,7 @@ test('the gateway serves the document while the wizard verifies', async (t) => {
 });
 
 test('the wizard asks for the values it cannot derive', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-wizard-'));
+  const dir = makeTempDir('gatewarden-wizard-');
   const registryPort = await freePort();
   const relayPort = await freePort();
   const deadPort = await freePort();
@@ -502,7 +502,7 @@ test('the advice of the wizard fits what happened', async (t) => {
 });
 
 test('the wizard keeps the answers that arrive before their question', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-wizard-'));
+  const dir = makeTempDir('gatewarden-wizard-');
   const registryPort = await freePort();
   const relayPort = await freePort();
   const deadPort = await freePort();
@@ -967,7 +967,7 @@ test('a proxy that says nothing about the middlewares leaves the value alone', a
 });
 
 test('the trust list keeps what the wizard offered when the user answers with a list of their own', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-trust-'));
+  const dir = makeTempDir('gatewarden-trust-');
   const registryPort = await freePort();
   const relayPort = await freePort();
   const deadPort = await freePort();
@@ -1299,7 +1299,7 @@ test('the setup does not fail when the verification could not run', async (t) =>
 });
 
 test('a configuration file that cannot be written is a clear error', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-readonly-'));
+  const dir = makeTempDir('gatewarden-readonly-');
   t.after(() => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
@@ -1338,7 +1338,7 @@ test('a configuration file that cannot be written is a clear error', async (t) =
 });
 
 test('a new installation does not get the zone of another project', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-fresh-'));
+  const dir = makeTempDir('gatewarden-fresh-');
   const registryPort = await freePort();
   const relayPort = await freePort();
 
@@ -1381,7 +1381,7 @@ test('a new installation does not get the zone of another project', async (t) =>
 });
 
 test('a question nobody answers is a value nobody confirmed', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-timeout-'));
+  const dir = makeTempDir('gatewarden-timeout-');
   const registryPort = await freePort();
   const relayPort = await freePort();
   const configPath = path.join(dir, 'config.json');

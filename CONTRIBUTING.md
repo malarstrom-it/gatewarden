@@ -61,6 +61,11 @@ ports. Let it run.
 **`npm test` leaves no daemon behind.** Every test file stops the daemons it
 started when the file is over, so the suite keeps neither a process nor a port
 on the machine it runs on.
+**`npm test` leaves no temporary directory behind.** Every test file removes the
+temporary directories it made when the file is over, and the run removes the
+ones a file that died left behind. The cleanup removes the directories of the
+suite and nothing else: a directory of an installation on the machine is never
+touched.
 
 **`npm run build` empties `dist/` before it writes it** — it runs
 `npm run clean` first. Never run `npm run build` while the tests are

@@ -37,6 +37,7 @@ import type { Config } from '../src/core/types.ts';
 import { freePort } from './helpers/cli.ts';
 import { isolate } from './helpers/isolation.ts';
 import { resolveGatewayPaths } from '../scripts/paths.mjs';
+import { makeTempDir } from './helpers/tempdir.ts';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PREUNINSTALL = path.join(REPO_ROOT, 'scripts', 'preuninstall.mjs');
@@ -62,7 +63,7 @@ function copyDependencies(from: string, to: string, names: string[], done = new 
 
 /** The package as it is installed: the sources, the scripts, the dependencies. */
 function makeInstalledPackage(): { dir: string; tree: string; cleanup: () => void } {
-  const tree = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-uninstall-'));
+  const tree = makeTempDir('gatewarden-uninstall-');
   // The installation is a directory of its own, in a tree around it: the
   // tree is what tells a removal from a rebuild (§5.4).
   const dir = path.join(tree, 'installation');
@@ -154,7 +155,7 @@ function isAlive(pid: number): boolean {
 
 test('the preuninstall script stops the daemon of the installation', async (t) => {
   const installed = makeInstalledPackage();
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-uninstall-daemon-'));
+  const root = makeTempDir('gatewarden-uninstall-daemon-');
   const home = path.join(root, 'home');
   const stateDir = path.join(root, 'state');
   fs.mkdirSync(home, { recursive: true });
@@ -214,7 +215,7 @@ test('the preuninstall script stops the daemon of the installation', async (t) =
 
 test('the postuninstall script removes the configuration, the state and the cache', async (t) => {
   const installed = makeInstalledPackage();
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-uninstall-files-'));
+  const root = makeTempDir('gatewarden-uninstall-files-');
   const home = path.join(root, 'home');
   const stateDir = path.join(root, 'state');
   const cacheHome = path.join(root, 'xdg-cache');
@@ -254,7 +255,7 @@ test('the postuninstall script removes the configuration, the state and the cach
 test('the files of the gateway in the state directory go with the installation', (t) => {
   // The reason the daemon stopped is a file of the gateway: it goes
   // with the installation, and the files of somebody else stay.
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-owned-files-'));
+  const root = makeTempDir('gatewarden-owned-files-');
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
 
   const stateDir = path.join(root, 'state');
@@ -285,7 +286,7 @@ test('the files of the gateway in the state directory go with the installation',
 
 test('the postuninstall script respects GATEWARDEN_HOME', async (t) => {
   const installed = makeInstalledPackage();
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-uninstall-home-'));
+  const root = makeTempDir('gatewarden-uninstall-home-');
   const home = path.join(root, 'home');
   const gateway = path.join(root, 'gateway');
   const cacheDir = path.join(gateway, 'cache');
@@ -312,7 +313,7 @@ test('the postuninstall script respects GATEWARDEN_HOME', async (t) => {
 
 test('the postuninstall script honours the old environment variables', async (t) => {
   const installed = makeInstalledPackage();
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-uninstall-old-'));
+  const root = makeTempDir('gatewarden-uninstall-old-');
   const home = path.join(root, 'home');
   const configPath = path.join(root, 'old-config.json');
   const stateDir = path.join(root, 'old-state');
@@ -340,7 +341,7 @@ test('the postuninstall script honours the old environment variables', async (t)
 });
 
 test('the uninstall scripts do nothing in a checkout', async (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-uninstall-checkout-'));
+  const root = makeTempDir('gatewarden-uninstall-checkout-');
   const home = path.join(root, 'home');
   const stateDir = path.join(root, 'state');
   fs.mkdirSync(home, { recursive: true });
@@ -388,7 +389,7 @@ test('the preuninstall script stops the daemon of another installation never', a
   // The uninstall of one of them must not stop the daemon of the other:
   // the process has to run from the installation that is uninstalled.
   const installed = makeInstalledPackage();
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-uninstall-foreign-'));
+  const root = makeTempDir('gatewarden-uninstall-foreign-');
   const home = path.join(root, 'home');
   const stateDir = path.join(root, 'state');
   fs.mkdirSync(home, { recursive: true });
@@ -436,7 +437,7 @@ test('the daemon stops itself and cleans up when the installation is gone', asyn
   // the daemon goes with it — and the files of the installation go with
   // the daemon, because nothing else cleans them up.
   const installed = makeInstalledPackage();
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-uninstall-watchdog-'));
+  const root = makeTempDir('gatewarden-uninstall-watchdog-');
   const home = path.join(root, 'home');
   const stateDir = path.join(root, 'state');
   const cacheHome = path.join(root, 'xdg-cache');
@@ -516,7 +517,7 @@ test('the daemon leaves the files alone when the tree of the installation is gon
   // installation comes back, and the files of the gateway stay where
   // they are.
   const installed = makeInstalledPackage();
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-uninstall-tree-'));
+  const root = makeTempDir('gatewarden-uninstall-tree-');
   const home = path.join(root, 'home');
   const stateDir = path.join(root, 'state');
   fs.mkdirSync(home, { recursive: true });
@@ -578,7 +579,7 @@ test('the daemon leaves the files alone when the checkout is gone', async (t) =>
   // A checkout is not an installation: a clone that is deleted must not
   // take the files of the user with it.
   const installed = makeInstalledPackage();
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-uninstall-checkout-'));
+  const root = makeTempDir('gatewarden-uninstall-checkout-');
   const home = path.join(root, 'home');
   const stateDir = path.join(root, 'state');
   fs.mkdirSync(home, { recursive: true });

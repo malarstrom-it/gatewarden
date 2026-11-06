@@ -14,7 +14,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
-import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +22,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { isPortListening } from '../src/core/util/net.ts';
 import { freePort } from './helpers/cli.ts';
 import { registerSuiteDirectory, SUITE_VARIABLE, suiteMarker } from './helpers/daemons.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -48,7 +48,7 @@ interface Fixture {
 async function makeMcpFixture(
   options: { connect?: boolean; zone?: string; proxy?: string } = {},
 ): Promise<Fixture> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-mcp-'));
+  const dir = makeTempDir('gatewarden-mcp-');
   const registryPort = await freePort();
   const relayPort = await freePort();
 

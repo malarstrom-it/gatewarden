@@ -20,13 +20,13 @@ import { execFile, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
 import { builtinModules } from 'node:module';
-import os from 'node:os';
 import path from 'node:path';
 import test, { before } from 'node:test';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import { listenHost } from '../src/core/config.ts';
 import { isolate } from './helpers/isolation.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -164,7 +164,7 @@ test('the compiled sibling resolution points at the compiled modules', async () 
 });
 
 test('the compiled daemon serves and forks the compiled worker', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-build-'));
+  const dir = makeTempDir('gatewarden-build-');
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
   const registryPort = await freePort();

@@ -8,9 +8,7 @@
  */
 
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import http from 'node:http';
-import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { RegistrationStore } from '../src/core/state.ts';
@@ -18,9 +16,10 @@ import { createRegistryServer } from '../src/core/registry.ts';
 import { traefikAdapter } from '../src/adapters/traefik.ts';
 import { REGISTRY_SECRET_HEADER } from '../src/core/protocol.ts';
 import { close, listen, makeConfig } from './helpers/fixtures.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
 
 function tempStore(): RegistrationStore {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'traefik-dev-registry-'));
+  const dir = makeTempDir('traefik-dev-registry-');
   return new RegistrationStore(dir);
 }
 

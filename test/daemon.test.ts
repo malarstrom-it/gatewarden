@@ -12,6 +12,7 @@ import { RegistrationStore } from '../src/core/state.ts';
 import type { Config } from '../src/core/types.ts';
 import { isolate } from './helpers/isolation.ts';
 import { REPO_ROOT } from './helpers/cli.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
 
 /** Ask the OS for a free TCP port. */
 /**
@@ -160,7 +161,7 @@ function writeConfig(
 }
 
 async function setup(): Promise<{ dir: string; configPath: string; config: Config; startDaemon: () => Promise<DaemonStart> }> {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'traefik-dev-daemon-'));
+  const dir = makeTempDir('traefik-dev-daemon-');
   const registryPort = await freePort();
   const relayPort = await freePort();
   const configPath = writeConfig(dir, registryPort, relayPort);
@@ -301,7 +302,7 @@ test('the daemon restarts after it was killed', async (t) => {
  * state directory, the way the CLI and the service unit do it.
  */
 test('the daemon uses the configuration it was given, even when the environment names another installation', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'traefik-dev-daemon-'));
+  const dir = makeTempDir('traefik-dev-daemon-');
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
   // The installation of the machine: another directory, with a
@@ -400,7 +401,7 @@ test('the daemon respawns a worker that dies, the other listener keeps serving',
 });
 
 test('the workers of the daemon do not inherit GATEWARDEN_HOME', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'traefik-dev-worker-'));
+  const dir = makeTempDir('traefik-dev-worker-');
   const configPath = path.join(dir, 'config.json');
   const config = loadConfig({ configPath, stateDir: dir });
 
@@ -427,7 +428,7 @@ test('a worker of a daemon that was started by hand does not have GATEWARDEN_HOM
     t.skip('the environment of a process is read from /proc, and /proc is Linux');
     return;
   }
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'traefik-dev-worker-'));
+  const dir = makeTempDir('traefik-dev-worker-');
   // The installation of the machine: another directory, outside the
   // throwaway directory of the test.
   const installation = path.join(dir, 'machine-installation');

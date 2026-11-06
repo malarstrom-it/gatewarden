@@ -9,7 +9,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import http from 'node:http';
-import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { adapterFor, adapterIds, requireAdapter, traefikAdapter } from '../src/adapters/index.ts';
@@ -18,6 +17,7 @@ import type { ProxyAdapter } from '../src/adapters/types.ts';
 import { createRegistryServer } from '../src/core/registry.ts';
 import { RegistrationStore } from '../src/core/state.ts';
 import { close, listen, makeConfig } from './helpers/fixtures.ts';
+import { makeTempDir } from './helpers/tempdir.ts';
 
 /** A fake Traefik API. */
 async function fakeTraefik(
@@ -223,7 +223,7 @@ test('the wiring snippet names the endpoint the proxy has to poll', () => {
 });
 
 test('the registry serves the document under the id of the adapter', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'gatewarden-adapter-'));
+  const dir = makeTempDir('gatewarden-adapter-');
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
   const store = new RegistrationStore(dir);
