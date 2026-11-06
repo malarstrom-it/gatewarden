@@ -228,6 +228,13 @@ two commits.
   the `## Unreleased` section of `CHANGELOG.md`, under the heading that fits
   the change: Added, Changed, Deprecated, Fixed or Security.
 - The specification is changed first, if the change needs it (see above).
+- **Expect a CodeRabbit review on every pull request.** CodeRabbit reviews
+  every pull request in this repository, automatically. Read its comments and
+  answer them before the pull request is merged, and close no thread without
+  a reply that says why.
+- **Its findings are the findings this repository cares about:** correctness,
+  tests and English. A finding that is wrong gets an answer with the reason,
+  not silence.
 
 ## Security
 
