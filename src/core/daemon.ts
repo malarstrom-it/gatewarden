@@ -265,8 +265,11 @@ export async function runDaemon(): Promise<void> {
   // The daemon writes to the log file of the installation, and to the
   // standard output as well: the standard output is the journal of the
   // platform when the daemon runs as a service, and the journal is not a
-  // file the reader of the log can open.
-  setLogFile(logFile);
+  // file the reader of the log can open. The rotation above moved the
+  // file, and the standard output of a daemon that the CLI started is
+  // the copy it left behind: the log of this run stands in the log file
+  // alone.
+  setLogFile(logFile, config.logKeep);
 
   const pidFile = path.join(config.stateDir, 'daemon.pid');
   fs.writeFileSync(pidFile, `${process.pid}\n`);
