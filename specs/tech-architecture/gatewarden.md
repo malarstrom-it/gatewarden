@@ -783,6 +783,12 @@ the journal of the platform. The journal is not a file a reader can open,
 so the file the CLI points at shall hold the log whichever way the daemon
 was started; the journal keeps what it had.
 
+The log of a run stands in one file. The daemon rotates the log file at
+its start, and the standard output of a daemon that the CLI started is
+the log file: the rotation leaves the standard output on the copy. The
+daemon writes to the log file alone then, and the copy holds the lines of
+the run before it.
+
 The unit of the name the package had before the rename (`dev-gateway.service`,
 the old launchd label, the old scheduled task) is looked for as well. It is
 still on the machine of an installation that was made before the rename, and
