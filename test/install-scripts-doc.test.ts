@@ -531,6 +531,11 @@ function pathsOf(name: string, seen: Set<string> = new Set()): string[] {
  * `dist/` before it writes it (CONTRIBUTING). The list of the files does
  * not depend on the build: the allow-list of the manifest names them.
  *
+ * The shape of the output of npm is not the same in every npm. npm 11
+ * writes a list of pack results, and npm 12 writes an object that holds
+ * the pack result under the name of the package. The guard reads both,
+ * so it does not fall over when npm writes the other one.
+ *
  * @returns the paths of the files, relative to the root of the package
  */
 async function packedFiles(): Promise<string[]> {
@@ -539,9 +544,36 @@ async function packedFiles(): Promise<string[]> {
     timeout: 600_000,
     env: npmEnv(),
   });
-  const packed = JSON.parse(stdout.slice(stdout.indexOf('['))) as Array<{ files: Array<{ path: string }> }>;
+  const packed = packResults(stdout);
 
   return (packed[0]?.files ?? []).map((file) => file.path);
+}
+
+/**
+ * The pack results of the output of `npm pack --json`.
+ *
+ * npm 11 writes a list of results, and npm 12 writes an object that holds
+ * one result under the name of the package. A line of its own before the
+ * JSON is skipped: npm writes such a line when it has something to say
+ * that is not an error.
+ *
+ * @param stdout the output of npm
+ * @returns the pack results, one for every package npm packed
+ */
+function packResults(stdout: string): Array<{ files: Array<{ path: string }> }> {
+  const start = stdout.search(/[[{]/);
+  const json = start > 0 ? stdout.slice(start) : stdout;
+  const parsed = JSON.parse(json) as unknown;
+
+  if (Array.isArray(parsed)) {
+    return parsed as Array<{ files: Array<{ path: string }> }>;
+  }
+
+  if (parsed !== null && typeof parsed === 'object') {
+    return Object.values(parsed as Record<string, unknown>) as Array<{ files: Array<{ path: string }> }>;
+  }
+
+  return [];
 }
 
 /**
