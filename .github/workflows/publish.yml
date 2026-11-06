@@ -3,23 +3,33 @@
 # The repository of the project lives on GitHub, and the package is
 # published from it.
 #
-# **This release goes out with a token.** The package is not on the
-# registry yet: `@malarstrom/gatewarden` has never been published, and
-# npm accepts a trusted publisher only for a package that is already
-# there — a package comes into being with its first publish. The first
-# publish therefore needs a token, and the token is the organisation
-# secret `NPM_TOKEN` of the organisation `malarstrom-it` on GitHub. The
-# job below puts it into the environment of the run as `NODE_AUTH_TOKEN`,
-# and `actions/setup-node` writes the `.npmrc` that reads that variable.
-# The token is a secret of the organisation and not of this repository,
-# and its value is never written down.
+# **This release goes out with a token, and it is staged.** The package
+# is not on the registry yet: `@malarstrom/gatewarden` has never been
+# published, and npm accepts a trusted publisher only for a package that
+# is already there — a package comes into being with its first publish.
+# The first publish therefore needs a token, and the token is the
+# organisation secret `NPM_TOKEN` of the organisation `malarstrom-it` on
+# GitHub. The job below puts it into the environment of the run as
+# `NODE_AUTH_TOKEN`, and `actions/setup-node` writes the `.npmrc` that
+# reads that variable. The token is a secret of the organisation and not
+# of this repository, and its value is never written down.
+#
+# **The run stages the version, and a maintainer promotes it.** The token
+# is a stage-only token: it may put a version on the registry as a stage
+# that no reader can install, and it may not publish a version that the
+# world can install. The workflow therefore runs `npm stage publish`, and
+# the maintainer approves the stage with their two-factor code
+# (`npm stage approve <stage-id> --otp <code>`). That is how npm wants
+# the automation to work: the ability to publish a version directly with
+# a token is removed in January 2027, and the staged way is the way
+# forward.
 #
 # The trusted publishing path comes back for the releases after this one:
 # task S121 (traefik-api/136) puts it back. Until then this file has one
 # way to publish, and it is the token. The runbook for this release and
 # for the ones after it is in `CONTRIBUTING.md`.
 #
-# The trigger is a tag: `v1.2.3` publishes version 1.2.3. The tag and the
+# The trigger is a tag: `v1.2.3` stages version 1.2.3. The tag and the
 # version in package.json must agree, or the run stops.
 #
 # The tag is pushed to the branch the package is developed on,
@@ -28,11 +38,11 @@
 # trigger and it is the tag.
 #
 # The run asks GitHub for an OpenID Connect token — the `id-token: write`
-# permission below is what makes GitHub give one — and `npm publish
-# --provenance` gives it to npm, which signs the published version with
-# it. The provenance says which repository, which workflow and which
-# commit the version came from, and a reader can verify it with `npm
-# audit signatures`. The permission stays in place for the provenance.
+# permission below is what makes GitHub give one — and `npm stage publish
+# --provenance` gives it to npm, which signs the staged version with it.
+# The provenance says which repository, which workflow and which commit
+# the version came from, and a reader can verify it with `npm audit
+# signatures`. The permission stays in place for the provenance.
 #
 # What the trusted publisher on npmjs.com needs, for the releases after
 # this one: the package page of `@malarstrom/gatewarden`, the settings of
@@ -48,12 +58,12 @@
 #     else is not the workflow that was connected;
 #   * the environment name is empty: the project uses no GitHub
 #     environment, and this workflow names none;
-#   * **the allowed actions have to allow `npm publish`.** npm's staged
-#     publishing (`npm stage publish`) is always allowed, and the direct
-#     publish is a separate permission that is off by default. This
-#     workflow publishes directly — `npm publish --provenance` — so that
-#     permission has to be on. With it off, npm refuses the publish and
-#     the run fails in its last step;
+#   * **the allowed actions have to allow `npm stage publish`.** npm's
+#     staged publishing is the way the automation publishes, and the
+#     direct publish is a separate permission that npm removes for
+#     tokens in January 2027. The staged publish is the permission that
+#     has to be on, and the command line that connects the trusted
+#     publisher says `--allow-stage-publish`;
 #   * the `repository` field of `package.json` has to name the same
 #     repository — npm checks it, because a credential for one repository
 #     must not publish another one. The manifest names
@@ -67,8 +77,9 @@
 # secret. A rehearsal against another registry is not possible with a
 # token that is written for npmjs.org.
 #
-# `npm publish` runs `prepublishOnly`, which is `npm run build && npm
-# test`. The build and the tests are therefore the gate of the publish.
+# `npm stage publish` runs `prepublishOnly`, which is `npm run build &&
+# npm test`. The build and the tests are therefore the gate of the
+# publish.
 #
 # The npm of the runner is older than the version npm asks for, and the
 # job upgrades npm before it publishes.
@@ -131,10 +142,11 @@ jobs:
       # the node of the runner, so a future npm@latest that wants more
       # fails here and not in the middle of the publish.
       #
-      # The gate stays for the token publish as well: npm 11.5.1 or later
+      # The gate stays for the staged publish as well: npm 11.5.1 or later
       # is what the trusted publishing path of the releases after this one
-      # asks for, and the same job serves both paths.
-      - name: npm must support trusted publishing
+      # asks for, and the same job serves both paths. Staged publishing
+      # came with npm 11.5.0, so this npm has it.
+      - name: npm must support staged publishing and trusted publishing
         run: |
           set -euo pipefail
 
@@ -184,16 +196,21 @@ jobs:
             exit 1
           fi
 
-      # The publish itself. The credential is the token of the
+      # The stage itself. The credential is the token of the
       # environment above: npm reads it from the `.npmrc` that
       # `actions/setup-node` wrote.
       #
-      # `npm publish` runs `prepublishOnly`, which is `npm run build &&
-      # npm test`. The build and the tests are therefore the gate of the
+      # `npm stage publish` runs `prepublishOnly`, which is `npm run build
+      # && npm test`. The build and the tests are therefore the gate of the
       # publish, and they have run in this job already.
+      #
+      # The token is stage-only, so the version lands on the registry as a
+      # stage and not as a version the world can install. A maintainer
+      # promotes it with `npm stage approve <stage-id> --otp <code>`; the
+      # runbook says where the stage id is found.
       #
       # The provenance says which repository, which workflow and which
       # commit the published version came from. A reader can check it with
       # `npm audit signatures`.
-      - name: publish
-        run: npm publish --provenance --access public
+      - name: stage
+        run: npm stage publish --provenance --access public

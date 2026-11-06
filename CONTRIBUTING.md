@@ -253,8 +253,10 @@ The maintainer cuts the releases, not the contributors.
 1. The version in `package.json` is set to the next version, and the
    changelog gets its section.
 2. The commit is tagged `vX.Y.Z`. The tag and the version must agree.
-3. The publish workflow publishes the version from GitHub. The tag is
-   the trigger, and the workflow publishes the version the tag names.
+3. The publish workflow stages the version from GitHub. The tag is the
+   trigger, and the workflow stages the version the tag names. A
+   maintainer promotes the stage, and the promotion is the step that
+   puts the version on the registry.
 4. The release notes are the section of the changelog.
 
 Never publish, never tag a release, and never touch the registry from a
@@ -271,7 +273,7 @@ because CodeRabbit reads the whole diff against the old history. Such a pull
 request is read by a human before it is merged. Reading that large diff is
 not a review of the change: the change is still reviewed on its own.
 
-### The release of `0.1.1`: the publish goes with a token
+### The release of `0.1.1`: the publish goes with a token, and it is staged
 
 `0.1.1` is the first version of the package that stays on the registry,
 and the first publish cannot go through npm's trusted publishing: npm
@@ -283,6 +285,12 @@ way to publish.
 The token is the organisation secret `NPM_TOKEN` of the organisation
 `malarstrom-it` on GitHub. It is already there, the workflow reads it,
 and the value of the token is not written in the repository.
+
+The token is a **stage-only token**: it may put a version on the registry
+as a stage, and it may not publish a version that the world can install.
+That is how npm wants the automation to work — the ability to publish
+directly with a token is removed in January 2027 — and it means that the
+run stages the version and a maintainer promotes it.
 
 The steps, in order:
 
@@ -304,12 +312,33 @@ The steps, in order:
    is changed afterwards; a tag that moves publishes twice.
 4. **The workflow runs.** It reads `NPM_TOKEN` from the organisation
    secret, checks that the tag and the version agree, installs the
-   dependencies, builds the package, runs the tests, and publishes
-   `0.1.1` to npmjs.org with `npm publish --provenance`. The build and
-   the tests are the gate of the publish: `prepublishOnly` runs `npm run
+   dependencies, builds the package, runs the tests, and stages `0.1.1`
+   on npmjs.org with `npm stage publish --provenance`. The build and the
+   tests are the gate of the publish: `prepublishOnly` runs `npm run
    build && npm test`. npm signs the provenance only for a public
    repository, and this repository is public.
-5. **The published version is checked:**
+5. **The stage is looked at, and it is promoted.** The stage is on the
+   registry, but no reader can install it yet. The maintainer sees the
+   stages of the package with
+
+   ```bash
+   npm stage list
+   ```
+
+   and promotes the stage with the two-factor code of their account:
+
+   ```bash
+   npm stage approve <stage-id> --otp <code>
+   ```
+
+   A stage that should not go out is discarded with
+   `npm stage reject <stage-id>`. The account of the maintainer needs
+   two-factor authentication on: npm asks for it when a stage is
+   approved or rejected. The version that is staged keeps its number
+   while it waits, and the tag of a stage cannot be changed after the
+   stage is made — a stage with the wrong tag is rejected and staged
+   again.
+6. **The published version is checked:**
 
    ```bash
    npm view @malarstrom/gatewarden versions
@@ -318,7 +347,8 @@ The steps, in order:
    ```
 
 The steps that are the maintainer's are the tag, the push of the tag, and
-the two-factor prompts on npmjs.com. The workflow does the rest.
+the approval of the stage with the two-factor code. The workflow does
+the rest.
 
 ### The releases after `0.1.1`: the trusted publisher
 
@@ -340,11 +370,11 @@ of the package, the trusted publisher for GitHub Actions. The fields are:
   that was connected;
 - **Environment name** — empty. The project uses no GitHub environment,
   and the workflow names none;
-- **Allow actions to publish** — on. npm's staged publishing is always
-  allowed, and the direct publish is a separate permission that is off by
-  default. The workflow publishes directly with `npm publish
-  --provenance`, so this permission has to be on; with it off, npm
-  refuses the publish and the run fails in its last step.
+- **Allow actions to publish** — on, for the staged publish. npm's staged
+  publishing is the way the automation publishes, and the direct publish
+  is a separate permission that npm removes for tokens in January 2027.
+  The workflow stages with `npm stage publish --provenance`, so the
+  staged publish is the permission that has to be on.
 
 The same connection can be made from the command line, with npm CLI
 11.15.0 or later:

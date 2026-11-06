@@ -95,11 +95,14 @@ stays on the registry, and the one to install.
   now that the repository is public, that the server it left is an
   archive and that the move is done.
 
-- **The first release of the package goes out with a token.** The package
-  was not on the registry yet, and npm accepts a trusted publisher only
-  for a package that is already there, so the publish of `0.1.1` uses the
-  token of the organisation secret on GitHub. The releases after that one
-  go out with the trusted publishing again.
+- **The first release of the package goes out with a token, and it is
+  staged.** The package was not on the registry yet, and npm accepts a
+  trusted publisher only for a package that is already there, so the
+  publish of `0.1.1` uses the token of the organisation secret on
+  GitHub. The token is a stage-only token: the run stages the version on
+  npmjs.org, and a maintainer promotes the stage with a two-factor code
+  before a reader can install it. The releases after that one go out
+  with the trusted publishing again.
 
 - **The log file lives in the state directory on every platform.** macOS and
   Windows had a log directory of their own, and the log file lived there;
