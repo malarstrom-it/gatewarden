@@ -226,7 +226,10 @@ out. The current name wins when both are set.
 
 The daemon and the workers it starts do not carry `GATEWARDEN_HOME` with
 them: they run with the configuration file and the state directory they were
-given, so the installation that applies is the one those name.
+given, so the installation that applies is the one those name. A daemon that
+is started by hand — by the service unit, or in a shell — does not read the
+name either: the configuration file it is given on the command line wins
+over it, and the name in its environment belongs to whoever started it.
 
 The commands below use the file the installation actually has:
 

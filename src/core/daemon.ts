@@ -238,8 +238,16 @@ export async function runDaemon(): Promise<void> {
   // line names (`--config <path>`), and the one the environment names
   // when the command line does not. The workers are given the same file,
   // so that the daemon and its workers cannot read different ones.
-  const configPath = configPathFromArgv(process.argv) ?? resolveConfigPath();
-  const config = loadConfig({ configPath });
+  const givenConfigPath = configPathFromArgv(process.argv);
+  // The daemon runs with the configuration it was given. The name of
+  // another installation in its environment does not decide where the
+  // daemon keeps its state and its log: the name belongs to whoever
+  // started the daemon, and the daemon belongs to the file it was
+  // given. A daemon that was given no file has nothing but its
+  // environment, and the name is then what it was given.
+  const ignoreHome = givenConfigPath !== undefined;
+  const configPath = givenConfigPath ?? resolveConfigPath();
+  const config = loadConfig({ configPath, ignoreHome });
   setLogLevel(
     (process.env['GATEWARDEN_LOG_LEVEL'] ??
       process.env['DEV_GATEWAY_LOG_LEVEL'] ??
@@ -324,7 +332,9 @@ export async function runDaemon(): Promise<void> {
   registry.start();
   relay.start();
 
-  log('info', SCOPE, 'daemon started', `pid=${process.pid} registry=${config.registryPort} relay=${config.relayPort} state=${config.stateDir}`);
+  // The line says which configuration file the daemon runs with: the
+  // file is the one it was given, and the reader of the log can see it.
+  log('info', SCOPE, 'daemon started', `pid=${process.pid} config=${configPath} registry=${config.registryPort} relay=${config.relayPort} state=${config.stateDir}`);
 
   process.on('SIGTERM', () => shutdown());
   process.on('SIGINT', () => shutdown());
@@ -356,7 +366,7 @@ export async function runDaemon(): Promise<void> {
       } else if (!installationTreeIsIntact(root)) {
         log('info', SCOPE, 'the tree of the installation is gone', `root=${root}`);
       } else {
-        const paths = resolvePaths();
+        const paths = resolvePaths({ ignoreHome });
         removeInstallationFiles({
           configFile: configPath,
           stateDir: config.stateDir,

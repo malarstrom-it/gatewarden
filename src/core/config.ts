@@ -148,11 +148,16 @@ export interface ConfigPathOptions extends PathOptions {
  * `GATEWARDEN_HOME` wins over the configuration file override: it says
  * that everything lives in one directory, and the configuration file is in
  * it.
+ *
+ * A resolution that ignores the name of the home installation
+ * ({@link PathOptions.ignoreHome}) does not read it: the process that
+ * asked for it was given a configuration file, and the name in its
+ * environment belongs to another installation.
  */
 export function resolveConfigPath(opts: ConfigPathOptions = {}): string {
   if (opts.configPath) return path.resolve(opts.configPath);
   const env = opts.env ?? process.env;
-  const home = homeOverride(env);
+  const home = opts.ignoreHome ? undefined : homeOverride(env);
   if (home) return path.join(path.resolve(home), 'config.json');
   const override = configFileOverride(env);
   if (override) return path.resolve(override);
@@ -185,6 +190,9 @@ export interface StateDirOptions extends PathOptions {
  * The order: an explicit path, `GATEWARDEN_STATE_DIR`, the old
  * `TRAEFIK_DEV_STATE_DIR`, `GATEWARDEN_HOME` (everything in one directory),
  * and finally the XDG state directory.
+ *
+ * A resolution that ignores the name of the home installation
+ * ({@link PathOptions.ignoreHome}) does not read it.
  */
 export function resolveStateDir(opts: StateDirOptions = {}): string {
   if (opts.stateDir) return path.resolve(opts.stateDir);
@@ -370,6 +378,11 @@ export function loadConfigWithReport(opts: LoadConfigOptions = {}): LoadedConfig
  * A configuration that names one is the decision of the installation: the
  * CLI and the daemon have to agree on it, and the environment of the CLI
  * may name another home directory than the one the daemon runs with.
+ *
+ * A resolution that ignores the name of the home installation
+ * ({@link PathOptions.ignoreHome}) does not read it at all: the daemon
+ * that was given a configuration file does not keep its state in the
+ * directory of another installation.
  */
 function resolveStateDirFor(
   opts: LoadConfigOptions,
@@ -388,7 +401,7 @@ function resolveStateDirFor(
   const named = stateDirOfAFile(fileStateDir, excluded);
   if (named) return named;
   // `GATEWARDEN_HOME` puts everything in one directory.
-  if (homeOverride(env)) return paths.stateDir;
+  if (!opts.ignoreHome && homeOverride(env)) return paths.stateDir;
   // The state directory of the old layout: the routes come over from
   // there.
   const legacy = stateDirOfAFile(legacyStateDir, excluded);

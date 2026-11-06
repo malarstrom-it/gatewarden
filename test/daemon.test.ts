@@ -121,8 +121,17 @@ type DaemonStart = { started: boolean; pid: number | null; error?: string };
  *
  * The file is written where the test says it is, and the state of the
  * installation is the directory of the test.
+ *
+ * The state directory is named in the file, unless the test says that
+ * the configuration names none: a daemon that was given such a
+ * configuration has to resolve the state directory itself.
  */
-function writeConfig(dir: string, registryPort: number, relayPort: number): string {
+function writeConfig(
+  dir: string,
+  registryPort: number,
+  relayPort: number,
+  options: { stateDir?: string } = {},
+): string {
   const configPath = path.join(dir, 'config.json');
   const written: Config = {
     proxy: 'traefik',
@@ -140,7 +149,7 @@ function writeConfig(dir: string, registryPort: number, relayPort: number): stri
     allowedCidrs: ['127.0.0.1/32'],
     registryAllowedCidrs: [],
     secret: '',
-    stateDir: dir,
+    stateDir: options.stateDir ?? dir,
     documentFormat: 'yaml',
     logMaxBytes: 1024 * 1024,
     logKeep: 2,
@@ -278,51 +287,89 @@ test('the daemon restarts after it was killed', async (t) => {
 });
 
 /**
- * The environment of the machine names an installation of its own.
+ * The daemon that is started by hand.
  *
- * `GATEWARDEN_HOME` says that the configuration, the state and the log
- * of the gateway live in that one directory. The daemon of a test
- * belongs to the throwaway directory of the test and to nothing else,
- * and the function that puts the name back is what the test gives to
- * its cleanup.
+ * The daemon is started the way the service unit starts it: the
+ * configuration file travels on the command line, the state directory is
+ * named by the environment, and the environment names another
+ * installation as well. The daemon runs with the configuration it was
+ * given: the name of the other installation does not decide where the
+ * daemon keeps its state and its log.
+ *
+ * The daemon writes its log to the standard output, and the process
+ * that starts it decides where the output goes: the log file of the
+ * state directory, the way the CLI and the service unit do it.
  */
-function nameAnInstallationOfTheMachine(installation: string): () => void {
-  const before = process.env['GATEWARDEN_HOME'];
-  process.env['GATEWARDEN_HOME'] = installation;
-  return () => {
-    if (before === undefined) delete process.env['GATEWARDEN_HOME'];
-    else process.env['GATEWARDEN_HOME'] = before;
-  };
-}
+test('the daemon uses the configuration it was given, even when the environment names another installation', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'traefik-dev-daemon-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
 
-test('the daemon serves the free ports, even when the environment names another installation', async (t) => {
-  const { dir, configPath, config, startDaemon } = await setup();
+  // The installation of the machine: another directory, with a
+  // configuration of its own and with ports of its own.
+  const installation = path.join(dir, 'machine-installation');
+  fs.mkdirSync(installation, { recursive: true });
+  const machineRegistryPort = await freePort();
+  const machineRelayPort = await freePort();
+  writeConfig(installation, machineRegistryPort, machineRelayPort, { stateDir: installation });
+
+  // The installation of the test: the configuration the daemon is given.
+  // The file names no state directory, so that the daemon has to
+  // resolve one itself.
+  const registryPort = await freePort();
+  const relayPort = await freePort();
+  const configPath = writeConfig(dir, registryPort, relayPort, { stateDir: '' });
+  const stateDir = path.join(dir, 'state');
+  fs.mkdirSync(stateDir, { recursive: true });
+
+  // The daemon is started by hand, with the name of the installation of
+  // the machine in its environment.
+  let errors = '';
+  const logFile = path.join(stateDir, 'daemon.log');
+  const out = fs.openSync(logFile, 'a');
+  const daemon = spawn(process.execPath, [path.join(REPO_ROOT, 'src', 'daemon.ts'), '--config', configPath], {
+    env: {
+      PATH: process.env['PATH'] ?? '',
+      HOME: dir,
+      GATEWARDEN_HOME: installation,
+      GATEWARDEN_CONFIG: configPath,
+      GATEWARDEN_STATE_DIR: stateDir,
+    },
+    stdio: ['ignore', out, 'pipe'],
+  });
+  fs.closeSync(out);
+  daemon.stderr?.on('data', (chunk: Buffer) => {
+    errors += chunk.toString();
+  });
   t.after(async () => {
-    await stopDaemon(configPath);
-    fs.rmSync(dir, { recursive: true, force: true });
+    daemon.kill('SIGTERM');
+    await waitUntilGone(processesOf(configPath));
   });
 
-  // The installation of the machine: a directory of its own, outside the
-  // throwaway directory of the test, that does not exist.
-  const installation = path.join(os.tmpdir(), `gatewarden-machine-installation-${path.basename(dir)}`);
-  t.after(() => fs.rmSync(installation, { recursive: true, force: true }));
-  t.after(nameAnInstallationOfTheMachine(installation));
+  // The daemon serves the ports of the configuration it was given, and
+  // not the ports of the other installation.
+  const served = await waitFor(async () => {
+    try {
+      const answer = await fetch(`http://127.0.0.1:${registryPort}/healthz`);
+      return (await answer.text()).trim() === 'ok';
+    } catch {
+      return false;
+    }
+  }, 15000);
+  assert.equal(served, true, `the daemon should serve: ${errors}`);
 
-  const result = await startDaemon();
-  assert.equal(result.started, true);
-  assert.ok(result.pid, 'the daemon should have a pid');
+  // The state of the daemon is in the state directory it was given.
+  assert.ok(fs.existsSync(path.join(stateDir, 'daemon.pid')), 'the pidfile should be in the state directory');
 
-  // The daemon listens on the free ports of the throwaway installation.
-  const health = await fetch(`http://127.0.0.1:${config.registryPort}/healthz`);
-  assert.equal((await health.text()).trim(), 'ok');
+  // The daemon says which configuration file it runs with.
+  const log = fs.readFileSync(logFile, 'utf8');
+  assert.match(log, new RegExp(`config=${configPath}`), 'the daemon should say which configuration it uses');
 
-  // The state of the daemon is in the throwaway directory.
-  assert.ok(fs.existsSync(path.join(dir, 'daemon.pid')));
-  assert.ok(fs.existsSync(path.join(dir, 'daemon.log')));
-
-  // The installation of the machine was not touched: it does not exist,
-  // and the daemon did not make it exist.
-  assert.equal(fs.existsSync(installation), false);
+  // The installation of the machine was not touched: the daemon did not
+  // write its pidfile there, and it did not read the configuration of
+  // that installation either.
+  assert.equal(fs.existsSync(path.join(installation, 'daemon.pid')), false);
+  assert.equal(fs.existsSync(path.join(installation, 'daemon.log')), false);
+  assert.equal(fs.existsSync(path.join(installation, 'routes.json')), false);
 });
 
 test('the daemon respawns a worker that dies, the other listener keeps serving', async (t) => {

@@ -112,6 +112,25 @@ test('GATEWARDEN_HOME wins over the other overrides', () => {
   assert.equal(paths.stateDir, base);
 });
 
+test('the name of the home installation is not read when the resolution ignores it', () => {
+  const base = path.join(path.sep, 'tmp', 'gateway-home');
+  const stateDir = path.join(path.sep, 'tmp', 'other', 'state');
+  const paths = resolvePaths({
+    platform: 'linux',
+    env: { GATEWARDEN_HOME: base, GATEWARDEN_STATE_DIR: stateDir },
+    home: HOME,
+    ignoreHome: true,
+  });
+
+  // The state directory is the one the environment names, and the log
+  // file lives in it.
+  assert.equal(paths.stateDir, stateDir);
+  assert.equal(paths.logFile, path.join(stateDir, 'daemon.log'));
+  // The configuration file and the cache come from the platform.
+  assert.equal(paths.configFile, path.join(HOME, '.config', APP_NAME, 'config.json'));
+  assert.equal(paths.cacheDir, path.join(HOME, '.cache', APP_NAME));
+});
+
 test('GATEWARDEN_CONFIG moves the configuration file only', () => {
   const configFile = path.join(path.sep, 'tmp', 'other', 'config.json');
   const paths = resolvePaths({ platform: 'linux', env: { GATEWARDEN_CONFIG: configFile }, home: HOME });
