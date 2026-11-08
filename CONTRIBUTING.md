@@ -273,7 +273,7 @@ because CodeRabbit reads the whole diff against the old history. Such a pull
 request is read by a human before it is merged. Reading that large diff is
 not a review of the change: the change is still reviewed on its own.
 
-### The release of `0.1.1`: the publish goes with a token, and it is staged
+### The release of `0.1.1`: the publish went with a token, and it was staged
 
 `0.1.1` is the first version of the package that stays on the registry,
 and the first publish cannot go through npm's trusted publishing: npm
@@ -350,13 +350,14 @@ The steps that are the maintainer's are the tag, the push of the tag, and
 the approval of the stage with the two-factor code. The workflow does
 the rest.
 
-### The releases after `0.1.1`: the trusted publisher
+### The releases from `0.1.2`: the trusted publisher
 
-The releases after `0.1.1` go out with npm's trusted publishing, and
-that is one setting that the maintainer makes by hand on npmjs.com: the
+The releases from `0.1.2` go out with npm's trusted publishing, and that
+is one setting that the maintainer makes by hand on npmjs.com: the
 package is connected to this repository as a trusted publisher for
-GitHub Actions. The workflow goes back to that path in task S121
-(traefik-api/136), and until then the workflow publishes with the token.
+GitHub Actions. The workflow holds no token of its own any more: npm
+asks GitHub for a short-lived OpenID Connect token in the run, and the
+trusted publisher is what makes npm accept it.
 
 On npmjs.com: the package page of `@malarstrom/gatewarden`, the settings
 of the package, the trusted publisher for GitHub Actions. The fields are:
@@ -365,16 +366,15 @@ of the package, the trusted publisher for GitHub Actions. The fields are:
   `malarstrom-it`;
 - **Repository** — `gatewarden`;
 - **Workflow filename** — `publish.yml`. Only the name of the file, with
-  the `.yml`, and the file has to live at `.github/workflows/publish.yml`.
+  the `.yml`, and the file has to live in `.github/workflows/publish.yml`.
   npm checks the path, and a workflow somewhere else is not the workflow
   that was connected;
 - **Environment name** — empty. The project uses no GitHub environment,
   and the workflow names none;
-- **Allow actions to publish** — on, for the staged publish. npm's staged
-  publishing is the way the automation publishes, and the direct publish
-  is a separate permission that npm removes for tokens in January 2027.
-  The workflow stages with `npm stage publish --provenance`, so the
-  staged publish is the permission that has to be on.
+- **Allowed actions** — the staged publish is always allowed, and the
+  workflow stages with `npm stage publish --provenance`. The direct
+  publish is a separate permission, and it is off: every version waits
+  for the maintainer's two-factor code before it reaches a reader.
 
 The same connection can be made from the command line, with npm CLI
 11.15.0 or later:
@@ -383,7 +383,6 @@ The same connection can be made from the command line, with npm CLI
 npm trust github @malarstrom/gatewarden \
   --file publish.yml \
   --repository malarstrom-it/gatewarden \
-  --allow-publish \
   --allow-stage-publish
 ```
 
@@ -398,17 +397,6 @@ made again.
 npm does not check the configuration when it is saved: a wrong owner, a
 wrong repository name or a missing permission shows up in the first
 publish, and not before.
-
-## Moving the repository to GitHub
-
-The repository lives on GitHub: it is `github.com/malarstrom-it/gatewarden`,
-in an organisation of its own. The move of the repository is done, and it
-is public since 2026-11-05.
-
-The server it left is an archive and is not written to any more: no new
-work is developed on it, and no new repository is created on it. It was
-the private server of the project, and everything that was specific to
-that server has been turned into GitHub.
 
 ### The three decisions
 
@@ -467,13 +455,13 @@ left — it works for GitHub Actions and for GitLab CI — and that is the
 reason why the publication goes through GitHub.
 
 The one setting npm asks for is the trusted publisher of the package, and
-it is written down under "Releases" above, in "The releases after
-`0.1.1`". A person makes it on npmjs.com, and npm asks that account for
+it is written down under "Releases" above, in "The releases from
+`0.1.2`". A person makes it on npmjs.com, and npm asks that account for
 its two-factor authentication.
 
-The scope `@malarstrom` exists on the registry, and it has no package
-under it: the version `0.1.0` was published and withdrawn on the same
-day, and the package comes into being with the publish of `0.1.1`.
+The scope `@malarstrom` exists on the registry, and the package is under
+it: the version `0.1.0` was published and withdrawn on the same day, and
+`0.1.1` is the first version of the package that stays.
 
 The `repository` field of `package.json` has to name the same
 repository: npm checks it, because a credential for one repository must
@@ -483,9 +471,11 @@ not publish another one.
 
 - The three decisions above are taken.
 - The workflows of GitHub are in the repository: `.github/workflows/ci.yml`
-  and `.github/workflows/publish.yml`. The publish workflow publishes
-  `0.1.1` with the token, and it is the workflow that npm is to be
-  connected to for the releases after it.
+  and `.github/workflows/publish.yml`. The publish workflow stages the
+  version, and the trusted publisher of the package is connected to that
+  workflow. The first release, `0.1.1`, went out with a token, because
+  npm accepts a trusted publisher only for a package that is already
+  there.
 - The repository exists on GitHub: `github.com/malarstrom-it/gatewarden`,
   public since 2026-11-05, with the history pushed to it and
   `feat/npm-package` as its default branch. The `master` of the server it
@@ -519,20 +509,18 @@ not publish another one.
 ### The steps that are left
 
 1. Publish `0.1.1` from GitHub with the token: tag `v0.1.1`, push the
-   tag, and let the workflow publish it. The package comes into being
-   with that publish, because npm accepts a trusted publisher only for a
-   package that is already on the registry. The steps are written down
-   under "Releases" above.
+   tag, and let the workflow stage it. **Done:** the package is on the
+   registry, and `0.1.1` is the version that is out.
 2. Set the base branch of the worktrees explicitly to
    `feat/npm-package`. The setting `workspace.from` of the repository
    stands for `here` today, and `here` resolves the base from the
    checkout: it works as long as the checkout stays where it is, and it
    is not the same thing as naming the branch.
 3. Connect the package to the repository as the trusted publisher for
-   GitHub Actions, for the releases after `0.1.1`. npm does not check
-   the connection when it is saved: a wrong owner, a wrong repository
-   name or a missing permission shows up in the first publish, and not
-   before. The steps are written down under "Releases" above.
+   GitHub Actions, for the releases from `0.1.2`. **Done:** the
+   connection is made, and npm wants a first publish through it before
+   the connection expires. The steps are written down under "Releases"
+   above.
 4. Check the tarball before the publish and after it:
 
     ```bash

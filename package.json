@@ -1,6 +1,6 @@
 {
   "name": "@malarstrom/gatewarden",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "license": "MIT",
   "type": "module",
   "description": "Give a local development server an https address on your own domain: an MCP server, a pi extension, a CLI and an Agent Skill over one proxy-agnostic core",

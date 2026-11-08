@@ -3,31 +3,26 @@
 # The repository of the project lives on GitHub, and the package is
 # published from it.
 #
-# **This release goes out with a token, and it is staged.** The package
-# is not on the registry yet: `@malarstrom/gatewarden` has never been
-# published, and npm accepts a trusted publisher only for a package that
-# is already there — a package comes into being with its first publish.
-# The first publish therefore needs a token, and the token is the
-# organisation secret `NPM_TOKEN` of the organisation `malarstrom-it` on
-# GitHub. The job below puts it into the environment of the run as
-# `NODE_AUTH_TOKEN`, and `actions/setup-node` writes the `.npmrc` that
-# reads that variable. The token is a secret of the organisation and not
-# of this repository, and its value is never written down.
+# **This release goes out with npm's trusted publishing, and it is
+# staged.** The package is on the registry since `0.1.1`, and the trusted
+# publisher of the package is connected to this repository on npmjs.com:
+# the organisation `malarstrom-it`, the repository `gatewarden`, this
+# workflow file and no environment. npm gives the run a short-lived
+# OpenID Connect token in place of a secret, so there is no long-lived
+# credential in the repository or in the organisation any more. The first
+# release, `0.1.1`, went out with a token, because npm accepts a trusted
+# publisher only for a package that is already there — a package comes
+# into being with its first publish.
 #
-# **The run stages the version, and a maintainer promotes it.** The token
-# is a stage-only token: it may put a version on the registry as a stage
-# that no reader can install, and it may not publish a version that the
-# world can install. The workflow therefore runs `npm stage publish`, and
-# the maintainer approves the stage with their two-factor code
-# (`npm stage approve <stage-id> --otp <code>`). That is how npm wants
-# the automation to work: the ability to publish a version directly with
-# a token is removed in January 2027, and the staged way is the way
-# forward.
+# **The run stages the version, and a maintainer promotes it.** The
+# workflow runs `npm stage publish`, which puts the version on the
+# registry as a stage that no reader can install, and the maintainer
+# approves the stage with their two-factor code (`npm stage approve
+# <stage-id> --otp <code>`). That is how npm wants the automation to
+# work: the ability to publish a version directly with a token is removed
+# in January 2027, and the staged way is the way forward.
 #
-# The trusted publishing path comes back for the releases after this one:
-# task S121 (traefik-api/136) puts it back. Until then this file has one
-# way to publish, and it is the token. The runbook for this release and
-# for the ones after it is in `CONTRIBUTING.md`.
+# The runbook for the releases is in `CONTRIBUTING.md`.
 #
 # The trigger is a tag: `v1.2.3` stages version 1.2.3. The tag and the
 # version in package.json must agree, or the run stops.
@@ -38,17 +33,23 @@
 # trigger and it is the tag.
 #
 # The run asks GitHub for an OpenID Connect token — the `id-token: write`
-# permission below is what makes GitHub give one — and `npm stage publish
-# --provenance` gives it to npm, which signs the staged version with it.
-# The provenance says which repository, which workflow and which commit
-# the version came from, and a reader can verify it with `npm audit
-# signatures`. The permission stays in place for the provenance.
+# permission below is what makes GitHub give one — and npm reads it as
+# the credential of the publish: the trusted publisher of the package on
+# npmjs.com is what makes npm accept it. The token is short-lived and
+# belongs to this run, and there is no secret in the repository or in the
+# organisation.
 #
-# What the trusted publisher on npmjs.com needs, for the releases after
-# this one: the package page of `@malarstrom/gatewarden`, the settings of
-# the package, the trusted publisher for GitHub Actions. There the owner,
-# the name of the repository, the name of the workflow file, the
-# environment name and the allowed actions are filled in:
+# The same token signs the version: `npm stage publish --provenance` gives
+# it to npm, which signs the staged version with it. The provenance says
+# which repository, which workflow and which commit the version came
+# from, and a reader can verify it with `npm audit signatures`. The
+# permission stays in place for the provenance.
+#
+# What the trusted publisher on npmjs.com needs: the package page of
+# `@malarstrom/gatewarden`, the settings of the package, the trusted
+# publisher for GitHub Actions. There the owner, the name of the
+# repository, the name of the workflow file, the environment name and the
+# allowed actions are filled in:
 #
 #   * the owner is the organisation that owns the repository on GitHub,
 #     `malarstrom-it`;
@@ -95,7 +96,7 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     # The job installs the dependencies, builds the package, runs the
-    # tests and publishes it. The timeout keeps a run that hangs from
+    # tests and stages it. The timeout keeps a run that hangs from
     # holding the runner for ever.
     timeout-minutes: 30
     permissions:
@@ -104,12 +105,6 @@ jobs:
       # ... and asks GitHub for an OpenID Connect token. The token signs
       # the provenance of the published version.
       id-token: write
-    env:
-      # The token of this release: the organisation secret `NPM_TOKEN` of
-      # the organisation `malarstrom-it` on GitHub. `actions/setup-node`
-      # writes the `.npmrc` that reads this variable, and npm reads the
-      # token from it. The value of the token is not in this repository.
-      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

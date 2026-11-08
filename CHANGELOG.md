@@ -11,6 +11,23 @@ The names under "Added", "Changed", "Deprecated", "Removed", "Fixed" and
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/#types-of-changes)
 names. Every release gets a section, newest first.
 
+## 0.1.2 - 2026-11-06
+
+### Changed
+
+- **The publish goes with npm's trusted publishing.** The package is on
+  the registry since `0.1.1`, and the trusted publisher of the package
+  is connected to the repository on npmjs.com: the workflow asks GitHub
+  for a short-lived OpenID Connect token in the run, and npm accepts the
+  version because of that connection. The workflow holds no token of its
+  own any more, and there is no long-lived credential in the repository
+  or in the organisation.
+- **The version waits for a maintainer before a reader gets it.** The
+  workflow stages the version, and the maintainer promotes the stage
+  with their two-factor code. npm removes the ability to publish a
+  version directly with a token in January 2027, and the staged way is
+  the way forward.
+
 ## 0.1.1 - 2026-11-06
 
 The version before this one, `0.1.0`, was published on the registry and
