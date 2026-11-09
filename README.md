@@ -1,6 +1,6 @@
 # Gatewarden
 
-<img src="docs/assets/gatewarden-mascot.png" alt="Gatewarden gateway guardian mascot" width="112" align="right">
+<img src="https://raw.githubusercontent.com/malarstrom-it/gatewarden/feat/npm-package/assets/gatewarden-mascot.png" alt="Gatewarden gateway guardian mascot" width="112" align="right">
 
 Predictable HTTPS URLs for local development servers, through your own reverse proxy.
 
