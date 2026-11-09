@@ -12,6 +12,11 @@
  * that runs as a service writes to the log file as well: the file the CLI
  * points at holds the log, whatever started the daemon. The journal keeps
  * what it had.
+ *
+ * The log of a run stands in one file. The standard output is a file of
+ * the installation when it is the log file itself or the copy the
+ * rotation left behind, and a line goes to one of them only: a line that
+ * stands in two files of the installation is a log that is in two places.
  */
 
 import fs from 'node:fs';
@@ -26,6 +31,12 @@ let threshold: number = LEVELS.info;
 /** The handle of the log file, when the log is written to a file as well. */
 let logHandle: number | null = null;
 
+/** Whether the standard output is the log file: the log goes there alone. */
+let standardOutputIsTheFile = false;
+
+/** Whether the standard output is a copy of the log file: the log goes to the file alone. */
+let standardOutputIsACopy = false;
+
 /** Set the minimum level that is printed. */
 export function setLogLevel(level: LogLevel): void {
   threshold = LEVELS[level] ?? LEVELS.info;
@@ -38,21 +49,43 @@ export function setLogLevel(level: LogLevel): void {
  * lives is `logFileFor`, and the daemon and the CLI use it both, so that
  * they agree on the file.
  *
- * A daemon whose standard output is the file writes to it once: the CLI
- * starts the daemon with the log file as its standard output, and a daemon
- * that wrote to the file as well would write every line twice.
+ * The standard output decides where the line goes:
+ *
+ *   - it is the log file: the line goes to the standard output, and the
+ *     file holds it. That is the daemon the CLI starts: the CLI opens the
+ *     file and hands it to the daemon as its standard output.
+ *   - it is a copy of the log file: the line goes to the file. That is the
+ *     same daemon after the rotation at its start: the rotation moved the
+ *     file, and the standard output kept the copy. The copy holds the
+ *     lines of the run before it, and the log of this run stands in the
+ *     log file alone.
+ *   - it is anything else — the journal of the platform, the terminal of
+ *     the user: the line goes to the standard output and to the file.
  *
  * @param file The log file, or `null` to write to the standard output only.
+ * @param keep How many copies of the log file the rotation keeps.
  */
-export function setLogFile(file: string | null): void {
+export function setLogFile(file: string | null, keep = 0): void {
   closeLogFile();
+  standardOutputIsTheFile = false;
+  standardOutputIsACopy = false;
   if (file === null) return;
   try {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     const handle = fs.openSync(file, 'a');
-    if (standardOutputIs(handle)) {
-      fs.closeSync(handle);
-      return;
+    const out = standardOutputFile();
+    if (out !== null) {
+      if (sameFile(out, fs.fstatSync(handle))) {
+        // The standard output is the log file: the log goes there.
+        fs.closeSync(handle);
+        standardOutputIsTheFile = true;
+        return;
+      }
+      if (isCopyOfTheLogFile(out, file, keep)) {
+        // The standard output is a copy of the log file: the log goes to
+        // the file, and the copy keeps the lines of the run before it.
+        standardOutputIsACopy = true;
+      }
     }
     logHandle = handle;
   } catch {
@@ -74,27 +107,57 @@ function closeLogFile(): void {
 }
 
 /**
- * Is the standard output the file of the handle?
+ * The stat of the standard output, when it is a regular file.
  *
- * The CLI starts the daemon with the log file as its standard output, so
- * the daemon writes to the file through the standard output. The journal
- * of the platform is not a file, and the standard output of a daemon that
- * runs as a service is not the log file.
+ * The journal of the platform is a socket, and the terminal of the user
+ * is a device: neither is a file of the installation.
  *
- * @param handle The handle of the log file.
- * @returns Whether the standard output is that file.
+ * @returns The stat of the standard output, or `null`.
  */
-function standardOutputIs(handle: number): boolean {
+function standardOutputFile(): fs.Stats | null {
   try {
     const out = fs.fstatSync(process.stdout.fd);
-    const file = fs.fstatSync(handle);
-    if (!out.isFile() || !file.isFile()) return false;
-    // A machine that does not number its files cannot tell them apart.
-    if (out.ino === 0 || file.ino === 0) return false;
-    return out.dev === file.dev && out.ino === file.ino;
+    return out.isFile() ? out : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+/**
+ * Are two files the same file?
+ *
+ * A machine that does not number its files cannot tell them apart.
+ *
+ * @param a The stat of one file.
+ * @param b The stat of the other file.
+ * @returns Whether they are the same file.
+ */
+function sameFile(a: fs.Stats, b: fs.Stats): boolean {
+  if (a.ino === 0 || b.ino === 0) return false;
+  return a.dev === b.dev && a.ino === b.ino;
+}
+
+/**
+ * Is the standard output a copy of the log file?
+ *
+ * The rotation keeps the copies next to the log file, and the standard
+ * output of a daemon that the CLI started is the copy the rotation left
+ * behind.
+ *
+ * @param out The stat of the standard output.
+ * @param file The log file.
+ * @param keep How many copies the rotation keeps.
+ * @returns Whether the standard output is one of the copies.
+ */
+function isCopyOfTheLogFile(out: fs.Stats, file: string, keep: number): boolean {
+  for (let index = 1; index <= keep; index += 1) {
+    try {
+      if (sameFile(out, fs.statSync(`${file}.${index}`))) return true;
+    } catch {
+      // There is no copy with that number.
+    }
+  }
+  return false;
 }
 
 /** Write a line to the log file, when there is one. */
@@ -119,6 +182,6 @@ export function log(level: LogLevel, scope: string, message: string, extra?: unk
       line += ' [unserialisable]';
     }
   }
-  process.stdout.write(line + '\n');
-  writeToLogFile(line + '\n');
+  if (!standardOutputIsACopy) process.stdout.write(line + '\n');
+  if (!standardOutputIsTheFile) writeToLogFile(line + '\n');
 }

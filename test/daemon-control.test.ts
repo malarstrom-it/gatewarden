@@ -286,6 +286,42 @@ test('the daemon writes the log where the CLI opens it, also when the environmen
   assert.equal(logFile, path.join(stateDir, 'daemon.log'));
   assert.ok(fs.existsSync(logFile), 'the daemon did not write the log where the CLI opens it');
 });
+
+test('the log of the run stands in one file when the daemon rotates the log file', async (t) => {
+  // The daemon rotates the log file at its start when the file is over
+  // the limit. The standard output of the daemon is the log file the CLI
+  // handed to it, and the rotation moves the file: the standard output
+  // keeps the copy. The log of the run stands in the log file alone.
+  const { dir, configPath, config, isolation } = await makeConfig();
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+
+  // The installation rotates the log file at a small size, and the log
+  // file is over it.
+  const raw = JSON.parse(fs.readFileSync(configPath, 'utf8')) as Record<string, unknown>;
+  fs.writeFileSync(configPath, JSON.stringify({ ...raw, logMaxBytes: 1024, logKeep: 3 }, null, 2));
+  const logFile = logFilePath(config);
+  fs.writeFileSync(logFile, 'the line of the run before this one\n'.repeat(200));
+
+  const started = await isolation.run(() => ensureDaemon(config, { configPath }));
+  t.after(() => {
+    void stopDaemon(config);
+  });
+  assert.equal(started.error, undefined, started.error);
+  assert.equal(started.started, true, 'the daemon did not start');
+
+  // The daemon has written its line, and the worker its own.
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline && !fs.readFileSync(logFile, 'utf8').includes('daemon started')) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  const current = fs.readFileSync(logFile, 'utf8');
+  const rotated = fs.readFileSync(`${logFile}.1`, 'utf8');
+  assert.match(current, /\[daemon\] daemon started/, 'the log of the run is not in the log file');
+  assert.match(current, /registry listening on/, 'the log of the workers is not in the log file');
+  assert.doesNotMatch(rotated, /daemon started/, 'the log of the run stands in two files');
+  assert.doesNotMatch(rotated, /registry listening on/, 'the log of the run stands in two files');
+});
 test('a pidfile that points at a process that is gone says that the daemon does not run', async (t) => {
   const { dir, config } = await makeConfig();
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));

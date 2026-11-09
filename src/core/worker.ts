@@ -43,8 +43,11 @@ export async function runWorker(role: WorkerRole, adapter: ProxyAdapter, config:
   const store = new RegistrationStore(config.stateDir);
   // The worker writes to the log file of the installation: the daemon
   // that runs as a service writes to the journal of the platform, and the
-  // file the CLI points at shall hold the log of the workers too.
-  setLogFile(logFileFor(config.stateDir));
+  // file the CLI points at shall hold the log of the workers too. The
+  // worker inherits the standard output of the daemon, and that standard
+  // output is the copy the rotation of the daemon left behind: the log of
+  // the run stands in the log file alone.
+  setLogFile(logFileFor(config.stateDir), config.logKeep);
 
   const server = role === 'registry' ? createRegistryServer(store, config, adapter) : createRelayServer(store, config);
   const port = role === 'registry' ? config.registryPort : config.relayPort;
