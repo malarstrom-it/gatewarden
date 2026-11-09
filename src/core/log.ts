@@ -122,3 +122,5 @@ export function log(level: LogLevel, scope: string, message: string, extra?: unk
   process.stdout.write(line + '\n');
   writeToLogFile(line + '\n');
 }
+
+// en kommentar pa svenska som vakten ska fanga
