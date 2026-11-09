@@ -35,5 +35,6 @@ in the board's own files, not in the repository.
 
 The tasks for the repository live on the board, not in the repository. The board's *to do* list
 is shown by `herdr-projects list`, and the tasks for this repository are named `traefik-api/<n>`
-(for example `traefik-api/1`, this task). `TASKS.md` in the 0.2 project was empty and stays as
-history.
+(for example `traefik-api/1`, this task). The key `traefik-api` is the name the board knows
+the repository by — the project itself is called Gatewarden, and the repository on GitHub is
+`malarstrom-it/gatewarden`. `TASKS.md` in the 0.2 project was empty and stays as history.

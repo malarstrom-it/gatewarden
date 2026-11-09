@@ -161,7 +161,7 @@ These are open, and this slice does not take them.
 
 | # | Decision | The alternatives | Why it is not decided here |
 | --- | --- | --- | --- |
-| 1 | **The name of the repository** | A `gatewarden` — B keep `traefik-api` | it touches the remote of the human's own checkout, and the repository on the private server is the human's |
+| 1 | **The name of the repository** | A `gatewarden` — B keep `traefik-api` | **Taken: A.** The repository on GitHub is `malarstrom-it/gatewarden` since 2026-11-05. The name `traefik-api` lives on in one place only, and it is not the name of the project: it is the key the work board knows the repository by, and the board's tasks are named `traefik-api/<n>` after it. Renaming the key of the board is a change of the board, not of the project, and it is left for the day the board needs it. |
 | 2 | **The name of the CLI commands** | A `publish`/`remove` with `register`/`unregister` as aliases — B `publish`/`remove` only — C keep `register`/`unregister` | the human has not decided; the specification keeps the current names |
 | 3 | **The Traefik object prefixes** | A `devgw-` / `devgw-hdr-` — B `dev-gateway-` / `dev-gateway-hdr-` — C keep `dev-` / `devhdr-` | the names are in the user's proxy, and the rename of them changes the live system |
 | 4 | **The headers of the two route tables** | one vocabulary, taken from the tool contract | the CLI's table is read by people and the pi table by agents; the change is a separate slice |
