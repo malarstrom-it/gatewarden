@@ -31,7 +31,7 @@ names. Every release gets a section, newest first.
   decoration.
 - **Notes that ask questions instead of answering them.** A note in the
   repository,
-  [the review of 2026-11-09](https://github.com/malarstrom-it/gatewarden/blob/feat/npm-package/reviews/2026-11-09-agent-review.md),
+  [the review of 2026-11-09](https://github.com/malarstrom-it/gatewarden/blob/feat/npm-package/specs/tech-architecture/investigations/2026-11-09-agent-review.md),
   records what an investigation found, what it did not, and what would
   settle each open question about the network, the credentials and the
   configuration. The notes stay in the repository and do not ship with the
