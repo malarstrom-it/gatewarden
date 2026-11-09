@@ -122,3 +122,4 @@ export function log(level: LogLevel, scope: string, message: string, extra?: unk
   process.stdout.write(line + '\n');
   writeToLogFile(line + '\n');
 }
+// en rad som aer ingenting
