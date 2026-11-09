@@ -11,4 +11,4 @@ from a defect.
 
 Review notes stay in the source repository rather than the npm package. New
 vulnerability reports should follow the private reporting process in
-[the security policy](../SECURITY.md).
+[the security policy](../../../SECURITY.md).
