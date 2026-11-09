@@ -296,8 +296,8 @@ What you write on top of it is step four's example.
 
 **A second adapter is a change in the package, not a setting in this file.**
 The package ships with the Traefik adapter and loads no adapter at run time.
-How an adapter for another proxy is written: [The proxy
-adapter](../README.md#the-proxy-adapter).
+How an adapter for another proxy is written: [proxy
+adapter guide](adapters.md).
 
 **An empty value means "derived", not "forgotten".** The address of the
 machine, the host name that is the address and the IPv6 prefixes of the

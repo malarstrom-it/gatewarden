@@ -1,335 +1,155 @@
-# @malarstrom/gatewarden
+# Gatewarden
 
-This package gives a development server on your own machine an https address on
-your own domain.
+<img src="https://raw.githubusercontent.com/malarstrom-it/gatewarden/feat/npm-package/assets/gatewarden-mascot.png" alt="Gatewarden gateway guardian mascot" width="112" align="right">
 
-A team that owns a domain runs a proxy that terminates TLS for it. A dev server
-on a laptop has no address that the proxy can hand out, because it listens on
-`127.0.0.1`. The gateway registers the route in the proxy and forwards the
-request to the port. A colleague opens `https://main.my-app.example.com` in a
-browser and sees the app you work on. Use it for the people who test your work
-from another room: a colleague on the same network, a phone on the same wifi.
+Predictable HTTPS URLs for local development servers, through your own reverse proxy.
 
-The dev server keeps running the way it does: Vite, Next, Nuxt,
-`python -m http.server`, any local port. The gateway adds the route, the proxy
-terminates TLS, and a relay forwards the request to `127.0.0.1:<port>`.
+Register a local port and share an address based on the project and branch:
 
 ```text
-user laptop ──https://main.my-app.example.com──▶ the proxy
-   the machine the dev server runs on
-     ├─ registry :45002  ── /traefik (the configuration document), /healthz
-     └─ relay    :45001  ── dispatches on X-Dev-Target to 127.0.0.1:<port>
+127.0.0.1:5173 → https://main.my-app.example.com
 ```
 
-## What this is not
+Gatewarden is proxy-agnostic: its core manages routes, names and local forwarding,
+and a `ProxyAdapter` connects it to your reverse proxy. The package ships with a
+Traefik adapter. Use the CLI yourself, or let an AI agent manage the same routes
+through MCP. Your Vite, Next.js, Nuxt or other HTTP server keeps running as usual.
 
-The name says gateway, and the expectation it raises is wrong in most cases.
+**You provide the proxy, DNS, TLS configuration and a network path to the
+development machine.** The instructions below use the included Traefik v2/v3
+adapter. Another proxy can be integrated by implementing and packaging a
+`ProxyAdapter`; adapters are not installed by changing a configuration value.
+Gatewarden does not establish an outbound tunnel or provide NAT traversal.
 
-- Not a tunnel. No third party is in the path. The request goes to the proxy you already
-  run, and from there to `127.0.0.1:<port>`.
-- Not hosting, and not a process manager for dev servers. The gateway does not run, stop or
-  watch your dev server. It registers a route, and the route is gone as soon as you remove it.
-- Not TLS termination. The proxy terminates TLS, with the certificate of your own
-  resolver. The gateway never holds a certificate and never sees a private key.
-- Not Traefik-specific. The core does not know what a router, a service or a middleware
-  is: it hands the routes to a proxy adapter and serves what the adapter renders. The
-  adapter contract is small, and the section below says how another adapter is written.
+[Setup](docs/setup.md) ·
+[Traefik configuration](docs/traefik.md) ·
+[Security policy](https://github.com/malarstrom-it/gatewarden/security/policy) ·
+[Agent skill](skills/gatewarden/SKILL.md)
 
-## Install
+## A route after one-time setup
 
-The package installs globally, for the commands on the PATH of the machine:
+With a dev server already listening on port 5173:
 
-```bash
-npm install -g @malarstrom/gatewarden
-```
-
-It installs in a project as well, as a dependency of that project:
-
-```bash
-npm install @malarstrom/gatewarden
-```
-
-The project install is the right one when a team wants the commands in the
-PATH of its own project rather than on the PATH of every machine, and when
-the installation should follow a project and go when the project goes.
-The global install is the right one when the commands should be there for
-every project on the machine.
-
-A global install puts the commands on the PATH of the machine, and that is
-how they are written in this README. A project install puts them in the
-`node_modules/.bin` of the project, where they are run with `npx` in front
-of them — `npx gatewarden setup` — or through a script in the `package.json`
-of the project.
-
-Node 20.11 or later. The package ships compiled JavaScript. Its runtime
-dependencies are `env-paths` and `proper-lockfile`. It is ESM-only, so a
-CommonJS consumer cannot `require()` it. Node 22.12 and later can.
-
-The install starts nothing: no daemon, no open port, no process in the
-background. The install script writes the configuration file with the default
-values, and creates the three directories the gateway uses. A configuration
-file that is already there stays as it is.
-
-The install script does nothing in these cases: npm runs with
-`npm_config_ignore_scripts=true`, the install runs as root, or `CI` is set.
-`GATEWARDEN_AUTOSTART=0` turns the whole script off: no configuration file
-is written and none of the three directories the gateway uses is created.
-Under npm 12 the script is blocked until the dependency is approved. The
-commands that approve it came with npm 11.18, and they need a project: they
-read and write the `allowScripts` field in the `package.json` of the
-project, so they approve the project install and they cannot approve a
-global install. The project install is approved with
-`npm install-scripts approve @malarstrom/gatewarden`. A global install is
-approved in another way, with
-`npm install -g --allow-scripts=@malarstrom/gatewarden` or with
-`npm config set allow-scripts='@malarstrom/gatewarden' --location=user`. The
-commands are in [docs/install-scripts.md](docs/install-scripts.md). The daemon
-starts itself the first time a command needs it, and this command brings it
-back after a reboot: `gatewarden install-service`
-
-## What you need
-
-**Must**
-
-| What | Why it is needed |
-| --- | --- |
-| Node 20.11 or later on the machine that runs the dev servers | The package is plain JavaScript. `node --version` tells you which one you have. |
-| A Traefik proxy (v2 or v3) on another machine | The proxy terminates TLS and forwards the request. The gateway never terminates TLS itself. |
-| A DNS zone the proxy already serves, for example `example.com`, with a certificate resolver for it | Every route gets the host name `<branch>.<project>.<zone>`. Without a zone there is no host name. The resolver gives the proxy the certificate, and the credentials stay in the proxy. |
-| An address the proxy reaches the gateway machine on | The proxy polls the configuration document on port `45002` and sends the requests to the relay on port `45001`. Both ports have to be open. The address of your proxy has to be in `allowedCidrs`. |
-
-**Can**, all of them optional: `gatewarden setup` writes the configuration file for you.
-A shared secret (`"secret"`) makes the proxy present it to the registry and to the
-relay. The shared middlewares of your proxy (`compress`, `default-security-headers`)
-reach the dev routers as soon as you name the provider that owns them. More addresses
-in `allowedCidrs` and in `registryAllowedCidrs` widen the trust list.
-
-### The one change on the proxy side
-
-Add the `http` provider to the `providers:` block of the static configuration of
-Traefik, and restart the proxy. Traefik v2 and v3 both read that block from the
-static configuration, and both use the new provider after the restart.
-
-```yaml
-providers:
-  http:
-    endpoint: "http://<the address the proxy reaches the machine on>:45002/traefik"
-    pollInterval: 2s
-```
-
-`<the address the proxy reaches the machine on>` is the host name or the IP
-that the proxy resolves to the machine the dev servers run on. It has to be the
-same value as `advertisedHost` in the configuration file.
-
-The gateway cannot make this change for you: the proxy runs on another machine.
-`gatewarden setup` prints the same snippet with your values filled in. The proxy
-side in full: [docs/traefik.md](docs/traefik.md). The rest of the setup, with a
-complete example file: [docs/setup.md](docs/setup.md).
-
-## Quick start
-
-**1. Install the package** on the machine that runs the dev servers:
-
-```bash
-npm install -g @malarstrom/gatewarden
-```
-
-A team that wants the commands in the PATH of its own project installs the
-package in the project instead:
-
-```bash
-npm install @malarstrom/gatewarden
-```
-
-The commands of the steps below are written as they are run on the PATH of
-the machine. After a project install they are in the `node_modules/.bin` of
-the project, and `npx` goes in front of them — `npx gatewarden setup` — or
-they run through a script in the `package.json` of the project.
-
-**2. Set the gateway up.** The wizard reads your proxy, derives what it can, asks for
-the rest, writes the configuration file and starts the daemon:
-
-```bash
-gatewarden setup
-```
-
-The wizard is optional: every value it writes can be written by hand. The file it
-writes is `~/.config/gatewarden/config.json` on Linux,
-`~/Library/Preferences/gatewarden/config.json` on macOS and
-`%APPDATA%\gatewarden\Config\config.json` on Windows. `gatewarden config` shows
-the file the installation reads.
-
-**3. Publish a dev server.** With the CLI:
-
-```bash
+```sh
 gatewarden register --project my-app --branch main --port 5173
 ```
 
-The command answers `registered main.my-app.example.com -> 127.0.0.1:5173 (dev
-server is up)` and `url: https://main.my-app.example.com`. With the MCP tool of
-an MCP client, the same route is published with `{ "port": 5173 }`.
+Example response for a gateway configured with the zone `example.com`:
 
-**4. Hand over the address**, verbatim. The address is built from the zone, the
-project and the branch. Never compose it by hand.
-
-**5. Check that it works.** `gatewarden doctor` answers `nothing is broken`, and
-`gatewarden status` answers `daemon: running (pid …)`.
-
-## The CLI
-
-| Command | What it does |
-| --- | --- |
-| `gatewarden register --project p --branch b --port N [--label text]` | Register a dev server, or update the port of a registered one. |
-| `gatewarden unregister --project p --branch b` | Remove the registration. |
-| `gatewarden list` | List the registrations. `--json` writes them as JSON. |
-| `gatewarden status` | Show the daemon state, the ports and the configuration. |
-| `gatewarden config [--write]` | Show the configuration and every key. `--write` writes the file. |
-| `gatewarden setup` | Walk a new installation through the steps and write the configuration file. |
-| `gatewarden start` | Start the daemon and wait for it. |
-| `gatewarden stop` | Stop the daemon. The service does not start it again: the unit of the platform leaves it alone, on macOS and on Linux. A service that is enabled starts the daemon again at the next boot, or at the next login on macOS. |
-| `gatewarden doctor [--strict]` | Report what is broken. `--strict` turns the warnings into errors. |
-| `gatewarden install-service [--no-enable]` | Install the daemon as a service, so it starts again after a reboot. `--no-enable` writes the unit of the platform without enabling it: on Linux the daemon does not start at a reboot then, on macOS the agent is written to `~/Library/LaunchAgents`, which launchd loads at every login, so the daemon starts at the next login. |
-| `gatewarden version` | Print the version of the package. |
-
-Global options: `--config <path>`, `--state-dir <path>`, `--json`, `--version`,
-`--help`. They work before the command and after it.
-
-Every command that reports something can report it as JSON. `--json` writes one
-object to the standard output and nothing else. `gatewarden list --json` writes
-the routes in the shape the MCP tool `list_dev_servers` uses. `state` is `up` or
-`down`, from the gateway's own probe of the port.
-
-The commands that need the daemon start it: `register`, `unregister`, `setup` and `start`.
-The commands that only read the installation do not: `list`, `status`, `config` and
-`doctor`.
-
-## The configuration
-
-The file is `~/.config/gatewarden/config.json` on Linux, `~/Library/Preferences/gatewarden/config.json`
-on macOS, and `%APPDATA%\gatewarden\Config\config.json` on Windows. Three environment variables
-move the files: `GATEWARDEN_HOME` puts everything in one directory, `GATEWARDEN_CONFIG` moves
-the configuration file, `GATEWARDEN_STATE_DIR` the state directory.
-
-| Field | What it means | What to write |
-| --- | --- | --- |
-| `proxy` | Which proxy adapter writes the configuration document | `"traefik"` |
-| `registryPort` | The port the configuration document is served on. The proxy polls it. | `45002` |
-| `relayPort` | The port the requests arrive on. The relay forwards them to your dev server. | `45001` |
-| `advertisedIp` | The IP the proxy reaches this machine on | empty = detected from the network interfaces |
-| `advertisedHost` | The host name the proxy reaches this machine on | the name the proxy can resolve. It must agree with the `endpoint` of the provider |
-| `zone` | The DNS zone the host names are built from: `<branch>.<project>.<zone>` | **must**. Without it there is no host name |
-| `entryPoints` | The entry points of the proxy the dev routers attach to | `["websecure"]` |
-| `certResolver` | The name of the certificate resolver of your proxy | the name your own routers use. Empty = no TLS block, and the address is then plain HTTP |
-| `tlsMode` | `wildcard` = one certificate per project, `fqdn` = one per address | `wildcard` |
-| `securityHeaders` | Also apply the shared `default-security-headers` middleware | `false`. The frame-deny of that middleware can break a preview |
-| `compressMiddleware` | Also apply the shared `compress` middleware | `false` |
-| `middlewareProvider` | The provider that owns the shared middlewares | empty = the shared middlewares are not used |
-| `allowedCidrs` | The addresses allowed to talk to the gateway | the address of your proxy, and the loopback |
-| `registryAllowedCidrs` | The addresses allowed to read the configuration document, on top of `allowedCidrs` | empty = the same addresses as the relay |
-| `secret` | A shared secret between the gateway and the proxy | empty = none |
-| `stateDir` | The directory with the routes and the pid file | empty = the XDG state directory |
-
-An empty value means "derived". `advertisedIp` and `advertisedHost` are detected on
-every run. A file that pins the address of the moment it was written keeps advertising an
-address the machine does not have any more. `gatewarden config` prints the same list for
-the installation you are in, and `gatewarden config --write` writes the file.
-
-### The trust list
-
-Both listeners bind on every address of the machine, and both answer only the addresses
-in the trust list. An address outside the list gets `403`.
-
-The address is only the first of the two causes. Both listeners also check the shared `secret`
-of the installation: the relay takes it in `X-Relay-Secret` and the registry in
-`X-Registry-Secret`, so a caller that presents it to the relay but not to the registry
-gets `403` from the registry alone. The answer says which of the two rules was broken,
-but a missing secret and a wrong secret read the same: `secret is missing or wrong`.
-
-`allowedCidrs` covers the relay, which takes the `X-Dev-Target` dispatch header from
-those addresses, and the registry as well. `registryAllowedCidrs` covers the registry
-alone, on top of `allowedCidrs`. It widens the list and never narrows it.
-
-The default of `allowedCidrs` is the loopback of the machine and the IPv6 prefixes of its
-own networks. The address of your proxy is not on it: add it, or every request from the
-proxy is refused with `403` before the secret is even looked at. The daemon reads the
-file at start-up, so restart it after a change.
-
-## The proxy adapter
-
-The core is proxy-agnostic. Everything that has to do with a route — the name it gets,
-the registry that publishes the document, the CLI and the MCP server — knows nothing
-about which proxy is in front of the machine. The trust list is about addresses, not
-about the proxy: it says who may talk to the gateway. The core knows routes, ports,
-host names and reachability, and asks an adapter for everything else.
-
-The package ships with one adapter: the Traefik adapter. It reads the routes and the
-configuration and renders the document Traefik polls, under the path `/traefik`. When
-it is asked, it reads the API of the proxy to find out which proxy it is talking to.
-
-The interface an adapter implements is small: an id, an optional address of the proxy's
-API, three methods and one that is optional:
-
-| What the adapter has | What it does |
-| --- | --- |
-| `id` | The name of the proxy. It is also the path the document is served under. |
-| `defaultApiBaseUrl` | Where the API of the proxy usually answers. Optional. |
-| `discover(options)` | Find the proxy, read its version and what it derives from its own configuration. |
-| `render(routes, config)` | Render the document the proxy polls: the relay the requests go to, and the id of the route that the proxy stamps on the request. The port of the dev server is not in the document — the relay looks it up when the request arrives. |
-| `wiringSnippet(config)` | The static configuration the user has to add to the proxy. |
-| `verify(route, config)` | Whether the proxy already knows the route. Optional. |
-
-An adapter for another proxy — Caddy, say — is a file of a few hundred lines against
-the contract the package exports (`ProxyAdapter`, from `@malarstrom/gatewarden`): the
-Traefik adapter that ships with the package is one such file, about five hundred lines.
-The package does not load an adapter at run time. The `proxy` key of the configuration
-file names one, and the daemon picks it from the adapters it is built with. An id it
-does not know is a mistake in the configuration file, and the package says so: the
-daemon stops instead of starting the worker again and again, `gatewarden start` answers
-`unknown proxy "caddy" (known: traefik)` instead of a health check that never answers,
-and `gatewarden doctor` reports the id as an error. A second adapter is therefore a
-change in the package, not a setting in the configuration file.
-
-No second adapter ships with the package. Writing the one you want is your own work.
-
-## If you use socat
-
-socat copies bytes from one port to another. The two ports are in the
-command line, so each app needs its own process and port. The gateway does
-the same forwarding, and it takes on the work around it:
-
-- One relay port serves every dev server. The proxy stamps `X-Dev-Target` on
-  the request, and the relay reads the dev server port from it.
-- The gateway serves the configuration document that the `http` provider of
-  the proxy polls. A registered route is in it, and a removed one is not.
-  With socat you write a router and a service by hand, for each app.
-- The address follows the project and the branch: `<branch>.<project>.<zone>`.
-  The wizard reads the zone, the entry points and the certificate resolver
-  from the proxy. Without an answer from the proxy, it asks you for them.
-- Both listeners check the caller's address against the trust list, and the
-  shared secret that the installation has. A socat listener has neither.
-- The daemon starts the listeners on demand, and it stops them with the
-  package. A socat process is one that you start and stop yourself.
-
-TLS is not one of the differences: the proxy terminates it in both cases.
-
-When you run one dev server and write the route of the proxy by hand, socat
-is enough. As long as you need no address that follows the project and the
-branch, no trust list, and no daemon, socat stays enough.
-
-## The agent surfaces
-
-### The MCP server
-
-The server speaks the Model Context Protocol over the standard input and the standard output.
-
-```json
-{
-  "mcpServers": { "gatewarden": { "command": "gatewarden-mcp", "args": [], "cwd": "${workspaceFolder}" } }
-}
+```text
+registered main.my-app.example.com -> 127.0.0.1:5173 (dev server is up)
+url: https://main.my-app.example.com
 ```
 
-The `mcpServers` format is the one that Claude Desktop, Claude Code and Cursor use as
-it is. VS Code, Codex and OpenCode convert their own format into it.
+Use the URL returned by the command. When finished, remove the route:
+
+```sh
+gatewarden unregister --project my-app --branch main
+```
+
+## How it works
+
+The diagram shows the bundled Traefik integration. The core uses a proxy adapter
+for discovery, configuration rendering, wiring instructions and optional route
+verification. See the [proxy adapter guide](docs/adapters.md).
+
+![Request path and separate configuration polling](docs/assets/gatewarden-flow.svg)
+
+Traefik polls the registry for dynamic configuration and sends application
+requests to the relay. The relay looks up the registered port and forwards to
+`127.0.0.1`. Gatewarden and the dev server must share the same loopback network
+namespace: for a container deployment, that normally means the same container.
+
+TLS terminates at Traefik. The proxy-to-gateway connections use HTTP. Keep that
+path on a trusted network or protect it with a VPN and restrictive firewall rules.
+
+## Requirements for the included Traefik adapter
+
+- Node.js 20.11 or later, as declared by the current package. Prefer a maintained Node release.
+- An existing Traefik v2/v3 proxy with DNS and TLS configured for your dev names.
+- Network reachability from Traefik to the registry and relay, normally ports 45002 and 45001.
+- The proxy's source address in the gateway's trust configuration.
+
+The development server is started separately. Gatewarden manages routes and
+forwarding, rather than the dev-server process.
+
+## Quick start
+
+**1. Install** on the machine or in the container that runs your dev servers:
+
+```sh
+npm install -g @malarstrom/gatewarden
+```
+
+**2. Configure the gateway** with the setup wizard:
+
+```sh
+gatewarden setup
+```
+
+**3. Wire the proxy.** Apply the HTTP-provider snippet printed by setup to
+Traefik's **static** configuration, then restart Traefik. Setup cannot change
+the remote proxy for you. Configure the trust list and, if used, shared-secret
+headers on both paths. See the [Traefik guide](docs/traefik.md).
+
+**4. Start your dev server separately**, then register its local port:
+
+```sh
+gatewarden register --project my-app --branch main --port 5173
+```
+
+**5. Check the installation** with `gatewarden doctor`, then open the returned
+URL from the intended client. Use the returned URL verbatim.
+
+**6. Remove the route** when finished:
+
+```sh
+gatewarden unregister --project my-app --branch main
+```
+
+Installation starts no daemon. Commands that need it start the daemon on demand.
+For project-local installation, platform paths and installation-script behavior,
+see [setup](docs/setup.md) and [install scripts](docs/install-scripts.md).
+
+## Security and exposure
+
+**A registered app can be reached by everyone your proxy permits.** Configure
+viewer authentication and access restrictions at the proxy or application.
+The gateway's source-CIDR checks and optional shared secret guard the proxy-to-gateway
+connection; they do not sign a person in to the preview.
+
+The registry has no remote route-write API. The relay only targets registered
+ports on loopback. Both listeners bind to network interfaces; use a restrictive
+firewall and review the effective trust list. In the current implementation,
+configuration loading also adds detected IPv6 network prefixes to that list.
+
+A route reported as `up` passed a local port probe. This does not establish that
+DNS, certificates, proxy routing or the application work from another device.
+
+For limits, supported versions and private vulnerability reports, read
+[security policy](https://github.com/malarstrom-it/gatewarden/security/policy).
+
+## Choosing a tool
+
+See the [deployment comparison](docs/alternatives.md) for architectural
+differences, operator responsibilities and source references.
+
+| Your need | Consider |
+| --- | --- |
+| Project/branch routes through your own proxy, managed by CLI or agent; Traefik adapter included | Gatewarden |
+| One or two stable routes with minimal extra tooling | Manual Traefik configuration and a reachable backend |
+| Reach localhost through NAT without building a direct proxy path | [ngrok](https://ngrok.com/docs/gateway/endpoints/agent-endpoints) or [localtunnel](https://github.com/localtunnel/localtunnel) |
+| An outbound connector into Cloudflare's network | [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/) |
+| A self-hosted tunnel/reverse proxy with broader protocol support | [frp](https://github.com/fatedier/frp) |
+| Private sharing within an existing tailnet | [Tailscale Serve](https://tailscale.com/docs/reference/tailscale-cli/serve) |
+
+These tools use different network and operational models. Self-hosting and HTTPS
+alone do not establish a comparative security ranking.
+
+## For AI agents
+
+The `gatewarden-mcp` binary provides a stdio MCP server. Configure the executable
+and working directory using your client's supported format.
 
 | Tool | Input | Output |
 | --- | --- | --- |
@@ -338,82 +158,59 @@ it is. VS Code, Codex and OpenCode convert their own format into it.
 | `list_dev_servers` | `{}` | `{ routes: [{ project, branch, port, fqdn, url, state }] }` |
 | `dev_gateway_status` | `{}` | `{ daemon, proxy, config, reachable }` |
 
-You can leave out the project and the branch. The project is then the name of the working
-directory, and the branch is the branch of it. The server starts no daemon of its own.
+For publishing, `project` and `branch` can be inferred from the working directory.
+Return the tool's URL verbatim, and remove the route when the dev server is stopped.
+MCP tool calls can start the daemon, including list and status calls.
 
-### The other surfaces
+The package also ships a [Gatewarden agent skill](skills/gatewarden/SKILL.md)
+and a pi extension with a `/routes` view. Install or activate integrations using
+your client's supported
+mechanism; merely installing the npm package does not configure every client.
 
-The pi extension gives pi users what MCP alone does not. The three tools come as native
-tools with an `outputSchema`. A `/routes` command shows the route table, and a status
-line counts the live routes.
+## CLI reference
 
-The package ships an [Agent Skill](skills/gatewarden/SKILL.md) in the `skills` directory.
-pi, Claude Code, Codex and OpenCode read it. Its description makes an agent load it as
-soon as a dev server is started.
+| Command | Purpose |
+| --- | --- |
+| `gatewarden register --project p --branch b --port N` | Register or update a route |
+| `gatewarden unregister --project p --branch b` | Remove a route |
+| `gatewarden list` | List registrations; `--json` returns structured output |
+| `gatewarden status` | Inspect daemon and installation state |
+| `gatewarden config [--write]` | Show configuration or write the configuration file |
+| `gatewarden setup` | Configure the gateway interactively |
+| `gatewarden start` | Start the daemon |
+| `gatewarden stop` | Stop the daemon |
+| `gatewarden doctor [--strict]` | Diagnose installation and connectivity |
+| `gatewarden install-service [--no-enable]` | Install the platform service |
+| `gatewarden version` | Print the package version |
 
-The file [docs/AGENTS.md](docs/AGENTS.md) is a short, portable block for a harness that
-reads context files. It says three things: publish the server, give the user the
-returned URL, and remove the route after the server is gone.
+Global options include `--config`, `--state-dir`, `--json`, `--version` and `--help`.
+CLI read commands (`list`, `status`, `config`, `doctor`) do not start the daemon.
+See the [setup guide](docs/setup.md) for migration, platform service behavior
+and uninstalling the package.
 
-## When something does not work
+## The proxy adapter
 
-| Symptom | Cause | Fix |
-| --- | --- | --- |
-| `gatewarden register` says `no DNS zone is configured` | The configuration file has no `zone` | Write the zone into the configuration file (`"zone": "example.com"`) and register again |
-| The address answers `502` | The dev server does not listen on the port you registered | Look at it with `gatewarden list`. The state column says `up` or `down` |
-| The address answers `404` at the proxy | The proxy has not picked the route up yet, or the wiring is not in place | Wait one poll interval. Then check that the `http` provider is in the static configuration of the proxy, and that the proxy was restarted after it was added |
-| The relay answers `403` | Two causes. The address of the proxy is not in `allowedCidrs`. Or the installation has a `secret` and the request did not present it: the relay takes the secret in `X-Relay-Secret` | Add the address of the proxy to `allowedCidrs` in the configuration file, and restart the daemon. If the installation has a `secret`, let the proxy send it in `X-Relay-Secret`. The answer says which address was refused, or that the secret is missing or wrong |
-| The registry answers `403` | Two causes. The address that asks for the configuration document is not in the trust list — the list of the relay (`allowedCidrs`) and, on top of it, the list of the registry (`registryAllowedCidrs`). Or the installation has a `secret` and the poll did not present it: the registry takes the secret in `X-Registry-Secret` | Add the address to `allowedCidrs` or to `registryAllowedCidrs`, and restart the daemon. If the installation has a `secret`, let the proxy send it in `X-Registry-Secret` when it polls the document. The answer says which address was refused, or that the secret is missing or wrong |
-| The registry answers `403`, the relay answers `200` | Two causes. The registry has two lists — the list of the relay (`allowedCidrs`) and, on top of it, the list of the registry (`registryAllowedCidrs`) — and the address that polls the registry is in neither of them. The two listeners are then reached from different addresses: the relay sees the one that is in its own list. Or the installation has a `secret` and the poll did not present it, or presented the wrong value: the relay takes the secret in `X-Relay-Secret` and the registry in `X-Registry-Secret`, so a proxy that presents it to the relay but not to the registry gets `403` here | Add the address that polls the registry to `allowedCidrs` or to `registryAllowedCidrs` in the configuration file, and restart the daemon. If the installation has a `secret`, let the proxy send it in `X-Registry-Secret` when it polls the document. The answer says which address was refused, or that the secret is missing or wrong |
-| The certificate of the address is not trusted | The resolver was not asked for a wildcard of the project, or the zone is another one | Look at the resolver in the log of the proxy. `"tlsMode": "fqdn"` asks for one certificate per address instead of one per project |
-| The host name does not resolve | The DNS zone has no wildcard record for the subdomains | Add a `*` record for the zone to your DNS |
-| `gatewarden doctor` says `not running` | The daemon is not up | Run `gatewarden start`, and read the log file the command names |
-| The proxy serves its dashboard instead of your dev server | The route is not in the document the proxy polls | Run `curl -sS http://127.0.0.1:45002/traefik`. The route has to be in it |
+The core delegates proxy discovery, configuration rendering and wiring to
+`ProxyAdapter`. Traefik v2/v3 is the bundled adapter; another proxy needs an
+implemented adapter included in the package. The [adapter guide](docs/adapters.md)
+describes the contract and how the catalog selects one.
 
-`gatewarden doctor` reports every check it made: the configuration file, the state
-directory, the daemon, the two ports, the routes, the proxy and the service unit.
-It exits 1 on a failed check. What each check means is in
-[docs/healthcheck.md](docs/healthcheck.md). The skill's
-[troubleshooting reference](skills/gatewarden/references/troubleshooting.md) lists
-more failures.
+## Documentation and project status
 
-## The uninstall
+- [Setup and configuration](docs/setup.md)
+- [Traefik integration](docs/traefik.md)
+- [Diagnostics](docs/healthcheck.md) and [troubleshooting](docs/troubleshooting.md)
+- [Source and contribution guide](https://github.com/malarstrom-it/gatewarden)
+- [Changelog](CHANGELOG.md)
 
-```bash
-npm uninstall @malarstrom/gatewarden
-```
+Gatewarden is an early 0.1.x project. Check the security policy for supported
+versions. Reports about vulnerabilities belong in the private reporting channels
+listed there; ordinary bugs and feature requests belong in
+[GitHub Issues](https://github.com/malarstrom-it/gatewarden/issues).
 
-The uninstall takes the daemon with it, and the files of the installation go with the
-daemon. The daemon watches its own installation and stops itself once the package is
-gone, so no listener is left behind on the two ports. The files go with it too.
+This is a one-person project. For ordinary support, write to npm@malarstrom.se
+with the command, expected result and relevant diagnostics. Remove secrets before
+sharing command output. Security reports go privately to the same address using
+the process in the security policy.
 
-## Source
-
-The source of the package lives at https://github.com/malarstrom-it/gatewarden.
-
-The package is published from that repository, and the repository is the place to
-read the code, to read the changelog and to follow the work.
-
-## Support
-
-This is a one-person project. There is no support team, no on-call and no guaranteed
-response time. An issue is answered as soon as the maintainer has time, usually
-within a few days. If you need a guaranteed answer, this package is not for you.
-
-Write to npm@malarstrom.se.
-
-What to write there: what you ran, what you expected, what happened instead, and the
-output of `gatewarden doctor`. It names every check the command made and every check that
-failed, and it is often the whole answer.
-
-## Security
-
-A hole in the package, such as a way to make a listener answer an address it must
-not, is reported privately. Send the report to npm@malarstrom.se with the subject
-"security report", and describe the hole, the version you used and how to reproduce
-it. Do not open a public issue for it, and keep the details out of every public
-channel.
-
-## License
-
-MIT. The full text is [LICENSE](LICENSE).
+MIT licensed. See [LICENSE](LICENSE).
