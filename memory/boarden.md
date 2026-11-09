@@ -38,3 +38,21 @@ is shown by `herdr-projects list`, and the tasks for this repository are named `
 (for example `traefik-api/1`, this task). The key `traefik-api` is the name the board knows
 the repository by — the project itself is called Gatewarden, and the repository on GitHub is
 `malarstrom-it/gatewarden`. `TASKS.md` in the 0.2 project was empty and stays as history.
+
+## What the board may and may not do with the release branch
+
+- **The work lands on `feat/npm-package`.** It is the release branch and the default branch of
+  the repository on GitHub. `master` is a mirror of it, and it is updated at the release, not at
+  every commit.
+- **A change goes in through a pull request whose CI is green.** The branch is guarded by two
+  rulesets of the organisation: a pull request is required, the CI workflow has to pass, the
+  branch cannot be force-pushed and it cannot be deleted. `master` cannot be deleted and cannot
+  be force-pushed. An administrator cannot go around the rules either.
+- **The board never publishes.** No tag, no version change, no push to the registry. The version
+  is the human's: the human bumps the version in a pull request, the human tags it, the
+  workflow stages it on npmjs.org, and the human promotes the stage with their two-factor code.
+  A staged version is not installable, so a version reaches a reader only when the human says
+  so.
+- **The board may work on its own.** Nothing above asks the human for a word before a change
+  lands: the board reviews its own work, merges it when the CI is green, and cleans up its
+  branches. The human is needed for the release and for nothing else.
