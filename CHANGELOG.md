@@ -11,7 +11,7 @@ The names under "Added", "Changed", "Deprecated", "Removed", "Fixed" and
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/#types-of-changes)
 names. Every release gets a section, newest first.
 
-## Unreleased
+## 0.1.3 - 2026-11-09
 
 ### Added
 
