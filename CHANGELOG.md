@@ -11,6 +11,19 @@ The names under "Added", "Changed", "Deprecated", "Removed", "Fixed" and
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/#types-of-changes)
 names. Every release gets a section, newest first.
 
+## Unreleased
+
+### Fixed
+
+- **The log of a run stands in one file.** The daemon rotates the log file
+  at its start when the file is over the limit, and the standard output of
+  a daemon that the CLI started is the log file: the rotation moved the
+  file, and the standard output kept the copy. The log of the run stood in
+  the copy and in the log file, and the reader found it in two places. The
+  daemon writes to the log file alone when its standard output is a copy
+  of it, and the workers of the daemon do the same. The copy holds the
+  lines of the run before it.
+
 ## 0.1.2 - 2026-11-06
 
 ### Changed
@@ -238,15 +251,6 @@ stays on the registry, and the one to install.
   `GATEWARDEN_STATE_DIR` are the names to use.
 
 ### Fixed
-
-- **The log of a run stands in one file.** The daemon rotates the log file
-  at its start when the file is over the limit, and the standard output of
-  a daemon that the CLI started is the log file: the rotation moved the
-  file, and the standard output kept the copy. The log of the run stood in
-  the copy and in the log file, and the reader found it in two places. The
-  daemon writes to the log file alone when its standard output is a copy
-  of it, and the workers of the daemon do the same. The copy holds the
-  lines of the run before it.
 
 - **The daemon of a service writes to the log file.** The unit of the
   platform starts the daemon with its standard output on the journal, and
