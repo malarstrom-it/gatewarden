@@ -91,7 +91,7 @@ installed package.
 * `docs/traefik.md` — the wiring of the Traefik adapter: the provider the
   proxy polls, the router, the middleware and the certificate resolver. The
   adapter itself, and the small contract it implements, are described in
-  [The proxy adapter](../../../README.md#the-proxy-adapter) in the README.
+  [proxy adapter guide](../../../docs/adapters.md).
 * `docs/setup.md` — the setup wizard, step by step, and the manual path
   beside it.
 * `docs/AGENTS.md` — the short block every harness can read.

@@ -13,6 +13,17 @@ names. Every release gets a section, newest first.
 
 ## Unreleased
 
+### Added
+
+- A deployment comparison with documented alternatives, a gateway mascot and a
+  request-flow diagram. Maintainer review notes record open design and security
+  questions for an agent to investigate without prescribing implementation changes.
+
+### Changed
+
+- The README introduces the proxy-agnostic core and bundled Traefik adapter before
+  setup, with shorter reader paths to configuration, adapter details and diagnostics.
+
 ### Fixed
 
 - **The log of a run stands in one file.** The daemon rotates the log file

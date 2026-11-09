@@ -1,0 +1,11 @@
+Gatewarden mascot concept
+Generation method: built-in image_gen tool; transparent_background=true.
+The image is a generated concept for review, not an existing project asset.
+
+Use case: logo-brand.
+Asset type: a small original mascot illustration for the open-source developer tool Gatewarden, to sit beside a GitHub README title and work at small sizes.
+Primary request: create a friendly, quietly competent little gateway guardian. The character is a compact owl-like creature with a rounded arch-shaped body and two simple folded wings framing an open doorway-shaped light chest. The silhouette subtly suggests an open gateway and connection, with a warm attentive face. It should express guiding local development traffic, rather than military protection.
+Style/medium: polished editorial mascot illustration, clean bold contours, restrained flat forms with a little soft dimensional shading, coherent geometry, distinctive but understated, suitable for a professional open-source project.
+Composition/framing: one character only, full body visible, centered, mostly front-facing with slight three-quarter character, ample transparent margin, strong readable silhouette at 96px. No scene, no additional objects, no typography or lettering, no watermark. Use slate/navy and soft light neutrals compatible with a technical README.
+Background: genuinely transparent alpha, no floor or opaque backdrop, no cast shadow outside the character.
+Constraints: original design; no shield, padlock, weapons, police imagery or badges; no resemblance to existing developer mascots.

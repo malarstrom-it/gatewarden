@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="790" viewBox="0 0 1500 790" role="img" aria-labelledby="title desc">
+<title id="title">Gatewarden request and configuration flow</title>
+<desc id="desc">A browser connects using HTTPS to your Traefik proxy. TLS ends at Traefik. Traefik sends HTTP to Gatewarden's relay on port 45001, which forwards to a registered development server on loopback. Separately, Traefik polls the Gatewarden registry on port 45002 over HTTP. The relay and registry run on the development host or inside the same container as the development server. CLI, MCP and pi manage local registrations.</desc>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#175b76"/></marker>
+<marker id="dasharrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10Z" fill="#6953a1"/></marker>
+<style>text{font-family:Arial,Helvetica,sans-serif;fill:#173140}.title{font-size:38px;font-weight:700}.sub{font-size:21px;fill:#46606e}.node{fill:white;stroke:#bfd0d8;stroke-width:2}.label{font-size:23px;font-weight:700}.small{font-size:19px;fill:#46606e}.code{font-family:Menlo,Consolas,monospace;font-size:18px}.edge{fill:none;stroke:#175b76;stroke-width:3;marker-end:url(#arrow)}.dashed{fill:none;stroke:#6953a1;stroke-width:3;stroke-dasharray:9 7;marker-end:url(#dasharrow)}</style>
+</defs>
+<rect width="1500" height="790" fill="#f7fafc"/>
+<text x="48" y="68" class="title">Gatewarden</text>
+<text x="48" y="106" class="sub">Local dev ports → project and branch URLs through your own Traefik</text>
+<rect x="705" y="157" width="750" height="445" rx="18" fill="#eaf2f6" stroke="#bfd0d8" stroke-width="2"/>
+<text x="732" y="193" class="small">Development host or container · shared loopback</text>
+<rect x="48" y="235" width="220" height="130" rx="12" class="node"/>
+<text x="74" y="277" class="label">Browser / phone</text><text x="74" y="311" class="small">Opens preview URL</text><text x="74" y="340" class="small">LAN / VPN example</text>
+<rect x="365" y="235" width="250" height="130" rx="12" class="node"/>
+<text x="391" y="277" class="label">Your Traefik</text><text x="391" y="311" class="small">TLS ends here</text><text x="391" y="340" class="small">Viewer access policy</text>
+<rect x="755" y="235" width="275" height="130" rx="12" class="node"/>
+<text x="781" y="277" class="label">Gatewarden relay</text><text x="781" y="311" class="code">:45001</text><text x="781" y="340" class="small">Checks proxy caller</text>
+<rect x="1150" y="235" width="280" height="130" rx="12" class="node"/>
+<text x="1176" y="277" class="label">Your dev server</text><text x="1176" y="311" class="code">127.0.0.1:5173</text><text x="1176" y="340" class="small">Already running</text>
+<path d="M268 299H361" class="edge"/><text x="282" y="281" class="small">HTTPS</text>
+<path d="M615 299H751" class="edge"/><text x="656" y="281" class="small">HTTP</text>
+<path d="M1030 299H1146" class="edge"/><text x="1062" y="281" class="small">HTTP</text>
+<rect x="755" y="424" width="395" height="130" rx="12" class="node"/>
+<text x="781" y="466" class="label">Gatewarden registry</text><text x="781" y="500" class="code">:45002/traefik</text><text x="781" y="529" class="small">Read-only dynamic configuration</text>
+<path d="M490 365V488H751" class="dashed"/>
+<text x="515" y="425" class="small">Config polling</text><text x="515" y="454" class="small">HTTP · GET /traefik</text>
+<text x="1180" y="461" class="label">CLI · MCP · pi</text><text x="1180" y="495" class="small">Manage local</text><text x="1180" y="522" class="small">route registrations</text>
+<rect x="48" y="632" width="1407" height="116" rx="12" fill="#e7eef2"/>
+<text x="74" y="669" class="code">127.0.0.1:5173  →  https://main.my-app.example.com</text>
+<text x="74" y="704" class="small">Requires your proxy, DNS, TLS setup and network reachability. No NAT traversal.</text>
+<text x="74" y="733" class="small">Protect proxy → gateway HTTP with a trusted network / VPN and firewall. Viewer access is configured at the proxy.</text>
+</svg>
