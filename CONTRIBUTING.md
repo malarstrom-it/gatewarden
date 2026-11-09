@@ -262,6 +262,11 @@ The maintainer cuts the releases, not the contributors.
 Never publish, never tag a release, and never touch the registry from a
 pull request.
 
+The release branch is `feat/npm-package`, and every change to it goes through a
+pull request whose CI is green. The branch is guarded by a ruleset of the
+organisation: a pull request is required, the CI workflow has to pass, the
+branch cannot be force-pushed, and it cannot be deleted.
+
 ### The rewritten history and the CodeRabbit review
 The history of the repository starts at `v0.1.1`: one root commit, and no
 earlier commit. The history was rewritten on 2026-11-06 and the rewrite went
