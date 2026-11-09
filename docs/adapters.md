@@ -18,7 +18,7 @@ API, three methods and one that is optional:
 | `id` | The name of the proxy. It is also the path the document is served under. |
 | `defaultApiBaseUrl` | Where the API of the proxy usually answers. Optional. |
 | `discover(options)` | Find the proxy, read its version and what it derives from its own configuration. |
-| `render(routes, config)` | Render the document the proxy polls: the relay the requests go to, and the id of the route that the proxy stamps on the request. The port of the dev server is not in the document — the relay looks it up when the request arrives. |
+| `render(routes, config)` | Render the document the proxy polls: the relay the requests go to, and the id of the route that the proxy stamps on the request. The proxy stamps that id in the dispatch header (`X-Dev-Target`), and the relay refuses a request without it with `404`. The port of the dev server is not in the document — the relay looks it up when the request arrives. |
 | `wiringSnippet(config)` | The static configuration the user has to add to the proxy. |
 | `verify(route, config)` | Whether the proxy already knows the route. Optional. |
 

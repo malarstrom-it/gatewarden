@@ -1,6 +1,11 @@
-Gatewarden mascot concept
+Gatewarden mascot
 Generation method: built-in image_gen tool; transparent_background=true.
-The image is a generated concept for review, not an existing project asset.
+The picture is generated, and this file is the prompt it was generated
+from: the picture in this directory is the one the README shows.
+
+The picture is scaled to 224 pixels wide, twice the width the README
+shows it in, so that it is sharp on a screen with two pixels per
+logical pixel. The original was 1312 pixels wide and a megabyte large.
 
 Use case: logo-brand.
 Asset type: a small original mascot illustration for the open-source developer tool Gatewarden, to sit beside a GitHub README title and work at small sizes.

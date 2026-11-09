@@ -15,14 +15,36 @@ names. Every release gets a section, newest first.
 
 ### Added
 
-- A deployment comparison with documented alternatives, a gateway mascot and a
-  request-flow diagram. Maintainer review notes record open design and security
-  questions for an agent to investigate without prescribing implementation changes.
+- **The package says what it is next to what it is not.** A new page,
+  `docs/alternatives.md`, compares the deployment models of the tools that
+  share a development service: the orchestration of routes (Gatewarden), the
+  connectivity (localtunnel, ngrok, Cloudflare Tunnel, frp, Tailscale) and
+  the serving (Traefik, Caddy). Every row links to the documentation of the
+  tool it names, and the page says that the comparison is about the
+  architecture and not a security audit.
+- **A picture of the gateway and a picture of the request.** The README
+  shows a mascot beside the title and a diagram of the request path. The
+  diagram is in the package — it is a vector file of four kilobytes. The
+  mascot is not: it lives in the `assets` directory of the repository,
+  which the manifest of the package does not name, and the README points at
+  it on GitHub. The package of the reader does not carry a megabyte of
+  decoration.
+- **Notes that ask questions instead of answering them.** A note in the
+  repository,
+  [the review of 2026-11-09](https://github.com/malarstrom-it/gatewarden/blob/feat/npm-package/reviews/2026-11-09-agent-review.md),
+  records what an investigation found, what it did not, and what would
+  settle each open question about the network, the credentials and the
+  configuration. The notes stay in the repository and do not ship with the
+  package.
 
 ### Changed
 
-- The README introduces the proxy-agnostic core and bundled Traefik adapter before
-  setup, with shorter reader paths to configuration, adapter details and diagnostics.
+- **The README says what the tool does before it says how to install it.**
+  It opens with a route from a one-time setup to an address, then the core
+  that knows nothing about a proxy and the Traefik adapter that ships with
+  it, and only then the setup, the boundaries of the exposure, the tools
+  for agents and the reference. The pages of the setup, the adapters and
+  the troubleshooting hold the details that the README points at.
 
 ### Fixed
 
