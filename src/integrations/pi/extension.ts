@@ -16,7 +16,7 @@
  * separate process, never hosted inside an agent session.
  */
 
-import { ensureDaemon } from '../../core/daemonControl.ts';
+import { AGENT_DAEMON_START_TIMEOUT_MS, ensureDaemon } from '../../core/daemonControl.ts';
 import { createToolContext } from '../mcp/tools.ts';
 import type { PiComponent, PiExtensionApi, PiExtensionContext } from './pi-api.ts';
 import { renderRouteTable } from './table.ts';
@@ -72,7 +72,10 @@ async function refreshStatus(ctx: PiExtensionContext): Promise<void> {
 async function ensureDaemonRunning(ctx: PiExtensionContext): Promise<void> {
   try {
     const context = createToolContext({ cwd: ctx.cwd });
-    const started = await ensureDaemon(context.config, { configPath: context.configPath });
+    const started = await ensureDaemon(context.config, {
+      configPath: context.configPath,
+      timeoutMs: AGENT_DAEMON_START_TIMEOUT_MS,
+    });
     if (started.error) ctx.ui.notify(`gatewarden: ${started.error}`, 'warning');
   } catch (error) {
     ctx.ui.notify(`gatewarden: ${(error as Error).message}`, 'warning');
