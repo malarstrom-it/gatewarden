@@ -100,6 +100,16 @@ This is the list of the protections that exist today. It is here so that a
 reporter does not have to rediscover them, and so that a reader can see
 where the weak spots are.
 
+### The repository holds no values of any installation
+
+The zone of the DNS, the addresses, the host names, the TLS rules and the
+routes of a running gateway belong to the installation they describe, not
+to this project, and none of them is in this repository. The examples of
+the tests, the tools and the documentation carry example values and the
+address ranges that RFC 5737 reserves for documentation. The facts of a
+running installation live outside the repository, with the people who run
+it.
+
 ### The registry has no write path
 
 The registry serves exactly two endpoints: the dynamic configuration document
