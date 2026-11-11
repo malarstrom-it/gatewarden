@@ -41,7 +41,7 @@ Priority here means investigation order, not a severity score. Do not describe a
 | `specs/tech-architecture/gatewarden.md:268–311` | Registry source-address checks, additive `registryAllowedCidrs`, optional per-listener secret checks, and loopback health exception are deliberate. | The spec does not by itself establish which source ranges should be added automatically on every platform. |
 | `specs/tech-architecture/traefik-dev-gateway.md:37,413–419` | Browser→Traefik HTTPS and Traefik→container HTTP are explicit design choices. | The security of the second hop depends on deployment assumptions. |
 | `docs/AGENTS.md:1–18` | Consumers should use the returned URL rather than reconstruct a hostname, and remove routes when stopping servers. | This is a portable consumer integration block. It does not instruct a reviewer to start/publish a server merely to read the repository. |
-| `MEMORY.md:8–13` | Some installation-specific facts and TLS/routing decisions remain outside the repository. | Missing context may justify NEEDS EVIDENCE rather than inventing a deployment assumption. |
+| `SECURITY.md` ("The repository holds no values of any installation") | Some installation-specific facts and TLS/routing decisions remain outside the repository. | Missing context may justify NEEDS EVIDENCE rather than inventing a deployment assumption. |
 
 ## Product and implementation investigations
 

@@ -11,3 +11,14 @@ tools/testenv/.cache/
 # host names and the live routes of the installation are in the pixels of
 # the images. They do not belong in a repository that becomes public.
 artifacts/
+
+# The working material of the project: the memory of the board, the index
+# of that memory, the brief the coordinator works from, and the per-task
+# briefs and reports of herdr. They are the work of the project and not
+# the product: the repository a reader finds is about the gatewarden and
+# what it does. The files stay in the working copy, and the agents that
+# work here read them there.
+memory/
+MEMORY.md
+specs/tech-architecture/coordination-brief.md
+.herdr-project/

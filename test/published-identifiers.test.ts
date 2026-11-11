@@ -3485,7 +3485,7 @@ describe('the published package', () => {
       `the repository holds ${unshipped.length} files the package does not ship — the rule would read nothing`,
     );
     assert.ok(documents.length > 5, `the repository holds ${documents.length} documents — the rule would read nothing`);
-    for (const file of ['specs/tech-architecture/naming.md', 'memory/boarden.md', 'MEMORY.md', 'CONTRIBUTING.md']) {
+    for (const file of ['specs/tech-architecture/naming.md', 'SECURITY.md', 'CONTRIBUTING.md']) {
       assert.ok(unshipped.includes(file), `the rule does not read ${file}`);
     }
 
