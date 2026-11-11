@@ -208,6 +208,14 @@ test('publishing without a zone says how to get one', async (t) => {
   assert.match(JSON.stringify(published.content), /no DNS zone is configured/);
   assert.match(JSON.stringify(published.content), /gatewarden setup/);
 
+  // The answer came before the daemon started: a route that cannot be
+  // named is not worth a daemon, and the answer does not wait for one.
+  assert.equal(
+    fs.existsSync(path.join(fixture.dir, 'daemon.pid')),
+    false,
+    'the daemon was started for a route that has no zone',
+  );
+
   const listed = await fixture.client.callTool({ name: 'list_dev_servers', arguments: {} });
   const routes = (listed.structuredContent as { routes: unknown[] }).routes;
   assert.equal(routes.length, 0, 'a route without a zone was registered');

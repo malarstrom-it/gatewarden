@@ -13,7 +13,8 @@
  * program can read), not a second implementation.
  */
 
-import { ensureDaemon } from '../../core/daemonControl.ts';
+import { requireZone } from '../../core/config.ts';
+import { AGENT_DAEMON_START_TIMEOUT_MS, ensureDaemon } from '../../core/daemonControl.ts';
 import type { RouteJson } from '../../core/status.ts';
 import { createToolContext, TOOLS as MCP_TOOLS, type ToolDefinition } from '../mcp/tools.ts';
 import type { PiExtensionContext, PiJsonSchema, PiToolDefinition } from './pi-api.ts';
@@ -98,7 +99,15 @@ export function createPiTools(options: PiToolOptions = {}): PiToolDefinition[] {
         // that only reads the routes does not start it: it would change
         // the environment of a tool that is declared read-only.
         if (MUTATING_TOOLS.has(name)) {
-          const started = await ensureDaemon(context.config, { configPath: context.configPath });
+          // A tool that names a route needs a zone, and the check comes
+          // first: an installation that has no zone gets its answer at
+          // once, and no daemon is started for a route that cannot be
+          // named.
+          if (source.needsZone) requireZone(context.config);
+          const started = await ensureDaemon(context.config, {
+            configPath: context.configPath,
+            timeoutMs: AGENT_DAEMON_START_TIMEOUT_MS,
+          });
           if (started.error) throw new Error(started.error);
         }
 

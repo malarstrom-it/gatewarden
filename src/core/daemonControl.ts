@@ -236,6 +236,25 @@ export function daemonEnv(
 }
 
 /**
+ * How long a caller waits for the daemon to answer, in milliseconds.
+ *
+ * The budget of a person at a terminal: the daemon normally answers in a
+ * moment, and a person should not wait long to be told that it did not
+ * come up.
+ */
+export const DAEMON_START_TIMEOUT_MS = 20_000;
+
+/**
+ * How long an agent call waits for the daemon to answer.
+ *
+ * An agent call is a program that can wait, and the daemon of a machine
+ * that is busy with something else can need longer than the budget of a
+ * person. The agent paths of the package — the MCP server and the pi
+ * tools — wait this long, and the terminal keeps the shorter one.
+ */
+export const AGENT_DAEMON_START_TIMEOUT_MS = 60_000;
+
+/**
  * Make sure the daemon is running.
  *
  * Starts it detached when it is not, then waits for `/healthz`.
@@ -248,7 +267,7 @@ export async function ensureDaemon(
   config: Config,
   opts: { timeoutMs?: number; configPath?: string } = {},
 ): Promise<{ started: boolean; pid: number | null; error?: string }> {
-  const timeoutMs = opts.timeoutMs ?? 20_000;
+  const timeoutMs = opts.timeoutMs ?? DAEMON_START_TIMEOUT_MS;
 
   const status = await daemonStatus(config);
   if (status.healthy) {

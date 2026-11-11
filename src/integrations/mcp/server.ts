@@ -14,7 +14,8 @@
 
 import { createInterface } from 'node:readline';
 import process from 'node:process';
-import { ensureDaemon } from '../../core/daemonControl.ts';
+import { requireZone } from '../../core/config.ts';
+import { AGENT_DAEMON_START_TIMEOUT_MS, ensureDaemon } from '../../core/daemonControl.ts';
 import { deprecatedEnvNotices } from '../../core/paths.ts';
 import { packageVersion } from '../../core/util/module.ts';
 import { answersUnknownProxy, createToolContext, TOOLS, type ToolDefinition } from './tools.ts';
@@ -235,10 +236,18 @@ export class McpServer {
         stateDir: this.options.stateDir,
       });
 
+      // A tool that names a route needs a zone, and the check comes
+      // first: an installation that has no zone gets its answer at once,
+      // and no daemon is started for a route that cannot be named.
+      if (tool.needsZone) requireZone(context.config);
+
       // The lazy start: the daemon serves the document the proxy polls.
       // The server does not start it when it starts — the first tool
       // call does.
-      const started = await ensureDaemon(context.config, { configPath: context.configPath });
+      const started = await ensureDaemon(context.config, {
+        configPath: context.configPath,
+        timeoutMs: AGENT_DAEMON_START_TIMEOUT_MS,
+      });
       // A daemon that did not start is a failure of the call, for every
       // tool. The status tool is the one exception, and only for the
       // mistake it exists to report: the configuration file names a

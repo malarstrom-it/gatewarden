@@ -68,6 +68,15 @@ export interface ToolDefinition {
    * mistake is what it reports.
    */
   reportsUnknownProxy?: boolean;
+  /**
+   * Does the tool need a zone of the DNS?
+   *
+   * The host names of the routes are built from the zone, so a tool that
+   * names a route cannot work without one. The check comes before the
+   * daemon starts: an installation that has no zone gets its answer at
+   * once, and no daemon is started for a route that cannot be named.
+   */
+  needsZone?: boolean;
 }
 
 /**
@@ -255,6 +264,7 @@ const publishDevServer: ToolDefinition = {
     required: ['url', 'fqdn', 'project', 'branch', 'port', 'state'],
     additionalProperties: false,
   },
+  needsZone: true,
   async handler(args, context) {
     const port = args['port'];
     if (typeof port !== 'number' || !Number.isInteger(port) || port < 1 || port > 65535) {
